@@ -79,14 +79,19 @@ async def setup_jetstream():
         logger.info("JetStream setup completed successfully")
         
     except TimeoutError:
-        logger.error("Timed out connecting to NATS server - is JetStream enabled?")
-        logger.error("Make sure to start NATS with the '-js' flag")
+        logger.error("Timed out connecting to NATS server at nats://localhost:4222.")
+        logger.error("Please ensure your NATS server is running and JetStream is enabled (e.g., start with 'nats-server -js').")
         sys.exit(1)
     except Exception as e:
         logger.error(f"Failed to set up JetStream: {e}")
-        if "Connection refused" in str(e):
-            logger.error("Connection refused - NATS server is not running at localhost:4222")
-            logger.error("Please start the NATS server before running this script")
+        if "Connection refused" in str(e): # This check is good
+            logger.error("Connection refused while trying to connect to NATS server at nats://localhost:4222.")
+            logger.error("Please ensure your NATS server is running.")
+        elif "Permissions Violation" in str(e) or "authorization violation" in str(e).lower(): # Added this
+            logger.error("NATS JetStream reported a permissions violation. This can sometimes happen if JetStream is not enabled on the server.")
+            logger.error("Please ensure your NATS server is started with JetStream enabled (e.g., 'nats-server -js').")
+        else: # General advice for other errors
+            logger.error("An unexpected error occurred. Ensure NATS is running, JetStream is enabled ('-js' flag), and the server is accessible at nats://localhost:4222.")
         sys.exit(1)
     finally:
         # Close the connection
