@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "6hB9h9Mj8CIcQdjQuBVyG/vzQOcUe57B1g4GhUU4jnO+b7gBLpCnC8THnObSUq3lMjUmFgN2HU8MLoLY+f2TjA==",
+  "success": true,
+  "projectFilePath": "/app/tests/e2e_csharp_client/E2ETestClient.csproj",
+  "expectedPackageFiles": [
+    "/home/jules/.nuget/packages/nats.client/1.1.2/nats.client.1.1.2.nupkg.sha512"
+  ],
+  "logs": []
+}

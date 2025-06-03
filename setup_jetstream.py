@@ -7,61 +7,52 @@ Run this script before running the tests to ensure all required streams are crea
 import asyncio
 import logging
 import sys
-import socket
+# import socket # Removed as check_nats_server_running is removed
 from nats.aio.client import Client as NATS
 from nats.js.api import StreamConfig
 from nats.errors import TimeoutError
 
+# Import configuration
+import os
+# Add src to sys.path to find the config module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from src.deepthought.config import get_nats_url, get_nats_stream_name, get_logging_level_str
+
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=get_logging_level_str().upper(), # Use level from config
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-def check_nats_server_running(host="localhost", port=4222):
-    """Check if NATS server is accessible at the given host and port."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.settimeout(1)
-            result = sock.connect_ex((host, port))
-            if result == 0:
-                logger.info(f"NATS server appears to be running at {host}:{port}")
-                return True
-            else:
-                logger.error(f"No NATS server detected at {host}:{port} (connection refused)")
-                return False
-    except Exception as e:
-        logger.error(f"Error checking NATS server: {e}")
-        return False
+# def check_nats_server_running(host="localhost", port=4222): # REMOVED
+#     """Check if NATS server is accessible at the given host and port.""" # REMOVED
+#     pass # REMOVED
 
 async def setup_jetstream():
     """Set up the JetStream streams needed for testing."""
     logger.info("Setting up JetStream streams for DeepThought reThought...")
     
-    # First check if NATS server is running
-    if not check_nats_server_running():
-        logger.error("NATS server does not appear to be running!")
-        logger.error("Please start a NATS server with JetStream enabled before running this script.")
-        logger.error("Example command: 'nats-server -js'")
-        sys.exit(1)
-    
+    nats_url = get_nats_url()
+    stream_name = get_nats_stream_name()
+
     # Connect to NATS
     nats_client = NATS()
     try:
-        logger.info("Attempting to connect to NATS server...")
-        await nats_client.connect(servers=["nats://localhost:4222"])
-        logger.info("Connected to NATS server")
+        logger.info(f"Attempting to connect to NATS server at {nats_url}...")
+        await nats_client.connect(servers=[nats_url])
+        logger.info(f"Connected to NATS server at {nats_url}")
         
         # Create JetStream context
         js = nats_client.jetstream()
         
         # Define stream for DeepThought events
+        logger.info(f"Configuring stream '{stream_name}' with subjects 'dtr.>'...")
         stream_config = StreamConfig(
-            name="deepthought_events",
+            name=stream_name, # Use name from config
             subjects=["dtr.>"],  # All DeepThought subjects
             retention="limits",
-            max_msgs_per_subject=10000,
+            max_msgs_per_subject=10000, # Consider making this configurable too
             discard="old",
         )
         
@@ -76,17 +67,21 @@ async def setup_jetstream():
             stream = await js.update_stream(config=stream_config)
             logger.info(f"Updated JetStream stream: {stream.config.name}")
         
-        logger.info("JetStream setup completed successfully")
+        logger.info(f"JetStream stream '{stream_name}' setup completed successfully.")
         
     except TimeoutError:
-        logger.error("Timed out connecting to NATS server - is JetStream enabled?")
-        logger.error("Make sure to start NATS with the '-js' flag")
+        logger.error(f"Timed out connecting to NATS server at {nats_url}.")
+        logger.error("Please ensure your NATS server is running and JetStream is enabled (e.g., start with 'nats-server -js').")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Failed to set up JetStream: {e}")
+        logger.error(f"Failed to set up JetStream for stream '{stream_name}' at {nats_url}: {e}")
         if "Connection refused" in str(e):
-            logger.error("Connection refused - NATS server is not running at localhost:4222")
-            logger.error("Please start the NATS server before running this script")
+            logger.error(f"Connection refused: NATS server is not running or not accessible at {nats_url}.")
+        elif "Permissions Violation" in str(e) or "authorization violation" in str(e).lower():
+            logger.error("NATS JetStream reported a permissions violation. This can sometimes happen if JetStream is not enabled on the server.")
+            logger.error("Please ensure your NATS server is started with JetStream enabled (e.g., 'nats-server -js').")
+        else:
+            logger.error(f"An unexpected error occurred. Ensure NATS is running at {nats_url}, JetStream is enabled ('-js' flag).")
         sys.exit(1)
     finally:
         # Close the connection

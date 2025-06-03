@@ -19,7 +19,8 @@ from nats.errors import TimeoutError
 # Add the src directory to the path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Import the modules to test
+# Import configuration and modules
+from src.deepthought.config import get_nats_url, get_nats_stream_name
 from src.deepthought.modules import InputHandler, MemoryStub, LLMStub, OutputHandler
 from src.deepthought.eda.events import EventSubjects
 
@@ -27,29 +28,25 @@ from src.deepthought.eda.events import EventSubjects
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Helper function to get NATS URL from environment variable
-def get_nats_url() -> str:
-    return os.getenv("NATS_URL", "nats://localhost:4222")
-
-# Stream name - using the same as in setup_jetstream.py
-STREAM_NAME = "deepthought_events"
+# NATS URL and Stream Name are now fetched from config
+# STREAM_NAME = "deepthought_events" # Replaced by get_nats_stream_name()
 
 # Helper function to ensure the JetStream stream exists
-async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
+async def ensure_stream_exists(js: JetStreamContext, stream_name_to_check: str) -> bool: # Renamed stream_name arg
     """Ensure the JetStream stream exists and has the correct configuration."""
     try:
         # Check if the stream exists
-        logger.info(f"Checking if stream '{stream_name}' exists...")
-        stream_info = await js.stream_info(stream_name)
-        logger.info(f"Stream '{stream_name}' already exists.")
+        logger.info(f"Checking if stream '{stream_name_to_check}' exists...")
+        stream_info = await js.stream_info(stream_name_to_check)
+        logger.info(f"Stream '{stream_name_to_check}' already exists.")
         return True
     except Exception as e:
-        logger.info(f"Stream '{stream_name}' does not exist, creating it... ({e})")
+        logger.info(f"Stream '{stream_name_to_check}' does not exist, creating it... ({e})")
         
         # Create the stream with appropriate settings
         stream_config = StreamConfig(
-            name=stream_name,
-            subjects=["dtr.>"],  # All DeepThought subjects
+            name=stream_name_to_check, # Use the passed argument
+            subjects=["dtr.>"],  # All DeepThought subjects, this should align with config if stream is shared
             retention=RetentionPolicy.LIMITS,
             storage=StorageType.MEMORY,  # Use memory storage for tests
             max_msgs_per_subject=100,
@@ -96,8 +93,9 @@ async def test_full_module_flow():
         logger.info("JetStream context obtained.")
         
         # --- Ensure stream exists ---
-        if not await ensure_stream_exists(js, STREAM_NAME):
-            pytest.fail(f"Failed to ensure stream '{STREAM_NAME}' exists.")
+        # Use get_nats_stream_name() from config
+        if not await ensure_stream_exists(js, get_nats_stream_name()):
+            pytest.fail(f"Failed to ensure stream '{get_nats_stream_name()}' exists.")
         
         # --- Create event for completion signaling ---
         final_response_received_event = asyncio.Event()
@@ -105,9 +103,10 @@ async def test_full_module_flow():
         test_input_id = None
         
         # --- Define output callback ---
-        def output_callback(input_id, response):
+        def output_callback(input_id, response, full_event_data: dict = None): # Added full_event_data
             nonlocal test_input_id
-            logger.info(f"Output callback received response for input_id={input_id}: {response}")
+            # full_event_data is available here if needed for more detailed assertions
+            logger.info(f"Output callback received response for input_id={input_id}: {response}. Full data: {full_event_data}")
             responses[input_id] = response
             # Only set event if it matches the ID we sent for this test run
             if input_id == test_input_id:

@@ -1,0 +1,107 @@
+{
+  "version": 3,
+  "targets": {
+    "net6.0": {
+      "NATS.Client/1.1.2": {
+        "type": "package",
+        "compile": {
+          "lib/netstandard2.0/NATS.Client.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/netstandard2.0/NATS.Client.dll": {
+            "related": ".xml"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "NATS.Client/1.1.2": {
+      "sha512": "FIzyiX2dOAc6vjjObIF51gOnPfgFWkLf9gOcRggHm3xKLiIehHZz7TxYgF0eJ6EBGuubIaR8ZRD6pAMCLeHwjA==",
+      "type": "package",
+      "path": "nats.client/1.1.2",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/net46/NATS.Client.dll",
+        "lib/net46/NATS.Client.xml",
+        "lib/netstandard1.6/NATS.Client.dll",
+        "lib/netstandard1.6/NATS.Client.xml",
+        "lib/netstandard2.0/NATS.Client.dll",
+        "lib/netstandard2.0/NATS.Client.xml",
+        "nats.client.1.1.2.nupkg.sha512",
+        "nats.client.nuspec",
+        "package-icon.png"
+      ]
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net6.0": [
+      "NATS.Client >= 1.1.2"
+    ]
+  },
+  "packageFolders": {
+    "/home/jules/.nuget/packages/": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "/app/tests/e2e_csharp_client/E2ETestClient.csproj",
+      "projectName": "E2ETestClient",
+      "projectPath": "/app/tests/e2e_csharp_client/E2ETestClient.csproj",
+      "packagesPath": "/home/jules/.nuget/packages/",
+      "outputPath": "/app/tests/e2e_csharp_client/obj/",
+      "projectStyle": "PackageReference",
+      "configFilePaths": [
+        "/home/jules/.nuget/NuGet/NuGet.Config"
+      ],
+      "originalTargetFrameworks": [
+        "net6.0"
+      ],
+      "sources": {
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net6.0": {
+          "targetAlias": "net6.0",
+          "projectReferences": {}
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      }
+    },
+    "frameworks": {
+      "net6.0": {
+        "targetAlias": "net6.0",
+        "dependencies": {
+          "NATS.Client": {
+            "target": "Package",
+            "version": "[1.1.2, )"
+          }
+        },
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "/home/jules/.dotnet/sdk/6.0.428/RuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

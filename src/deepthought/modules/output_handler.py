@@ -15,7 +15,7 @@ class OutputHandler:
     """Subscribes to ResponseGenerated via JetStream and handles output."""
 
     def __init__(self, nats_client: NATS, js_context: JetStreamContext,
-                 output_callback: Optional[Callable[[str, str], None]] = None):
+                 output_callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None):
         """Initialize with shared NATS client and JetStream context."""
         self._subscriber = Subscriber(nats_client, js_context)
         self._responses = {}
@@ -34,7 +34,7 @@ class OutputHandler:
 
             # Use callback or print
             if self._output_callback:
-                self._output_callback(input_id, final_response)
+                self._output_callback(input_id, final_response, data) # Pass the full data dict
             else:
                 print(f"Output ({input_id}): {final_response}")
 

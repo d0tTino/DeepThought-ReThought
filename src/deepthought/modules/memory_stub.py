@@ -28,7 +28,9 @@ class MemoryStub:
             data = json.loads(msg.data.decode())
             input_id = data.get("input_id", "unknown")
             user_input = data.get("user_input", "")
-            logger.info(f"MemoryStub received input event ID {input_id}")
+            correlation_id = data.get("correlation_id")
+            reply_to_e2e = data.get("reply_to_e2e")
+            logger.info(f"MemoryStub received input event ID {input_id}, Correlation ID: {correlation_id}")
 
             await asyncio.sleep(0.1) # Simulate work
 
@@ -41,7 +43,9 @@ class MemoryStub:
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge=memory_data,
                 input_id=input_id,
-                timestamp=datetime.utcnow().isoformat()
+                timestamp=datetime.utcnow().isoformat(),
+                correlation_id=correlation_id, # Add this
+                reply_to_e2e=reply_to_e2e     # Add this
             )
 
             # Publish result via JetStream

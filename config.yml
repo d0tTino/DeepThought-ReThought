@@ -1,0 +1,14 @@
+# Configuration for DeepThought-ReThought Application
+
+nats:
+  url: "nats://localhost:4222"  # Default NATS server URL
+  stream_name: "deepthought_events" # Default JetStream stream name
+  # Example for subject prefixes, can be expanded if modules need more flexibility
+  # subject_prefixes:
+  #   base: "dtr"
+  #   input: "dtr.input"
+  #   memory: "dtr.memory"
+  #   llm: "dtr.llm"
+
+logging:
+  level: "INFO" # Default logging level (e.g., DEBUG, INFO, WARNING, ERROR)

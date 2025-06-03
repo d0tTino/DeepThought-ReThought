@@ -29,18 +29,24 @@ class LLMStub:
             input_id = data.get("input_id", "unknown")
             knowledge = data.get("retrieved_knowledge", {}).get("retrieved_knowledge", {})
             facts = knowledge.get("facts", [])
-            logger.info(f"LLMStub received memory event ID {input_id}")
+            correlation_id = data.get("correlation_id")
+            reply_to_e2e = data.get("reply_to_e2e")
+            logger.info(f"LLMStub received memory event ID {input_id}, Correlation ID: {correlation_id}")
 
             await asyncio.sleep(0.5) # Simulate work
 
             facts_str = ", ".join(map(str, facts))
             response = f"Based on: {facts_str}, this is a stub response. [TS: {datetime.utcnow().isoformat()}]"
             payload = ResponseGeneratedPayload(
-                final_response=response, input_id=input_id,
-                timestamp=datetime.utcnow().isoformat(), confidence=0.95
+                final_response=response,
+                input_id=input_id,
+                timestamp=datetime.utcnow().isoformat(),
+                confidence=0.95,
+                correlation_id=correlation_id, # Add this
+                reply_to_e2e=reply_to_e2e     # Add this
             )
 
-            logger.info(f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}")
+            logger.info(f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}, Correlation ID: {correlation_id}")
             try:
                 await self._publisher.publish(
                     EventSubjects.RESPONSE_GENERATED, payload,

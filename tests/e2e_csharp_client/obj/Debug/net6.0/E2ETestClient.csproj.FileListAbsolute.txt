@@ -1,0 +1,17 @@
+/app/tests/e2e_csharp_client/bin/Debug/net6.0/E2ETestClient
+/app/tests/e2e_csharp_client/bin/Debug/net6.0/E2ETestClient.deps.json
+/app/tests/e2e_csharp_client/bin/Debug/net6.0/E2ETestClient.runtimeconfig.json
+/app/tests/e2e_csharp_client/bin/Debug/net6.0/E2ETestClient.dll
+/app/tests/e2e_csharp_client/bin/Debug/net6.0/E2ETestClient.pdb
+/app/tests/e2e_csharp_client/bin/Debug/net6.0/NATS.Client.dll
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.csproj.AssemblyReference.cache
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.GeneratedMSBuildEditorConfig.editorconfig
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.AssemblyInfoInputs.cache
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.AssemblyInfo.cs
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.csproj.CoreCompileInputs.cache
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.csproj.CopyComplete
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.dll
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/refint/E2ETestClient.dll
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.pdb
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/E2ETestClient.genruntimeconfig.cache
+/app/tests/e2e_csharp_client/obj/Debug/net6.0/ref/E2ETestClient.dll
