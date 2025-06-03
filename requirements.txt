@@ -10,3 +10,5 @@ sentencepiece
 protobuf
 scipy
 evaluate
+nats-py
+pytest-asyncio

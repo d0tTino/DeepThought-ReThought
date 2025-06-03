@@ -19,11 +19,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # Define subjects and stream name
-SUBJECT_PREFIX = "deepthought.eda.tasks"
+SUBJECT_PREFIX = "dtr.tasks" # Changed to align with 'dtr.>' stream
 SUBJECT_REQUEST_NEW_TASK = f"{SUBJECT_PREFIX}.request.new"
 SUBJECT_TASK_STATUS_UPDATE = f"{SUBJECT_PREFIX}.status.update"
 SUBJECT_GET_FINAL_RESULT = f"{SUBJECT_PREFIX}.result.get"
-STREAM_NAME = "EDA_TASKS_STREAM"
+STREAM_NAME = "deepthought_events"
 
 # Helper function to get NATS URL from environment variable
 def get_nats_url() -> str:

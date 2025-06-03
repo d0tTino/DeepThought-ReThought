@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-This report covers the LLM (Large Language Model) Fine-Tuning task, designated as Task 1 in the project plan for DeepThought-ReThought. As noted in the project's `README.md`, the actual execution of the training scripts and detailed, iterative model performance evaluation is handled externally by the project owner, 'd0tTino'. This document serves as an overview of the process, tools, and general methodology involved, based on the project's current state and documentation.
+This report covers the LLM (Large Language Model) Fine-Tuning task, designated as Task 1 in the project plan for DeepThought-ReThought. The `train_script.py` included in this repository allows users to replicate the fine-tuning process. The initial fine-tuning and iterative model performance evaluation were conducted by the project owner, 'd0tTino'. This document serves as an overview of the process, tools, and general methodology involved.
 
 ## 2. Summary from README.md
 
@@ -92,7 +92,7 @@ The typical workflow for QLoRA fine-tuning, which `train_script.py` would implem
 Effective LLM fine-tuning requires diligent monitoring and evaluation:
 
 *   **Monitoring:**
-    *   **Metrics:** Observe training loss and evaluation loss/metrics (e.g., perplexity, accuracy for specific tasks) throughout the training process. The `train_script.py` is expected to use `logging_steps` and `evaluation_strategy` in `TrainingArguments` for this.
+    *   **Metrics:** Observe training loss and evaluation loss/metrics (e.g., perplexity, accuracy for specific tasks) throughout the training process. The `train_script.py` uses `logging_steps` and `evaluation_strategy` in `TrainingArguments` for this.
     *   **Tools:** This data is often logged to the console and can be integrated with tools like TensorBoard or Weights & Biases for visualization and tracking of experiments.
     *   **Resource Usage:** Monitor GPU utilization and memory to ensure efficient training.
 
@@ -108,4 +108,4 @@ Effective LLM fine-tuning requires diligent monitoring and evaluation:
 
 ## 6. Conclusion
 
-This report outlines the planned approach and key elements for the LLM fine-tuning task within the DeepThought-ReThought project. It references the `meta-llama/Llama-3.2-3B-Instruct` model, the `databricks/databricks-dolly-15k` dataset, and the QLoRA technique. The actual execution, iterative refinement, detailed monitoring of metrics, and comprehensive evaluation of the fine-tuned model are managed by the project owner, 'd0tTino'. The `train_script.py` (once available) will contain the specific implementation details for these steps.
+This report outlines the approach and key elements for the LLM fine-tuning task within the DeepThought-ReThought project, utilizing the `meta-llama/Llama-3.2-3B-Instruct` model, the `databricks/databricks-dolly-15k` dataset, and the QLoRA technique. While the initial fine-tuning, iterative refinement, and detailed monitoring were conducted by the project owner ('d0tTino'), the provided `train_script.py` contains the specific implementation details allowing users to reproduce or extend this fine-tuning work.
