@@ -77,11 +77,32 @@ Users would typically incorporate these scripts into their Unity projects and us
         ```
 5.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
 
+## Running a Local NATS Server
+
+If you don't already have a NATS server running locally, you can start one easily.
+
+* **Using Docker** (recommended):
+  ```bash
+  docker run --rm -p 4222:4222 -p 8222:8222 nats:latest -js
+  ```
+
+* **Using the `nats-server` binary**:
+  ```bash
+  nats-server -js
+  ```
+
+Once the server is up, create the required JetStream streams by running:
+```bash
+python setup_jetstream.py
+```
+
+This step is necessary before running the tests below.
+
 ## Testing
 
 Tests are implemented using the `pytest` framework. To run the tests:
 
-1.  Ensure a NATS server with JetStream enabled is running and accessible.
+1.  Ensure a NATS server with JetStream enabled is running and accessible (see [Running a Local NATS Server](#running-a-local-nats-server)).
 2.  Navigate to the root directory of the project.
 3.  Run pytest:
     ```bash
