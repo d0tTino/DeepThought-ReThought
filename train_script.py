@@ -248,7 +248,7 @@ try:
 except Exception as e:
     print(f"Error initializing Trainer: {e}")
     print("Check arguments passed to Trainer.")
-    raise e
+    raise
 
 # Start training
 print("\nStarting training process...")
@@ -301,7 +301,7 @@ except Exception as e:
     gc.collect()
     torch.cuda.empty_cache()
     print("CUDA cache cleared (attempted).")
-    raise e
+    raise
 
 # Final Check
 if train_result is not None:

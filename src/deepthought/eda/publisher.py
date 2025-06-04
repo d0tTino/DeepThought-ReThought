@@ -44,5 +44,7 @@ class Publisher:
                 logger.debug(f"Published basic NATS message to '{subject}'")
                 return None
         except Exception as e:
-            logger.error(f"Failed to publish to '{subject}': {e}", exc_info=True) # Log traceback
-            raise e
+            logger.error(
+                f"Failed to publish to '{subject}': {e}", exc_info=True
+            )  # Log traceback
+            raise

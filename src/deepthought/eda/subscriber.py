@@ -58,8 +58,11 @@ class Subscriber:
             self._subscriptions.append(sub) # Store subscription object for cleanup
 
         except Exception as e:
-            logger.error(f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}", exc_info=True)
-            raise e
+            logger.error(
+                f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}",
+                exc_info=True,
+            )
+            raise
 
     async def unsubscribe_all(self) -> None:
         """Unsubscribe from all active subscriptions."""
