@@ -1,6 +1,5 @@
 # File: src/deepthought/eda/publisher.py
 import logging
-import nats
 from typing import Any, Dict, Optional, Union
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
@@ -20,17 +19,27 @@ class Publisher:
         self._js = js_context
         logger.debug("Publisher initialized with shared client and JS context.")
 
-    async def publish(self, subject: str, payload: Union[str, Dict, Any],
-                      use_jetstream: bool = True, timeout: float = 10.0) -> Optional[Dict]: # Increased default timeout
+    async def publish(
+        self,
+        subject: str,
+        payload: Union[str, Dict, Any],
+        use_jetstream: bool = True,
+        timeout: float = 10.0,
+    ) -> Optional[Dict]:
         """Publish message, using JetStream if requested."""
         # Convert payload
-        if isinstance(payload, bytes): data = payload
-        elif isinstance(payload, str): data = payload.encode()
-        elif hasattr(payload, 'to_json'): data = payload.to_json().encode()
+        if isinstance(payload, bytes):
+            data = payload
+        elif isinstance(payload, str):
+            data = payload.encode()
+        elif hasattr(payload, "to_json"):
+            data = payload.to_json().encode()
         elif isinstance(payload, (Dict, list)):
             import json
+
             data = json.dumps(payload).encode()
-        else: data = str(payload).encode()
+        else:
+            data = str(payload).encode()
 
         try:
             if use_jetstream:
