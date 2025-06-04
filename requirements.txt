@@ -12,3 +12,7 @@ scipy
 evaluate
 nats-py
 pytest-asyncio
+aiosqlite
+aiohttp
+flask
+discord.py
