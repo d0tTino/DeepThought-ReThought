@@ -98,6 +98,11 @@ python setup_jetstream.py
 
 This step is necessary before running the tests below.
 
+## Social Graph Bot Example
+
+An example Discord bot demonstrating social graph logging is available at `examples/social_graph_bot.py`. It records user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`.
+
+
 ## Testing
 
 Tests are implemented using the `pytest` framework. To run the tests:
