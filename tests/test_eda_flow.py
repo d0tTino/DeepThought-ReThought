@@ -145,6 +145,7 @@ async def test_full_flow_direct_subscribe(nats_connection):
                 durable=None,  # Ephemeral
                 cb=message_handler,
                 stream=STREAM_NAME,  # Explicitly specify stream name
+                deliver_policy=DeliverPolicy.NEW,  # Only receive new messages
             )
             logger.info("Ephemeral consumer subscription successful.")
             subscription_ready.set() # Signal that subscription is ready
