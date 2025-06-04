@@ -59,6 +59,7 @@ Users would typically incorporate these scripts into their Unity projects and us
 
 1.  **Prerequisites**:
     *   A running NATS server (latest stable version or X.Y.Z or later, with JetStream enabled using the `-js` flag) is required. You can download and run it from [nats.io](https://nats.io/) or use Docker.
+    *   This repository no longer bundles a `nats-server` binary. Install your own NATS server instead of relying on an archived copy.
 2.  **Clone the repository:**
     ```bash
     git clone https://github.com/d0tTino/DeepThought-ReThought.git

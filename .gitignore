@@ -1,1 +1,4 @@
 # Git ignore file
+nats-server/
+nats-server.zip
+
