@@ -1,7 +1,7 @@
 # File: src/deepthought/modules/output_handler.py
 import json
 import logging
-from typing import Callable, Dict, Optional, Any
+from typing import Callable, Dict, Optional
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext

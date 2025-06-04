@@ -1,12 +1,9 @@
 # File: src/deepthought/eda/subscriber.py
 import asyncio
-import json
 import logging
-from typing import Any, Callable, Dict, List, Optional, Union, Awaitable
-import nats
+from typing import Callable, Optional, Awaitable
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
-from nats.js.api import DeliverPolicy
 from nats.js.client import JetStreamContext
 
 logger = logging.getLogger(__name__)
@@ -33,8 +30,12 @@ class Subscriber:
         """Subscribe using basic NATS or JetStream."""
         try:
             if use_jetstream:
-                if not self._js: raise ValueError("JetStream context required for JetStream subscriptions.")
-                if not durable: raise ValueError("Durable name required for JetStream push subscriptions via js.subscribe.")
+                if not self._js:
+                    raise ValueError("JetStream context required for JetStream subscriptions.")
+                if not durable:
+                    raise ValueError(
+                        "Durable name required for JetStream push subscriptions via js.subscribe."
+                    )
 
                 # This call binds the handler to the existing durable consumer config on the server
                 # Assumes the consumer was created/updated beforehand (e.g., in the test fixture)
@@ -63,15 +64,22 @@ class Subscriber:
 
     async def unsubscribe_all(self) -> None:
         """Unsubscribe from all active subscriptions."""
-        if not self._subscriptions: return
-        logger.info(f"Unsubscribing from {len(self._subscriptions)} subscriptions...")
+        if not self._subscriptions:
+            return
+        logger.info(
+            f"Unsubscribing from {len(self._subscriptions)} subscriptions..."
+        )
         tasks = [sub.unsubscribe() for sub in self._subscriptions]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         successful_unsubs = 0
         for i, result in enumerate(results):
-             if isinstance(result, Exception): logger.warning(f"Error unsubscribing {i}: {result}")
-             else: successful_unsubs += 1
-        logger.info(f"Successfully unsubscribed from {successful_unsubs} subscriptions.")
+            if isinstance(result, Exception):
+                logger.warning(f"Error unsubscribing {i}: {result}")
+            else:
+                successful_unsubs += 1
+        logger.info(
+            f"Successfully unsubscribed from {successful_unsubs} subscriptions."
+        )
         self._subscriptions = []
 
     async def default_handler(self, msg: Msg) -> None:
