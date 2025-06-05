@@ -16,3 +16,4 @@ aiosqlite
 aiohttp
 flask
 discord.py
+textblob

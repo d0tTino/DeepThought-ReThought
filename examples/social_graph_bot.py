@@ -6,6 +6,7 @@ from datetime import timezone
 import aiohttp
 import aiosqlite
 import discord
+from textblob import TextBlob
 
 DB_PATH = 'social_graph.db'
 
@@ -20,14 +21,26 @@ idle_response_candidates = [
     "Silence can be golden, but conversation is better.",
 ]
 
+
 async def init_db():
-    """Initialize the SQLite database for tracking interactions."""
+    """Initialize the SQLite database for tracking interactions and memories."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS interactions (
                 user_id TEXT,
                 target_id TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS memories (
+                user_id TEXT,
+                topic TEXT,
+                memory TEXT,
+                sentiment_score REAL,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -59,6 +72,7 @@ async def who_is_active(channel: discord.TextChannel, limit: int = 20):
         else:
             humans.add(msg.author.id)
     return bots, humans
+
 
 async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
     """Monitor a channel and occasionally speak during idle periods."""
@@ -113,11 +127,16 @@ class SocialGraphBot(discord.Client):
             await asyncio.sleep(random.uniform(1, 3))
             await message.channel.send("I'm pondering your message...")
 
+
         await send_to_prism({
             "user_id": str(message.author.id),
             "channel_id": str(message.channel.id),
             "content": message.content,
         })
+
+        memories = await recall_user(message.author.id)
+        if memories:
+            logger.info(f"Recalling memories for {message.author.id}: {memories}")
 
 
 def run(token: str, monitor_channel_id: int) -> None:
