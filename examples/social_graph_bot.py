@@ -1,6 +1,8 @@
 import asyncio
+import os
 import random
-import logging
+from datetime import timezone
+
 import aiohttp
 import aiosqlite
 import discord
@@ -8,7 +10,17 @@ from textblob import TextBlob
 
 DB_PATH = 'social_graph.db'
 
-logger = logging.getLogger(__name__)
+# Configuration values
+MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
+IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "5"))
+
+# Candidate prompts used when the bot speaks after a period of silence
+idle_response_candidates = [
+    "Ever feel like everyone vanished?",
+    "I'm still here if anyone wants to chat!",
+    "Silence can be golden, but conversation is better.",
+]
+
 
 async def init_db():
     """Initialize the SQLite database for tracking interactions and memories."""
@@ -49,50 +61,42 @@ async def send_to_prism(data: dict) -> None:
     async with aiohttp.ClientSession() as session:
         await session.post("http://localhost:5000/receive_data", json=data)
 
-def categorize_topic(text: str) -> str:
-    """Very simple topic categorization based on keywords."""
-    lowered = text.lower()
-    if any(word in lowered for word in ("lol", "haha", "joke")):
-        return "humor"
-    if any(word in lowered for word in ("sad", "angry", "cry")):
-        return "drama"
-    return "general"
 
-def analyze_sentiment(text: str) -> float:
-    """Return sentiment polarity using TextBlob."""
-    return TextBlob(text).sentiment.polarity
+async def who_is_active(channel: discord.TextChannel, limit: int = 20):
+    """Return sets of bot and human authors from recent messages."""
+    bots = set()
+    humans = set()
+    async for msg in channel.history(limit=limit):
+        if msg.author.bot:
+            bots.add(msg.author.id)
+        else:
+            humans.add(msg.author.id)
+    return bots, humans
 
-async def save_memory(user_id: int, topic: str, memory: str, sentiment_score: float) -> None:
-    """Persist a memory entry in the database."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
-            (str(user_id), topic, memory, sentiment_score),
-        )
-        await db.commit()
-    logger.info(f"Stored memory for user {user_id} topic '{topic}' score {sentiment_score:.2f}")
-
-async def recall_user(user_id: int) -> list[str]:
-    """Return the latest 5 memory snippets for a user."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT memory FROM memories WHERE user_id=? ORDER BY timestamp DESC LIMIT 5",
-            (str(user_id),),
-        ) as cursor:
-            rows = await cursor.fetchall()
-    logger.info(f"Recalling {len(rows)} memories for user {user_id}")
-    return [row[0] for row in rows]
 
 async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
-    """Periodically monitor a channel and prompt activity if quiet."""
+    """Monitor a channel and occasionally speak during idle periods."""
     await bot.wait_until_ready()
     channel = bot.get_channel(channel_id)
     while not bot.is_closed():
-        # Fetch the last 10 messages
-        messages = [m async for m in channel.history(limit=10)]
-        if not messages:
-            await channel.send("The channel is quiet... Let's start a conversation!")
-        await asyncio.sleep(300)  # check every 5 minutes
+        last_message = None
+        async for msg in channel.history(limit=1):
+            last_message = msg
+            break
+
+        if not last_message:
+            prompt = random.choice(idle_response_candidates)
+            async with channel.typing():
+                await asyncio.sleep(random.uniform(3, 10))
+                await channel.send(prompt)
+        else:
+            idle_minutes = (discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+            if idle_minutes >= IDLE_TIMEOUT_MINUTES:
+                prompt = random.choice(idle_response_candidates)
+                async with channel.typing():
+                    await asyncio.sleep(random.uniform(3, 10))
+                    await channel.send(prompt)
+        await asyncio.sleep(60)
 
 class SocialGraphBot(discord.Client):
     """Discord bot that records interactions and demonstrates simple awareness."""
@@ -111,17 +115,18 @@ class SocialGraphBot(discord.Client):
         if message.author == self.user:
             return
 
+        bots, _ = await who_is_active(message.channel)
+        if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
+            # Too many bots talking and we're not addressed directly
+            return
+
         # Log the interaction
         await log_interaction(message.author.id, message.channel.id)
 
-        # Analyze sentiment and potentially store memory
-        sentiment = analyze_sentiment(message.content)
-        topic = categorize_topic(message.content)
-        if abs(sentiment) > 0.5:
-            await save_memory(message.author.id, topic, message.content, sentiment)
+        async with message.channel.typing():
+            await asyncio.sleep(random.uniform(1, 3))
+            await message.channel.send("I'm pondering your message...")
 
-        await asyncio.sleep(random.uniform(1, 3))  # simulate thinking
-        await message.channel.send("I'm pondering your message...")
 
         await send_to_prism({
             "user_id": str(message.author.id),
