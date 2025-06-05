@@ -3,6 +3,8 @@ import nats
 import pytest
 import logging
 import uuid
+
+from tests.helpers import nats_server_available
 from nats.js.client import JetStreamContext
 
 # Basic logging for the test
@@ -16,6 +18,8 @@ STREAM_NAME = "deepthought_events" # Ensure this matches the stream created by s
 @pytest.mark.asyncio
 async def test_nats_jetstream_publish_only():
     """Tests only publishing a message to JetStream."""
+    if not nats_server_available():
+        pytest.skip("NATS server not available")
     nc = None
 
     try:

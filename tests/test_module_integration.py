@@ -10,6 +10,8 @@ import json
 import sys
 import pytest
 import pytest_asyncio
+
+from tests.helpers import nats_server_available
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js import JetStreamContext
@@ -74,6 +76,8 @@ async def test_full_module_flow():
     3. LLMStub subscribes to MEMORY_RETRIEVED, publishes RESPONSE_GENERATED
     4. OutputHandler subscribes to RESPONSE_GENERATED, handles the final output
     """
+    if not nats_server_available(get_nats_url()):
+        pytest.skip("NATS server not available")
     nc = None
     memory_stub = None
     llm_stub = None

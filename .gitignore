@@ -1,4 +1,7 @@
 # Git ignore file
 nats-server/
 nats-server.zip
+__pycache__/
+.venv/
+.pytest_cache/
 

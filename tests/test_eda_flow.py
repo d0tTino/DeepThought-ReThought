@@ -8,6 +8,8 @@ import logging
 import os
 import pytest
 import pytest_asyncio
+
+from tests.helpers import nats_server_available
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
 from nats.js import JetStreamContext
@@ -19,7 +21,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # Define subjects and stream name
-SUBJECT_PREFIX = "dtr.tasks" # Changed to align with 'dtr.>' stream
+# Use the generic 'dtr' prefix so that all tests share the same JetStream stream
+# configuration.
+SUBJECT_PREFIX = "dtr"
 SUBJECT_REQUEST_NEW_TASK = f"{SUBJECT_PREFIX}.request.new"
 SUBJECT_TASK_STATUS_UPDATE = f"{SUBJECT_PREFIX}.status.update"
 SUBJECT_GET_FINAL_RESULT = f"{SUBJECT_PREFIX}.result.get"
@@ -36,6 +40,8 @@ async def nats_connection():
     Fixture that creates a NATS client connection and tears it down after the test.
     This fixture only yields the NATS client, not the JetStream context.
     """
+    if not nats_server_available(get_nats_url()):
+        pytest.skip("NATS server not available")
     nc = None
     
     try:
