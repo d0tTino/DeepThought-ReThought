@@ -4,6 +4,8 @@ import pytest
 import logging
 import uuid
 
+from tests.helpers import nats_server_available
+
 # Basic logging for the test
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -14,6 +16,8 @@ TEST_PAYLOAD = b"ping"
 @pytest.mark.asyncio
 async def test_nats_basic_pub_sub():
     """Tests basic NATS publish and subscribe without JetStream."""
+    if not nats_server_available():
+        pytest.skip("NATS server not available")
     nc_pub = None
     nc_sub = None
     sub = None

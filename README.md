@@ -109,6 +109,7 @@ An example Discord bot demonstrating social graph logging is available at `examp
 Tests are implemented using the `pytest` framework. To run the tests:
 
 1.  Ensure a NATS server with JetStream enabled is running and accessible (see [Running a Local NATS Server](#running-a-local-nats-server)).
+    * If no server is available, tests that require NATS will be skipped automatically.
 2.  Navigate to the root directory of the project.
 3.  Run pytest:
     ```bash
