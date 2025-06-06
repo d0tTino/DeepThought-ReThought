@@ -1,7 +1,7 @@
 # File: src/deepthought/modules/input_handler.py
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 # Assuming eda modules are in parent dir relative to modules dir
@@ -21,7 +21,8 @@ class InputHandler:
     async def process_input(self, user_input: str) -> str:
         """Process input and publish via JetStream."""
         input_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow().isoformat()
+        # Use timezone-aware UTC timestamp
+        timestamp = datetime.now(timezone.utc).isoformat()
         payload = InputReceivedPayload(
             user_input=user_input, input_id=input_id, timestamp=timestamp
         )

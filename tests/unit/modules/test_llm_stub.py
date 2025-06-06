@@ -3,6 +3,7 @@ import pytest
 
 import deepthought.modules.llm_stub as llm_stub
 from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload
+from datetime import datetime, timezone
 
 class DummyNATS:
     def __init__(self):
@@ -60,6 +61,10 @@ async def test_handle_memory_success(monkeypatch):
     subject, sent_payload = pub.published[0]
     assert subject == EventSubjects.RESPONSE_GENERATED
     assert sent_payload.input_id == "abc"
+    # Timestamp should be timezone-aware UTC
+    ts = sent_payload.timestamp
+    parsed = datetime.fromisoformat(ts)
+    assert parsed.tzinfo == timezone.utc
     assert msg.acked
 
 
