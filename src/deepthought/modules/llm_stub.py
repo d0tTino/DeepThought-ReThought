@@ -27,7 +27,11 @@ class LLMStub:
         try:
             data = json.loads(msg.data.decode())
             input_id = data.get("input_id", "unknown")
-            knowledge = data.get("retrieved_knowledge", {}).get("retrieved_knowledge", {})
+            retrieved = data.get("retrieved_knowledge", {})
+            if isinstance(retrieved, dict) and "retrieved_knowledge" in retrieved:
+                knowledge = retrieved.get("retrieved_knowledge", {})
+            else:
+                knowledge = retrieved
             facts = knowledge.get("facts", [])
             logger.info(f"LLMStub received memory event ID {input_id}")
 

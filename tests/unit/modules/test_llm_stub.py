@@ -49,9 +49,16 @@ def create_stub(monkeypatch, publisher_cls=DummyPublisher):
 
 
 @pytest.mark.asyncio
-async def test_handle_memory_success(monkeypatch):
+@pytest.mark.parametrize(
+    "knowledge",
+    [
+        {"retrieved_knowledge": {"facts": ["f1"]}},
+        {"facts": ["f1"]},
+    ],
+)
+async def test_handle_memory_success(monkeypatch, knowledge):
     stub = create_stub(monkeypatch)
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"retrieved_knowledge": {"facts": ["f1"]}}, input_id="abc")
+    payload = MemoryRetrievedPayload(retrieved_knowledge=knowledge, input_id="abc")
     msg = DummyMsg(payload.to_json())
     await stub._handle_memory_event(msg)
 
