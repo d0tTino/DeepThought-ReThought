@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -34,10 +34,11 @@ class LLMStub:
             await asyncio.sleep(0.5) # Simulate work
 
             facts_str = ", ".join(map(str, facts))
-            response = f"Based on: {facts_str}, this is a stub response. [TS: {datetime.utcnow().isoformat()}]"
+            # Use timezone-aware UTC timestamps
+            response = f"Based on: {facts_str}, this is a stub response. [TS: {datetime.now(timezone.utc).isoformat()}]"
             payload = ResponseGeneratedPayload(
                 final_response=response, input_id=input_id,
-                timestamp=datetime.utcnow().isoformat(), confidence=0.95
+                timestamp=datetime.now(timezone.utc).isoformat(), confidence=0.95
             )
 
             logger.info(f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}")

@@ -1,6 +1,7 @@
 import json
 import pytest
 from types import SimpleNamespace
+from datetime import datetime, timezone
 
 from deepthought.modules.input_handler import InputHandler
 from deepthought.eda.events import EventSubjects
@@ -34,6 +35,10 @@ async def test_process_input_success():
     payload = json.loads(data.decode())
     assert payload["user_input"] == "hello"
     assert payload["input_id"] == input_id
+    # Timestamp should be timezone-aware UTC
+    ts = payload["timestamp"]
+    parsed = datetime.fromisoformat(ts)
+    assert parsed.tzinfo == timezone.utc
 
 class FailingJS(DummyJS):
     async def publish(self, subject, data, timeout=10.0):

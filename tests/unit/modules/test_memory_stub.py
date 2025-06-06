@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 import pytest
+from datetime import datetime, timezone
 
 import deepthought.modules.memory_stub as memory_stub
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
@@ -60,6 +61,14 @@ async def test_handle_input_success(monkeypatch):
     subject, sent_payload = pub.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "123"
+    # Verify the nested retrieved_knowledge structure expected by LLMStub
+    assert "retrieved_knowledge" in sent_payload.retrieved_knowledge
+    facts = sent_payload.retrieved_knowledge["retrieved_knowledge"].get("facts")
+    assert facts and "User asked: hi" in facts
+    # Timestamp should be timezone-aware UTC
+    ts = sent_payload.timestamp
+    parsed = datetime.fromisoformat(ts)
+    assert parsed.tzinfo == timezone.utc
     assert msg.acked
 
 

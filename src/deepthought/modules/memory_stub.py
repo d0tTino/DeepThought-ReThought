@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -32,16 +32,17 @@ class MemoryStub:
 
             await asyncio.sleep(0.1) # Simulate work
 
+            # Align with LLMStub expectation which looks for a nested
+            # "retrieved_knowledge" block within the event payload.
             memory_data = {
-                "retrieved_knowledge": {
-                    "facts": ["Fact1", f"User asked: {user_input}"],
-                    "source": "memory_stub"
-                }
+                "facts": ["Fact1", f"User asked: {user_input}"],
+                "source": "memory_stub",
             }
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge=memory_data,
+                retrieved_knowledge={"retrieved_knowledge": memory_data},
                 input_id=input_id,
-                timestamp=datetime.utcnow().isoformat()
+                # Use timezone-aware UTC timestamp
+                timestamp=datetime.now(timezone.utc).isoformat()
             )
 
             # Publish result via JetStream
