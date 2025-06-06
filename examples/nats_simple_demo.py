@@ -6,6 +6,7 @@ import asyncio
 import json
 import uuid
 import datetime
+from datetime import timezone
 
 import nats
 
@@ -34,7 +35,7 @@ async def run_test():
         # Publish a test message
         test_data = {
             "test_id": str(uuid.uuid4()),
-            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
             "message": "Hello NATS!"
         }
         
