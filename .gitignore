@@ -4,5 +4,6 @@ nats-server.zip
 __pycache__/
 .venv/
 .pytest_cache/
+results/
 
 *.egg-info/
