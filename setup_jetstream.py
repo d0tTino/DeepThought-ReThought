@@ -9,7 +9,7 @@ import logging
 import sys
 import socket
 from nats.aio.client import Client as NATS
-from nats.js.api import StreamConfig
+from nats.js.api import StreamConfig, RetentionPolicy, DiscardPolicy, StorageType
 from nats.errors import TimeoutError
 
 # Configure logging
@@ -60,9 +60,10 @@ async def setup_jetstream():
         stream_config = StreamConfig(
             name="deepthought_events",
             subjects=["dtr.>"],  # All DeepThought subjects
-            retention="limits",
+            retention=RetentionPolicy.LIMITS,
+            storage=StorageType.MEMORY,
             max_msgs_per_subject=10000,
-            discard="old",
+            discard=DiscardPolicy.OLD,
         )
         
         # Create or update the stream
@@ -100,4 +101,4 @@ async def setup_jetstream():
             logger.info("Disconnected from NATS server")
 
 if __name__ == "__main__":
-    asyncio.run(setup_jetstream()) 
+    asyncio.run(setup_jetstream())
