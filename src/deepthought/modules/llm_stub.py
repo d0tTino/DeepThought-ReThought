@@ -24,6 +24,8 @@ class LLMStub:
 
     async def _handle_memory_event(self, msg: Msg) -> None:
         """Handles MemoryRetrieved event from JetStream."""
+        input_id = "unknown"
+        data = None
         try:
             data = json.loads(msg.data.decode())
             input_id = data.get("input_id", "unknown")
@@ -55,12 +57,37 @@ class LLMStub:
                 await msg.ack()
                 logger.debug(f"LLMStub: Acked message for {input_id} in LLMStub")
             except Exception as e:
-                logger.error(f"LLMStub: Failed to publish RESPONSE_GENERATED for {input_id}: {e}", exc_info=True)
-                # Decide handling - NAK? Let timeout?
+                logger.error(
+                    f"LLMStub: Failed to publish RESPONSE_GENERATED for {input_id}: {e}",
+                    exc_info=True,
+                )
+                if hasattr(msg, "nak") and callable(msg.nak):
+                    try:
+                        await msg.nak()
+                        logger.debug(f"NAK'd message for {input_id} in LLMStub due to publish failure")
+                    except Exception as nak_err:
+                        logger.error(f"Failed to NAK message: {nak_err}", exc_info=True)
+                elif hasattr(msg, "ack") and callable(msg.ack):
+                    try:
+                        await msg.ack()
+                        logger.debug("Acked message after publish failure in LLMStub")
+                    except Exception as ack_err:
+                        logger.error(f"Failed to ack message after error: {ack_err}", exc_info=True)
 
         except Exception as e:
             logger.error(f"Error in LLMStub handler: {e}", exc_info=True)
-            # Consider if this error should result in a NAK instead, depending on if it's retriable
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                    logger.debug(f"NAK'd message in LLMStub handler for {input_id}")
+                except Exception as nak_err:
+                    logger.error(f"Failed to NAK message in outer handler: {nak_err}", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                    logger.debug("Acked message after outer handler error in LLMStub")
+                except Exception as ack_err:
+                    logger.error(f"Failed to ack message after outer error: {ack_err}", exc_info=True)
 
     async def start_listening(self, durable_name: str = "llm_stub_listener") -> bool:
         """
