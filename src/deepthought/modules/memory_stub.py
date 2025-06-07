@@ -24,6 +24,8 @@ class MemoryStub:
 
     async def _handle_input_event(self, msg: Msg) -> None:
         """Handles InputReceived event from JetStream."""
+        input_id = "unknown"
+        data = None
         try:
             data = json.loads(msg.data.decode())
             input_id = data.get("input_id", "unknown")
@@ -58,8 +60,19 @@ class MemoryStub:
 
         except Exception as e:
             logger.error(f"Error in MemoryStub handler: {e}", exc_info=True)
-            # Optionally NAK the message if error is temporary:
-            # if hasattr(msg, 'nak') and callable(msg.nak): await msg.nak()
+            # Ensure the message isn't left unacknowledged
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                    logger.debug(f"NAK'd message for {input_id} in MemoryStub")
+                except Exception as nak_err:
+                    logger.error(f"Failed to NAK message: {nak_err}", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                    logger.debug("Acked message after error in MemoryStub")
+                except Exception as ack_err:
+                    logger.error(f"Failed to ack message after error: {ack_err}", exc_info=True)
 
     async def start_listening(self, durable_name: str = "memory_stub_listener") -> bool:
         """
