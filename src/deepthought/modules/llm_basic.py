@@ -1,12 +1,13 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+from ..config import settings
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -16,7 +17,13 @@ logger = logging.getLogger(__name__)
 class BasicLLM:
     """Simple LLM module using a small HuggingFace model."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, model_name: str = "distilgpt2"):
+    def __init__(
+        self,
+        nats_client: NATS,
+        js_context: JetStreamContext,
+        model_name: Optional[str] = None,
+    ) -> None:
+        model_name = model_name or settings.model_path
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
