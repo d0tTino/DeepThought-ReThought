@@ -25,6 +25,7 @@ class BasicMemory:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._memory_file = memory_file or settings.memory_file
+
         if not os.path.exists(self._memory_file):
             with open(self._memory_file, "w", encoding="utf-8") as f:
                 json.dump([], f)

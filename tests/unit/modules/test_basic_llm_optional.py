@@ -2,10 +2,11 @@ import pytest
 from deepthought import modules
 
 
-def test_basic_llm_placeholder():
+def test_basic_llm_instantiation():
+    """Instantiate BasicLLM or skip if optional deps are missing."""
     BasicLLM = modules.BasicLLM
-    if BasicLLM.__module__ != "deepthought.modules.llm_basic":
-        with pytest.raises(ImportError):
-            BasicLLM(None, None)
-    else:
-        pytest.skip("BasicLLM dependencies available; placeholder not used")
+    try:
+        instance = BasicLLM(None, None)
+    except ImportError:
+        pytest.skip("BasicLLM dependencies not installed")
+    assert instance is not None

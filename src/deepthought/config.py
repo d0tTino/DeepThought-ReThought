@@ -53,6 +53,5 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
         return Settings.parse_obj(data)
     return Settings()
 
-
 # Module level singleton for convenience
 settings = load_settings()

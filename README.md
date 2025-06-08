@@ -78,6 +78,16 @@ Users would typically incorporate these scripts into their Unity projects and us
         ```
 5.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
 
+### Configuration
+
+BasicMemory stores user interaction history in a JSON file. Set the environment
+variable `BASIC_MEMORY_FILE` to customize the location of this file:
+
+```bash
+export BASIC_MEMORY_FILE=/tmp/my_memory.json
+```
+If unset, the default `memory.json` in the current directory is used.
+
 ## Running a Local NATS Server
 
 If you don't already have a NATS server running locally, you can start one easily.
@@ -99,9 +109,30 @@ python setup_jetstream.py
 
 This step is necessary before running the tests below.
 
+## Graph Memory Backend
+
+The `GraphMemory` module uses the lightweight `networkx` library as an
+embedded graph store. No external database service needs to be started.
+Ensure the dependency is installed (included in `requirements.txt`).
+
 ## Social Graph Bot Example
 
 An example Discord bot demonstrating social graph logging is available at `examples/social_graph_bot.py`. It records user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`.
+
+
+## Basic Modules
+
+Two lightweight reference modules show how components can interact through NATS:
+
+* **BasicMemory** -- subscribes to `INPUT_RECEIVED` events, stores each user input in a local `memory.json` file and then publishes a `MEMORY_RETRIEVED` event containing the most recent entries.
+* **BasicLLM** -- listens for `MEMORY_RETRIEVED`, runs a small language model to generate a reply, and publishes `RESPONSE_GENERATED`. This module requires the optional heavy dependencies `transformers` and `torch`.
+
+### Example Workflow
+
+1. The `InputHandler` emits an `INPUT_RECEIVED` event when it receives a message.
+2. `BasicMemory` logs the text to `memory.json` and publishes a `MEMORY_RETRIEVED` event with the last few inputs.
+3. `BasicLLM` generates a response from those facts and publishes a `RESPONSE_GENERATED` event.
+4. The `OutputHandler` (or another consumer) can then deliver the response to the user.
 
 
 ## Testing
