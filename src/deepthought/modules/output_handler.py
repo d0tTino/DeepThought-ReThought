@@ -5,17 +5,23 @@ from typing import Callable, Dict, Optional
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
+
 # Assuming eda modules are in parent dir relative to modules dir
 from ..eda.events import EventSubjects
 from ..eda.subscriber import Subscriber
 
 logger = logging.getLogger(__name__)
 
+
 class OutputHandler:
     """Subscribes to ResponseGenerated via JetStream and handles output."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext,
-                 output_callback: Optional[Callable[[str, str], None]] = None):
+    def __init__(
+        self,
+        nats_client: NATS,
+        js_context: JetStreamContext,
+        output_callback: Optional[Callable[[str, str], None]] = None,
+    ):
         """Initialize with shared NATS client and JetStream context."""
         self._subscriber = Subscriber(nats_client, js_context)
         self._responses = {}
@@ -32,7 +38,7 @@ class OutputHandler:
             final_response = data.get("final_response", "N/A")
             logger.info(f"OutputHandler received response event ID {input_id}")
 
-            self._responses[input_id] = final_response # Store response
+            self._responses[input_id] = final_response  # Store response
 
             # Use callback or print
             if self._output_callback:
@@ -46,26 +52,17 @@ class OutputHandler:
 
         except Exception as e:
             logger.error(f"Error in OutputHandler handler: {e}", exc_info=True)
-            if hasattr(msg, "nak") and callable(msg.nak):
-                try:
-                    await msg.nak()
-                    logger.debug(f"NAK'd message for {input_id} in OutputHandler")
-                except Exception as nak_err:
-                    logger.error(f"Failed to NAK message: {nak_err}", exc_info=True)
-            elif hasattr(msg, "ack") and callable(msg.ack):
-                try:
-                    await msg.ack()
-                    logger.debug("Acked message after error in OutputHandler")
-                except Exception as ack_err:
-                    logger.error(f"Failed to ack message after error: {ack_err}", exc_info=True)
+            # Do not ack/nak on failure; leave for broker retry
 
-    async def start_listening(self, durable_name: str = "output_handler_listener") -> bool:
+    async def start_listening(
+        self, durable_name: str = "output_handler_listener"
+    ) -> bool:
         """
         Starts the NATS subscriber to listen for RESPONSE_GENERATED events.
-        
+
         Args:
             durable_name: Optional name for the durable consumer. Defaults to "output_handler_listener".
-            
+
         Returns:
             bool: True if subscription was successful, False otherwise.
         """
@@ -74,19 +71,23 @@ class OutputHandler:
             return False
 
         try:
-            logger.info(f"OutputHandler subscribing to {EventSubjects.RESPONSE_GENERATED}...")
+            logger.info(
+                f"OutputHandler subscribing to {EventSubjects.RESPONSE_GENERATED}..."
+            )
             await self._subscriber.subscribe(
                 subject=EventSubjects.RESPONSE_GENERATED,
                 handler=self._handle_response_event,
                 use_jetstream=True,
-                durable=durable_name
+                durable=durable_name,
             )
-            logger.info(f"OutputHandler successfully subscribed to {EventSubjects.RESPONSE_GENERATED}.")
+            logger.info(
+                f"OutputHandler successfully subscribed to {EventSubjects.RESPONSE_GENERATED}."
+            )
             return True
         except Exception as e:
             logger.error(f"OutputHandler failed to subscribe: {e}", exc_info=True)
             return False
-            
+
     async def stop_listening(self) -> None:
         """
         Stops all active NATS subscriptions for this OutputHandler instance.

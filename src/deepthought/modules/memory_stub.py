@@ -6,12 +6,14 @@ from datetime import datetime, timezone
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
+
 # Assuming eda modules are in parent dir relative to modules dir
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 
 logger = logging.getLogger(__name__)
+
 
 class MemoryStub:
     """Subscribes to InputReceived, publishes MemoryRetrieved via JetStream."""
@@ -32,7 +34,7 @@ class MemoryStub:
             user_input = data.get("user_input", "")
             logger.info(f"MemoryStub received input event ID {input_id}")
 
-            await asyncio.sleep(0.1) # Simulate work
+            await asyncio.sleep(0.1)  # Simulate work
 
             # Align with LLMStub expectation which looks for a nested
             # "retrieved_knowledge" block within the event payload.
@@ -44,13 +46,15 @@ class MemoryStub:
                 retrieved_knowledge={"retrieved_knowledge": memory_data},
                 input_id=input_id,
                 # Use timezone-aware UTC timestamp
-                timestamp=datetime.now(timezone.utc).isoformat()
+                timestamp=datetime.now(timezone.utc).isoformat(),
             )
 
             # Publish result via JetStream
             await self._publisher.publish(
-                EventSubjects.MEMORY_RETRIEVED, payload,
-                use_jetstream=True, timeout=10.0
+                EventSubjects.MEMORY_RETRIEVED,
+                payload,
+                use_jetstream=True,
+                timeout=10.0,
             )
             logger.info(f"MemoryStub published memory event ID {input_id}")
 
@@ -60,27 +64,15 @@ class MemoryStub:
 
         except Exception as e:
             logger.error(f"Error in MemoryStub handler: {e}", exc_info=True)
-            # Ensure the message isn't left unacknowledged
-            if hasattr(msg, "nak") and callable(msg.nak):
-                try:
-                    await msg.nak()
-                    logger.debug(f"NAK'd message for {input_id} in MemoryStub")
-                except Exception as nak_err:
-                    logger.error(f"Failed to NAK message: {nak_err}", exc_info=True)
-            elif hasattr(msg, "ack") and callable(msg.ack):
-                try:
-                    await msg.ack()
-                    logger.debug("Acked message after error in MemoryStub")
-                except Exception as ack_err:
-                    logger.error(f"Failed to ack message after error: {ack_err}", exc_info=True)
+            # Do not ack/nak on failure; leave message for retry
 
     async def start_listening(self, durable_name: str = "memory_stub_listener") -> bool:
         """
         Starts the NATS subscriber to listen for INPUT_RECEIVED events.
-        
+
         Args:
             durable_name: Optional name for the durable consumer. Defaults to "memory_stub_listener".
-            
+
         Returns:
             bool: True if subscription was successful, False otherwise.
         """
@@ -94,14 +86,16 @@ class MemoryStub:
                 subject=EventSubjects.INPUT_RECEIVED,
                 handler=self._handle_input_event,
                 use_jetstream=True,
-                durable=durable_name
+                durable=durable_name,
             )
-            logger.info(f"MemoryStub successfully subscribed to {EventSubjects.INPUT_RECEIVED}.")
+            logger.info(
+                f"MemoryStub successfully subscribed to {EventSubjects.INPUT_RECEIVED}."
+            )
             return True
         except Exception as e:
             logger.error(f"MemoryStub failed to subscribe: {e}", exc_info=True)
             return False
-            
+
     async def stop_listening(self) -> None:
         """
         Stops all active NATS subscriptions for this MemoryStub instance.

@@ -6,12 +6,14 @@ from datetime import datetime, timezone
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
+
 # Assuming eda modules are in parent dir relative to modules dir
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 
 logger = logging.getLogger(__name__)
+
 
 class LLMStub:
     """Subscribes to MemoryRetrieved, publishes ResponseGenerated via JetStream."""
@@ -37,23 +39,31 @@ class LLMStub:
             facts = knowledge.get("facts", [])
             logger.info(f"LLMStub received memory event ID {input_id}")
 
-            await asyncio.sleep(0.5) # Simulate work
+            await asyncio.sleep(0.5)  # Simulate work
 
             facts_str = ", ".join(map(str, facts))
             # Use timezone-aware UTC timestamps
             response = f"Based on: {facts_str}, this is a stub response. [TS: {datetime.now(timezone.utc).isoformat()}]"
             payload = ResponseGeneratedPayload(
-                final_response=response, input_id=input_id,
-                timestamp=datetime.now(timezone.utc).isoformat(), confidence=0.95
+                final_response=response,
+                input_id=input_id,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                confidence=0.95,
             )
 
-            logger.info(f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}")
+            logger.info(
+                f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}"
+            )
             try:
                 await self._publisher.publish(
-                    EventSubjects.RESPONSE_GENERATED, payload,
-                    use_jetstream=True, timeout=10.0
+                    EventSubjects.RESPONSE_GENERATED,
+                    payload,
+                    use_jetstream=True,
+                    timeout=10.0,
                 )
-                logger.debug(f"LLMStub: Successfully published RESPONSE_GENERATED for {input_id}")
+                logger.debug(
+                    f"LLMStub: Successfully published RESPONSE_GENERATED for {input_id}"
+                )
                 await msg.ack()
                 logger.debug(f"LLMStub: Acked message for {input_id} in LLMStub")
             except Exception as e:
@@ -61,41 +71,19 @@ class LLMStub:
                     f"LLMStub: Failed to publish RESPONSE_GENERATED for {input_id}: {e}",
                     exc_info=True,
                 )
-                if hasattr(msg, "nak") and callable(msg.nak):
-                    try:
-                        await msg.nak()
-                        logger.debug(f"NAK'd message for {input_id} in LLMStub due to publish failure")
-                    except Exception as nak_err:
-                        logger.error(f"Failed to NAK message: {nak_err}", exc_info=True)
-                elif hasattr(msg, "ack") and callable(msg.ack):
-                    try:
-                        await msg.ack()
-                        logger.debug("Acked message after publish failure in LLMStub")
-                    except Exception as ack_err:
-                        logger.error(f"Failed to ack message after error: {ack_err}", exc_info=True)
+                # Do not ack/nak on failure; leave to message broker
 
         except Exception as e:
             logger.error(f"Error in LLMStub handler: {e}", exc_info=True)
-            if hasattr(msg, "nak") and callable(msg.nak):
-                try:
-                    await msg.nak()
-                    logger.debug(f"NAK'd message in LLMStub handler for {input_id}")
-                except Exception as nak_err:
-                    logger.error(f"Failed to NAK message in outer handler: {nak_err}", exc_info=True)
-            elif hasattr(msg, "ack") and callable(msg.ack):
-                try:
-                    await msg.ack()
-                    logger.debug("Acked message after outer handler error in LLMStub")
-                except Exception as ack_err:
-                    logger.error(f"Failed to ack message after outer error: {ack_err}", exc_info=True)
+            # Do not ack/nak on unexpected errors
 
     async def start_listening(self, durable_name: str = "llm_stub_listener") -> bool:
         """
         Starts the NATS subscriber to listen for MEMORY_RETRIEVED events.
-        
+
         Args:
             durable_name: Optional name for the durable consumer. Defaults to "llm_stub_listener".
-            
+
         Returns:
             bool: True if subscription was successful, False otherwise.
         """
@@ -109,14 +97,16 @@ class LLMStub:
                 subject=EventSubjects.MEMORY_RETRIEVED,
                 handler=self._handle_memory_event,
                 use_jetstream=True,
-                durable=durable_name
+                durable=durable_name,
             )
-            logger.info(f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}.")
+            logger.info(
+                f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}."
+            )
             return True
         except Exception as e:
             logger.error(f"LLMStub failed to subscribe: {e}", exc_info=True)
             return False
-            
+
     async def stop_listening(self) -> None:
         """
         Stops all active NATS subscriptions for this LLMStub instance.
