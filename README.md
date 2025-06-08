@@ -28,7 +28,7 @@ Key planned/in-progress components include:
 
 ## Current Status
 
-* The foundational EDA using NATS/JetStream is implemented and tested with basic stub modules.
+* The foundational EDA using NATS/JetStream is implemented and tested with the `BasicMemory` and `BasicLLM` reference modules.
 * Environment setup for LLM fine-tuning (Roadmap Step 3) is complete (CUDA enabled).
 * Currently proceeding with the LLM fine-tuning task: Loading `meta-llama/Llama-3.2-3B-Instruct` for QLoRA fine-tuning on the `databricks/databricks-dolly-15k` dataset.
 *(Consider converting important information from the old .docx progress report to a Markdown file if still relevant).*
