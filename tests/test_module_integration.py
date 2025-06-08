@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from src.deepthought.modules import (
     InputHandler,
     BasicMemory,
+    GraphMemory,
     BasicLLM,
     OutputHandler,
 )
@@ -134,6 +135,7 @@ async def test_full_module_flow():
         input_handler = InputHandler(nc, js)
         memory_module = BasicMemory(nc, js, memory_file=memory_file)
         llm_module = BasicLLM(nc, js)
+
         output_handler = OutputHandler(nc, js, output_callback=output_callback)
         logger.info("Modules initialized.")
         
@@ -226,4 +228,97 @@ async def test_full_module_flow():
         else:
             logger.warning("NATS client was not created during setup.")
         
-        logger.info("Test cleanup finished.") 
+        logger.info("Test cleanup finished.")
+
+
+@pytest.mark.asyncio
+async def test_full_module_flow_graph_memory():
+    """Same as test_full_module_flow but using GraphMemory module."""
+    if not nats_server_available(get_nats_url()):
+        pytest.skip("NATS server not available")
+    nc = None
+    memory_module = None
+    llm_module = None
+    output_handler = None
+
+    try:
+        logger.info(f"Attempting to connect to NATS at {get_nats_url()}")
+        nc = NATS()
+        await nc.connect(servers=[get_nats_url()], connect_timeout=10)
+        if not nc.is_connected:
+            pytest.fail("NATS connection failed")
+        js = nc.jetstream(timeout=30.0)
+        if not js:
+            pytest.fail("Failed to get JetStream context.")
+
+        if not await ensure_stream_exists(js, STREAM_NAME):
+            pytest.fail(f"Failed to ensure stream '{STREAM_NAME}' exists.")
+
+        final_response_received_event = asyncio.Event()
+        responses = {}
+        test_input_id = None
+
+        def output_callback(input_id, response):
+            nonlocal test_input_id
+            responses[input_id] = response
+            if input_id == test_input_id:
+                final_response_received_event.set()
+
+        logger.info("Initializing modules (GraphMemory)...")
+        if os.path.exists(GRAPH_MEMORY_FILE):
+            os.remove(GRAPH_MEMORY_FILE)
+        input_handler = InputHandler(nc, js)
+        memory_module = GraphMemory(nc, js, graph_file=GRAPH_MEMORY_FILE)
+        llm_module = BasicLLM(nc, js)
+        output_handler = OutputHandler(nc, js, output_callback=output_callback)
+
+        results = await asyncio.gather(
+            memory_module.start_listening(durable_name="test_graph_mem_listener"),
+            llm_module.start_listening(durable_name="test_graph_llm_listener"),
+            output_handler.start_listening(durable_name="test_graph_out_listener"),
+            return_exceptions=True,
+        )
+
+        for i, result in enumerate(results):
+            if isinstance(result, Exception) or result is False:
+                pytest.fail(f"Listener failed to start: {result}")
+
+        await asyncio.sleep(1.0)
+
+        sample_input = "Test the graph memory flow"
+        test_input_id = await input_handler.process_input(sample_input)
+
+        try:
+            await asyncio.wait_for(final_response_received_event.wait(), timeout=20.0)
+        except asyncio.TimeoutError:
+            pytest.fail("Timeout waiting for final response")
+
+        assert final_response_received_event.is_set()
+        assert test_input_id in responses
+
+        with open(GRAPH_MEMORY_FILE, "r", encoding="utf-8") as f:
+            graph_json = json.load(f)
+        assert graph_json
+
+    finally:
+        logger.info("Cleaning up graph memory test resources...")
+        stubs_to_stop = []
+        if memory_module:
+            stubs_to_stop.append(memory_module.stop_listening())
+        if llm_module:
+            stubs_to_stop.append(llm_module.stop_listening())
+        if output_handler:
+            stubs_to_stop.append(output_handler.stop_listening())
+        if stubs_to_stop:
+            await asyncio.gather(*stubs_to_stop, return_exceptions=True)
+        if os.path.exists(GRAPH_MEMORY_FILE):
+            os.remove(GRAPH_MEMORY_FILE)
+        if nc and nc.is_connected:
+            await nc.drain()
+            logger.info("NATS connection closed.")
+        elif nc:
+            logger.warning("NATS client existed but was not connected during teardown.")
+        else:
+            logger.warning("NATS client was not created during setup.")
+        logger.info("Graph memory test cleanup finished.")
+

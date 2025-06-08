@@ -109,9 +109,30 @@ python setup_jetstream.py
 
 This step is necessary before running the tests below.
 
+## Graph Memory Backend
+
+The `GraphMemory` module uses the lightweight `networkx` library as an
+embedded graph store. No external database service needs to be started.
+Ensure the dependency is installed (included in `requirements.txt`).
+
 ## Social Graph Bot Example
 
 An example Discord bot demonstrating social graph logging is available at `examples/social_graph_bot.py`. It records user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`.
+
+
+## Basic Modules
+
+Two lightweight reference modules show how components can interact through NATS:
+
+* **BasicMemory** -- subscribes to `INPUT_RECEIVED` events, stores each user input in a local `memory.json` file and then publishes a `MEMORY_RETRIEVED` event containing the most recent entries.
+* **BasicLLM** -- listens for `MEMORY_RETRIEVED`, runs a small language model to generate a reply, and publishes `RESPONSE_GENERATED`. This module requires the optional heavy dependencies `transformers` and `torch`.
+
+### Example Workflow
+
+1. The `InputHandler` emits an `INPUT_RECEIVED` event when it receives a message.
+2. `BasicMemory` logs the text to `memory.json` and publishes a `MEMORY_RETRIEVED` event with the last few inputs.
+3. `BasicLLM` generates a response from those facts and publishes a `RESPONSE_GENERATED` event.
+4. The `OutputHandler` (or another consumer) can then deliver the response to the user.
 
 
 ## Testing
