@@ -1,10 +1,6 @@
 import json
-import os
-from pathlib import Path
 
-import pytest
-
-from deepthought.config import load_settings, Settings
+from deepthought.config import load_settings
 
 
 def test_env_overrides(monkeypatch):
