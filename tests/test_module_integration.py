@@ -8,6 +8,7 @@ import logging
 import os
 import json
 import sys
+import tempfile
 import pytest
 import pytest_asyncio
 
@@ -40,7 +41,6 @@ def get_nats_url() -> str:
 
 # Stream name - using the same as in setup_jetstream.py
 STREAM_NAME = "deepthought_events"
-MEMORY_FILE = "memory.json"
 
 # Helper function to ensure the JetStream stream exists
 async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
@@ -128,10 +128,11 @@ async def test_full_module_flow():
         
         # --- Instantiate module stubs ---
         logger.info("Initializing modules...")
-        if os.path.exists(MEMORY_FILE):
-            os.remove(MEMORY_FILE)
+        memory_file = tempfile.mktemp(suffix=".json")
+        if os.path.exists(memory_file):
+            os.remove(memory_file)
         input_handler = InputHandler(nc, js)
-        memory_module = BasicMemory(nc, js, memory_file=MEMORY_FILE)
+        memory_module = BasicMemory(nc, js, memory_file=memory_file)
         llm_module = BasicLLM(nc, js)
         output_handler = OutputHandler(nc, js, output_callback=output_callback)
         logger.info("Modules initialized.")
@@ -181,9 +182,9 @@ async def test_full_module_flow():
         assert test_input_id in responses, f"OutputHandler did not record response for input_id {test_input_id}"
         assert responses[test_input_id] is not None, "Response content is None"
 
-        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+        with open(memory_file, "r", encoding="utf-8") as f:
             history = json.load(f)
-        assert history, "memory.json was not written"
+        assert history, "memory file was not written"
         assert history[-1]["user_input"] == sample_input
 
         logger.info("Full module flow test completed successfully.")
@@ -212,8 +213,8 @@ async def test_full_module_flow():
                     logger.error(f"Error during stub listener cleanup {i}: {result}", exc_info=False)  # Avoid deep traceback in cleanup
         logger.info("Listeners stopped.")
 
-        if os.path.exists(MEMORY_FILE):
-            os.remove(MEMORY_FILE)
+        if os.path.exists(memory_file):
+            os.remove(memory_file)
 
         # Close NATS connection
         if nc and nc.is_connected:
