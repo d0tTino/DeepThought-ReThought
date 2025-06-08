@@ -132,7 +132,10 @@ async def test_full_module_flow():
             os.remove(MEMORY_FILE)
         input_handler = InputHandler(nc, js)
         memory_module = BasicMemory(nc, js, memory_file=MEMORY_FILE)
-        llm_module = BasicLLM(nc, js)
+        try:
+            llm_module = BasicLLM(nc, js)
+        except ImportError:
+            pytest.skip("BasicLLM dependencies not installed")
         output_handler = OutputHandler(nc, js, output_callback=output_callback)
         logger.info("Modules initialized.")
         
