@@ -1,7 +1,7 @@
 # File: tests/test_module_integration.py
 """
 Integration test for DeepThought reThought system modules.
-Tests the full event flow between all stub modules.
+Tests the full event flow between basic functional modules.
 """
 import asyncio
 import logging
@@ -22,7 +22,12 @@ from nats.errors import TimeoutError
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the modules to test
-from src.deepthought.modules import InputHandler, MemoryStub, LLMStub, OutputHandler
+from src.deepthought.modules import (
+    InputHandler,
+    BasicMemory,
+    BasicLLM,
+    OutputHandler,
+)
 from src.deepthought.eda.events import EventSubjects
 
 # Configure logging
@@ -35,6 +40,7 @@ def get_nats_url() -> str:
 
 # Stream name - using the same as in setup_jetstream.py
 STREAM_NAME = "deepthought_events"
+MEMORY_FILE = "memory.json"
 
 # Helper function to ensure the JetStream stream exists
 async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
@@ -72,15 +78,15 @@ async def test_full_module_flow():
     """
     Test the full event flow through all stub modules.
     1. Input -> InputHandler publishes INPUT_RECEIVED
-    2. MemoryStub subscribes to INPUT_RECEIVED, publishes MEMORY_RETRIEVED
-    3. LLMStub subscribes to MEMORY_RETRIEVED, publishes RESPONSE_GENERATED
+    2. BasicMemory subscribes to INPUT_RECEIVED, publishes MEMORY_RETRIEVED
+    3. BasicLLM subscribes to MEMORY_RETRIEVED, publishes RESPONSE_GENERATED
     4. OutputHandler subscribes to RESPONSE_GENERATED, handles the final output
     """
     if not nats_server_available(get_nats_url()):
         pytest.skip("NATS server not available")
     nc = None
-    memory_stub = None
-    llm_stub = None
+    memory_module = None
+    llm_module = None
     output_handler = None
     
     try:
@@ -121,18 +127,20 @@ async def test_full_module_flow():
                 logger.warning(f"Callback received response for unexpected ID {input_id}, expected {test_input_id}")
         
         # --- Instantiate module stubs ---
-        logger.info("Initializing module stubs...")
+        logger.info("Initializing modules...")
+        if os.path.exists(MEMORY_FILE):
+            os.remove(MEMORY_FILE)
         input_handler = InputHandler(nc, js)
-        memory_stub = MemoryStub(nc, js)
-        llm_stub = LLMStub(nc, js)
+        memory_module = BasicMemory(nc, js, memory_file=MEMORY_FILE)
+        llm_module = BasicLLM(nc, js)
         output_handler = OutputHandler(nc, js, output_callback=output_callback)
-        logger.info("Module stubs initialized.")
+        logger.info("Modules initialized.")
         
-        # --- Set up subscriptions for the stubs ---
-        logger.info("Starting stub listeners...")
+        # --- Set up subscriptions for the modules ---
+        logger.info("Starting listeners...")
         results = await asyncio.gather(
-            memory_stub.start_listening(durable_name="test_mem_listener"),
-            llm_stub.start_listening(durable_name="test_llm_listener"),
+            memory_module.start_listening(durable_name="test_mem_listener"),
+            llm_module.start_listening(durable_name="test_llm_listener"),
             output_handler.start_listening(durable_name="test_out_listener"),
             return_exceptions=True  # Capture exceptions instead of raising immediately
         )
@@ -146,7 +154,7 @@ async def test_full_module_flow():
                 logger.error(f"Listener {i} reported failure to start.")
                 pytest.fail(f"Listener {i} reported failure to start.")
 
-        logger.info("Stub listeners started successfully.")
+        logger.info("Listeners started successfully.")
         
         # Wait briefly for all subscriptions to be established
         await asyncio.sleep(1.0)
@@ -172,7 +180,12 @@ async def test_full_module_flow():
         assert final_response_received_event.is_set(), "Final response signal was not received via callback"
         assert test_input_id in responses, f"OutputHandler did not record response for input_id {test_input_id}"
         assert responses[test_input_id] is not None, "Response content is None"
-        
+
+        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+            history = json.load(f)
+        assert history, "memory.json was not written"
+        assert history[-1]["user_input"] == sample_input
+
         logger.info("Full module flow test completed successfully.")
         
     except Exception as e:
@@ -183,12 +196,12 @@ async def test_full_module_flow():
         logger.info("Cleaning up test resources...")
         
         # --- Stop stub listeners ---
-        logger.info("Stopping stub listeners...")
+        logger.info("Stopping listeners...")
         stubs_to_stop = []
-        if memory_stub:
-            stubs_to_stop.append(memory_stub.stop_listening())
-        if llm_stub:
-            stubs_to_stop.append(llm_stub.stop_listening())
+        if memory_module:
+            stubs_to_stop.append(memory_module.stop_listening())
+        if llm_module:
+            stubs_to_stop.append(llm_module.stop_listening())
         if output_handler:
             stubs_to_stop.append(output_handler.stop_listening())
             
@@ -197,8 +210,11 @@ async def test_full_module_flow():
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(f"Error during stub listener cleanup {i}: {result}", exc_info=False)  # Avoid deep traceback in cleanup
-        logger.info("Stub listeners stopped.")
-        
+        logger.info("Listeners stopped.")
+
+        if os.path.exists(MEMORY_FILE):
+            os.remove(MEMORY_FILE)
+
         # Close NATS connection
         if nc and nc.is_connected:
             logger.info("Closing NATS connection...")
