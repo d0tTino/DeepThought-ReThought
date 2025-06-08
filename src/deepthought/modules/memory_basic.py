@@ -2,10 +2,11 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
+from ..config import settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -15,10 +16,15 @@ logger = logging.getLogger(__name__)
 class BasicMemory:
     """File-backed memory module storing past inputs."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, memory_file: str = "memory.json"):
+    def __init__(
+        self,
+        nats_client: NATS,
+        js_context: JetStreamContext,
+        memory_file: Optional[str] = None,
+    ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._memory_file = memory_file
+        self._memory_file = memory_file or settings.memory_file
         if not os.path.exists(self._memory_file):
             with open(self._memory_file, "w", encoding="utf-8") as f:
                 json.dump([], f)
