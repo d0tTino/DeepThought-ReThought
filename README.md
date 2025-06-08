@@ -81,12 +81,13 @@ Users would typically incorporate these scripts into their Unity projects and us
 ### Configuration
 
 BasicMemory stores user interaction history in a JSON file. Set the environment
-variable `BASIC_MEMORY_FILE` to customize the location of this file:
+variable `DT_MEMORY_FILE` to customize the location of this file:
 
 ```bash
-export BASIC_MEMORY_FILE=/tmp/my_memory.json
+export DT_MEMORY_FILE=/tmp/my_memory.json
 ```
 If unset, the default `memory.json` in the current directory is used.
+Settings can also be loaded from a configuration file by setting the `DT_CONFIG_FILE` environment variable.
 
 ## Running a Local NATS Server
 
