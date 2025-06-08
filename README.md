@@ -78,6 +78,16 @@ Users would typically incorporate these scripts into their Unity projects and us
         ```
 5.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
 
+### Configuration
+
+BasicMemory stores user interaction history in a JSON file. Set the environment
+variable `BASIC_MEMORY_FILE` to customize the location of this file:
+
+```bash
+export BASIC_MEMORY_FILE=/tmp/my_memory.json
+```
+If unset, the default `memory.json` in the current directory is used.
+
 ## Running a Local NATS Server
 
 If you don't already have a NATS server running locally, you can start one easily.
