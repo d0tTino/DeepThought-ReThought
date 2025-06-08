@@ -99,6 +99,12 @@ python setup_jetstream.py
 
 This step is necessary before running the tests below.
 
+## Graph Memory Backend
+
+The `GraphMemory` module uses the lightweight `networkx` library as an
+embedded graph store. No external database service needs to be started.
+Ensure the dependency is installed (included in `requirements.txt`).
+
 ## Social Graph Bot Example
 
 An example Discord bot demonstrating social graph logging is available at `examples/social_graph_bot.py`. It records user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`.
