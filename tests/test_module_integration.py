@@ -43,6 +43,9 @@ def get_nats_url() -> str:
 # Stream name - using the same as in setup_jetstream.py
 STREAM_NAME = "deepthought_events"
 
+# Temporary file used for GraphMemory integration tests
+GRAPH_MEMORY_FILE = tempfile.mktemp(suffix="_graph.json")
+
 # Helper function to ensure the JetStream stream exists
 async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
     """Ensure the JetStream stream exists and has the correct configuration."""
