@@ -10,14 +10,11 @@ import json
 import sys
 import tempfile
 import pytest
-import pytest_asyncio
 
 from tests.helpers import nats_server_available
 from nats.aio.client import Client as NATS
-from nats.aio.msg import Msg
 from nats.js import JetStreamContext
 from nats.js.api import StreamConfig, RetentionPolicy, StorageType, DiscardPolicy
-from nats.errors import TimeoutError
 
 # Add the src directory to the path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -30,7 +27,6 @@ from src.deepthought.modules import (
     BasicLLM,
     OutputHandler,
 )
-from src.deepthought.eda.events import EventSubjects
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -43,13 +39,16 @@ def get_nats_url() -> str:
 # Stream name - using the same as in setup_jetstream.py
 STREAM_NAME = "deepthought_events"
 
+# Temporary file used for GraphMemory integration tests
+GRAPH_MEMORY_FILE = tempfile.mktemp(suffix="_graph.json")
+
 # Helper function to ensure the JetStream stream exists
 async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
     """Ensure the JetStream stream exists and has the correct configuration."""
     try:
         # Check if the stream exists
         logger.info(f"Checking if stream '{stream_name}' exists...")
-        stream_info = await js.stream_info(stream_name)
+        await js.stream_info(stream_name)
         logger.info(f"Stream '{stream_name}' already exists.")
         return True
     except Exception as e:
