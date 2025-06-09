@@ -10,6 +10,7 @@ from .output_handler import OutputHandler
 from .memory_stub import MemoryStub
 from .memory_basic import BasicMemory
 from .memory_graph import GraphMemory
+from .memory_kg import KnowledgeGraphMemory
 from .llm_stub import LLMStub
 
 # BasicLLM has heavy optional dependencies (transformers/torch). Import it lazily
@@ -36,5 +37,6 @@ __all__ = [
     "LLMStub",
     "BasicMemory",
     "GraphMemory",
+    "KnowledgeGraphMemory",
     "BasicLLM",
 ]
