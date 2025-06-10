@@ -154,8 +154,14 @@ Tests are implemented using the `pytest` framework. To run the tests:
     ```
     Or, to run tests from a specific directory:
     ```bash
-    PYTHONPATH=src pytest tests/
-    ```
+PYTHONPATH=src pytest tests/
+```
+
+## Continuous Integration
+
+The project includes a GitHub Actions workflow that runs `flake8` and
+the test suite whenever code changes are detected. Changes limited to
+documentation or comments skip these checks to keep CI fast.
 
 ## Contributing
 
