@@ -17,11 +17,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Add the src directory to the path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
+# Add the src directory to the path for imports before loading project modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "src")))
 
-import nats
-from deepthought.eda.events import EventSubjects
+import nats  # noqa: E402
+from deepthought.eda.events import EventSubjects  # noqa: E402
 
 # Print the subjects to make sure they're loaded correctly
 print(f"INPUT_RECEIVED subject: {EventSubjects.INPUT_RECEIVED}")
@@ -96,7 +96,7 @@ async def run_test():
             "input_id": input_id,
             "timestamp": timestamp
         }
-        print(f"Starting test for INPUT_RECEIVED subject...")
+        print("Starting test for INPUT_RECEIVED subject...")
         input_received = await test_subject(nc, EventSubjects.INPUT_RECEIVED, input_payload)
         
         if input_received:
@@ -111,7 +111,7 @@ async def run_test():
                     }
                 }
             }
-            print(f"Starting test for MEMORY_RETRIEVED subject...")
+            print("Starting test for MEMORY_RETRIEVED subject...")
             memory_received = await test_subject(nc, EventSubjects.MEMORY_RETRIEVED, memory_payload)
             
             if memory_received:
@@ -122,7 +122,7 @@ async def run_test():
                     "final_response": f"This is a test response for: {input_payload['user_input']}",
                     "confidence": 0.95
                 }
-                print(f"Starting test for RESPONSE_GENERATED subject...")
+                print("Starting test for RESPONSE_GENERATED subject...")
                 await test_subject(nc, EventSubjects.RESPONSE_GENERATED, response_payload)
         
     finally:

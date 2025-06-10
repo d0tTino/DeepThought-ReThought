@@ -76,10 +76,10 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
     print(f"Set pad_token to eos_token: {tokenizer.eos_token}")
 
-print(f"Model loaded successfully with 4-bit quantization.")
+print("Model loaded successfully with 4-bit quantization.")
 print(f"Model memory footprint: {model.get_memory_footprint() / (1024 ** 2):.2f} MB")
 print(f"Model type: {model.__class__.__name__}")
-print(f"Tokenizer loaded successfully.")
+print("Tokenizer loaded successfully.")
 print(f"Tokenizer vocabulary size: {len(tokenizer)}")
 
 # ===== Step 2: Load & Prepare Dataset =====
@@ -228,7 +228,7 @@ print(f"Learning rate: {training_arguments.learning_rate}")
 print("\n--- Starting Subtask 5: Initialize and Run Trainer ---")
 
 # Define a data collator that will handle the batching
-from transformers import DataCollatorForLanguageModeling
+from transformers import DataCollatorForLanguageModeling  # noqa: E402
 data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
 print("\nInitializing Trainer...")
@@ -273,7 +273,7 @@ try:
     # Log and save final metrics & model adapter
     if train_result:
         metrics = train_result.metrics
-        print(f"\nLogging and saving training metrics...")
+        print("\nLogging and saving training metrics...")
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)  # Saves to output_dir/train_results.json
         trainer.save_state()  # Saves trainer state, including optimizer state etc.
@@ -296,8 +296,10 @@ except Exception as e:
     print(" - Compatibility issues between libraries (check versions).")
     # Attempt to clean up memory if OOM occurred
     print("Attempting to clear CUDA cache...")
-    if 'model' in locals(): del model
-    if 'trainer' in locals(): del trainer
+    if 'model' in locals():
+        del model
+    if 'trainer' in locals():
+        del trainer
     gc.collect()
     torch.cuda.empty_cache()
     print("CUDA cache cleared (attempted).")
@@ -318,8 +320,10 @@ print("\n--- Finished Fine-tuning Process ---")
 
 # Attempt to clean up memory after successful training
 print("Attempting to clear CUDA cache post-training...")
-if 'model' in locals(): del model
-if 'trainer' in locals(): del trainer
+if 'model' in locals():
+    del model
+if 'trainer' in locals():
+    del trainer
 gc.collect()
 torch.cuda.empty_cache()
 print("CUDA cache cleared post-training (attempted).") 

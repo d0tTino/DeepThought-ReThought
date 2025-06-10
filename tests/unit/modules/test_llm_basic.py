@@ -1,10 +1,10 @@
 import importlib
-import json
 import sys
 import types
 from datetime import datetime, timezone
 from types import SimpleNamespace
 import pytest
+from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload
 
 
 class DummyNATS:
@@ -105,8 +105,6 @@ def create_llm(monkeypatch):
     monkeypatch.setattr(llm_basic, "Subscriber", DummySubscriber)
     return llm_basic.BasicLLM(DummyNATS(), DummyJS(), model_name="dummy")
 
-
-from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload
 
 
 @pytest.mark.asyncio

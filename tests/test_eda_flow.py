@@ -12,9 +12,7 @@ import pytest_asyncio
 from tests.helpers import nats_server_available
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
-from nats.js import JetStreamContext
-from nats.js.api import StreamConfig, ConsumerConfig, AckPolicy, DeliverPolicy, RetentionPolicy, StorageType, DiscardPolicy
-from nats.js.errors import Error
+from nats.js.api import StreamConfig, DeliverPolicy, RetentionPolicy, StorageType, DiscardPolicy
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
