@@ -10,7 +10,19 @@ from .output_handler import OutputHandler
 from .memory_stub import MemoryStub
 from .memory_basic import BasicMemory
 from .memory_graph import GraphMemory
-from .memory_kg import KnowledgeGraphMemory
+# KnowledgeGraphMemory requires mgclient which may be optional
+try:  # pragma: no cover - optional dependency may be missing
+    from .memory_kg import KnowledgeGraphMemory  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency may be missing
+    _missing_kg_err = exc
+
+    class KnowledgeGraphMemory:  # type: ignore
+        """Placeholder that raises if instantiated when mgclient is missing."""
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise ImportError(
+                "KnowledgeGraphMemory requires optional dependency mgclient"
+            ) from _missing_kg_err
 from .llm_stub import LLMStub
 
 # ProductionLLM depends on additional optional packages (transformers, torch, peft)
