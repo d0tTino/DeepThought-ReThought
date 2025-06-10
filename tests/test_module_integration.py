@@ -263,7 +263,6 @@ async def test_full_module_flow_graph_memory():
         final_response_received_event = asyncio.Event()
         responses = {}
         test_input_id = None
-        graph_memory_file = tempfile.mktemp(suffix=".json")
 
         def output_callback(input_id, response):
             nonlocal test_input_id
@@ -272,10 +271,10 @@ async def test_full_module_flow_graph_memory():
                 final_response_received_event.set()
 
         logger.info("Initializing modules (GraphMemory)...")
-        if os.path.exists(graph_memory_file):
-            os.remove(graph_memory_file)
+        if os.path.exists(GRAPH_MEMORY_FILE):
+            os.remove(GRAPH_MEMORY_FILE)
         input_handler = InputHandler(nc, js)
-        memory_module = GraphMemory(nc, js, graph_file=graph_memory_file)
+        memory_module = GraphMemory(nc, js, graph_file=GRAPH_MEMORY_FILE)
         llm_cls = ProductionLLM if os.path.isdir("./results/lora-adapter") else BasicLLM
         try:
             llm_module = llm_cls(nc, js)
@@ -308,7 +307,7 @@ async def test_full_module_flow_graph_memory():
         assert final_response_received_event.is_set()
         assert test_input_id in responses
 
-        with open(graph_memory_file, "r", encoding="utf-8") as f:
+        with open(GRAPH_MEMORY_FILE, "r", encoding="utf-8") as f:
             graph_json = json.load(f)
         assert graph_json
 
@@ -323,8 +322,8 @@ async def test_full_module_flow_graph_memory():
             stubs_to_stop.append(output_handler.stop_listening())
         if stubs_to_stop:
             await asyncio.gather(*stubs_to_stop, return_exceptions=True)
-        if os.path.exists(graph_memory_file):
-            os.remove(graph_memory_file)
+        if os.path.exists(GRAPH_MEMORY_FILE):
+            os.remove(GRAPH_MEMORY_FILE)
         if nc and nc.is_connected:
             await nc.drain()
             logger.info("NATS connection closed.")
