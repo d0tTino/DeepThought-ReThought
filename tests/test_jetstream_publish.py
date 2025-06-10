@@ -5,7 +5,6 @@ import logging
 import uuid
 
 from tests.helpers import nats_server_available
-from nats.js.client import JetStreamContext
 
 # Basic logging for the test
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

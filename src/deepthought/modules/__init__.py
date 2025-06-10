@@ -13,6 +13,20 @@ from .memory_graph import GraphMemory
 from .memory_kg import KnowledgeGraphMemory
 from .llm_stub import LLMStub
 
+# ProductionLLM depends on additional optional packages (transformers, torch, peft)
+try:  # pragma: no cover - optional dependency
+    from .llm_prod import ProductionLLM  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency may be missing
+    _missing_prod_err = exc
+
+    class ProductionLLM:  # type: ignore
+        """Placeholder that raises if instantiated when deps are missing."""
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise ImportError(
+                "ProductionLLM requires optional dependencies (transformers, torch, peft)"
+            ) from _missing_prod_err
+
 # BasicLLM has heavy optional dependencies (transformers/torch). Import it lazily
 # so modules that do not require those packages can still be used.
 try:  # pragma: no cover - optional dependency
@@ -39,4 +53,5 @@ __all__ = [
     "GraphMemory",
     "KnowledgeGraphMemory",
     "BasicLLM",
+    "ProductionLLM",
 ]

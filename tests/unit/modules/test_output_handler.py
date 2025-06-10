@@ -1,9 +1,7 @@
-import asyncio
-from types import SimpleNamespace
 import pytest
 
 import deepthought.modules.output_handler as output_handler
-from deepthought.eda.events import EventSubjects, ResponseGeneratedPayload
+from deepthought.eda.events import ResponseGeneratedPayload
 
 class DummyNATS:
     def __init__(self):

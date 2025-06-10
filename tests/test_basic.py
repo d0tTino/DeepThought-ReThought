@@ -1,5 +1,4 @@
 # tests/test_basic.py
-import pytest
 
 def test_example_basic_assertion():
     """A basic test that always passes, confirming test setup works."""
