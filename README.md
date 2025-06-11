@@ -156,6 +156,11 @@ Tests are implemented using the `pytest` framework. To run the tests:
     ```bash
 PYTHONPATH=src pytest tests/
 ```
+4.  Check code style with flake8:
+    ```bash
+    flake8 src tests
+    ```
+    The default settings are configured in [.flake8](.flake8).
 
 ## Continuous Integration
 
