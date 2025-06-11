@@ -29,12 +29,16 @@ jobs:
     needs: detect_changes
     if: needs.detect_changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v4
         with:
+        
           python-version: '3.x'
       - id: requirements-hash
         run: echo "hash=$(pip hash requirements-ci.txt | awk 'NR==2 {print \$1}' | cut -d: -f2)" >> "$GITHUB_OUTPUT"
@@ -45,7 +49,10 @@ jobs:
           key: pip-${{ steps.requirements-hash.outputs.hash }}
           restore-keys: |
             pip-
+
       - run: pip install -r requirements-ci.txt
       - run: pip install -e . --no-deps
       - run: flake8 src tests
-      - run: pytest -v
+      - env:
+          PYTHONPATH: src
+        run: pytest -v
