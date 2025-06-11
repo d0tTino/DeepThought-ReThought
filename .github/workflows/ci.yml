@@ -38,18 +38,20 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v4
         with:
-       
-          python-version: ${{ matrix.python-version }}
-      - name: Cache pip
+        
+          python-version: '3.x'
+      - id: requirements-hash
+        run: echo "hash=$(pip hash requirements-ci.txt | awk 'NR==2 {print \$1}' | cut -d: -f2)" >> "$GITHUB_OUTPUT"
+      - name: Cache pip packages
         uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: >-
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
-            ${{ hashFiles('requirements-ci.txt') }}
+          key: pip-${{ steps.requirements-hash.outputs.hash }}
           restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            pip-
+
       - run: pip install -r requirements-ci.txt
+      - run: pip install -e . --no-deps
       - run: flake8 src tests
       - env:
           PYTHONPATH: src
