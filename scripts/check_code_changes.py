@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+
+"""Determine whether a commit introduces code changes.
+
+This helper is used by GitHub Actions to skip expensive CI runs when only
+documentation or comment updates occur.
+"""
+
 import subprocess
 import sys
 from pathlib import Path
@@ -19,13 +27,16 @@ except subprocess.CalledProcessError:
 
 changed_files = [f for f in result.stdout.decode().splitlines() if f]
 
-doc_extensions = {".md", ".rst", ".txt"}
+# Common documentation file extensions to ignore
+doc_extensions = {".md", ".markdown", ".mdown", ".rst", ".txt"}
 
 # Helper to determine if a file is documentation
 
 def is_doc_file(path: str) -> bool:
+    """Return True if the path looks like documentation."""
     p = Path(path)
-    return p.suffix in doc_extensions or path.startswith("docs/")
+    suffix = p.suffix.lower()
+    return suffix in doc_extensions or path.startswith("docs/")
 
 # If all changed files are docs, tests are unnecessary
 if changed_files and all(is_doc_file(f) for f in changed_files):

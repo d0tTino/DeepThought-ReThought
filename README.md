@@ -160,8 +160,9 @@ PYTHONPATH=src pytest tests/
 ## Continuous Integration
 
 The project includes a GitHub Actions workflow that runs `flake8` and
-the test suite whenever code changes are detected. Changes limited to
-documentation or comments skip these checks to keep CI fast.
+the test suite whenever code changes are detected. Detection is handled by
+[`scripts/check_code_changes.py`](scripts/check_code_changes.py), which
+inspects diffs and skips CI when only documentation or comments change.
 
 ## Contributing
 
