@@ -52,6 +52,8 @@ jobs:
 
       - run: pip install -r requirements-ci.txt
       - run: pip install -e . --no-deps
+      - run: pip install pre-commit
+      - run: pre-commit run --all-files --show-diff-on-failure
       - run: flake8 src tests
       - env:
           PYTHONPATH: src
