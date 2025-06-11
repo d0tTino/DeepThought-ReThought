@@ -36,6 +36,15 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.x'
-      - run: pip install -r requirements-ci.txt
+          
+      - run: pip install -r requirements.txt
+      - run: pip install flake8 pytest
+      - run: pip install -e .
+      - run: docker pull nats:latest
+
       - run: flake8 src tests
+      - run: ./scripts/start_nats.sh
+        timeout-minutes: 1
       - run: pytest -v
+      - run: docker stop dtr_nats || true
+        if: always()
