@@ -1,0 +1,10 @@
+nats-py
+networkx
+aiosqlite
+pytest
+pytest-asyncio
+flake8
+pydantic-settings
+aiohttp
+discord.py
+textblob
