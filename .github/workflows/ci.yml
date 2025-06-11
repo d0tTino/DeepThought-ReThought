@@ -18,6 +18,9 @@ jobs:
         with:
           python-version: '3.x'
       - id: diff
+        env:
+          GITHUB_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           python scripts/check_code_changes.py | tee result.txt
           echo "changed=$(cat result.txt)" >> "$GITHUB_OUTPUT"
