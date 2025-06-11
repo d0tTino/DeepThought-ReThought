@@ -18,6 +18,9 @@ jobs:
         with:
           python-version: '3.x'
       - id: diff
+        env:
+          GITHUB_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           python scripts/check_code_changes.py | tee result.txt
           echo "changed=$(cat result.txt)" >> "$GITHUB_OUTPUT"
@@ -33,10 +36,12 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.x'
+          
       - run: pip install -r requirements.txt
       - run: pip install flake8 pytest
       - run: pip install -e .
       - run: docker pull nats:latest
+
       - run: flake8 src tests
       - run: ./scripts/start_nats.sh
         timeout-minutes: 1
