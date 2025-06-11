@@ -29,22 +29,28 @@ jobs:
     needs: detect_changes
     if: needs.detect_changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
-          
-      - run: pip install -r requirements.txt
-      - run: pip install flake8 pytest
-      - run: pip install -e .
-      - run: docker pull nats:latest
-
+       
+          python-version: ${{ matrix.python-version }}
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: >-
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ hashFiles('requirements-ci.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+      - run: pip install -r requirements-ci.txt
       - run: flake8 src tests
-      - run: ./scripts/start_nats.sh
-        timeout-minutes: 1
-      - run: pytest -v
-      - run: docker stop dtr_nats || true
-        if: always()
+      - env:
+          PYTHONPATH: src
+        run: pytest -v
