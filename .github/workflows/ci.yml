@@ -61,3 +61,4 @@ jobs:
       - name: Cleanup NATS container
         if: always()
         run: docker rm -f dtr_nats
+

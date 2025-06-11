@@ -164,6 +164,18 @@ PYTHONPATH=src pytest tests/
     ```
     The default settings are configured in [.flake8](.flake8).
 
+5.  Install and run the `pre-commit` hooks to automatically format and lint
+    your changes:
+    ```bash
+    pip install pre-commit
+    pre-commit install
+    ```
+    To run all hooks manually:
+    ```bash
+    pre-commit run --all-files
+    ```
+    The configuration is provided in [.pre-commit-config.yaml](.pre-commit-config.yaml).
+
 ## Continuous Integration
 
 The project includes a GitHub Actions workflow that runs `flake8` and
