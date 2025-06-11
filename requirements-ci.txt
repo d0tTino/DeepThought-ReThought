@@ -2,6 +2,7 @@ nats-py
 networkx
 aiosqlite
 pytest
+pytest-cov
 pytest-asyncio
 flake8
 pydantic-settings
