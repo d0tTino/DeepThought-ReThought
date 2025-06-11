@@ -71,6 +71,8 @@ Users would typically incorporate these scripts into their Unity projects and us
         ```bash
         pip install -r requirements.txt
         ```
+    *   A trimmed-down `requirements-ci.txt` is included for CI jobs and only
+        contains the packages needed for testing and linting.
 4.  **Initialize JetStream:**
     *   Run the `setup_jetstream.py` script to create the necessary JetStream streams:
         ```bash
@@ -168,6 +170,7 @@ The project includes a GitHub Actions workflow that runs `flake8` and
 the test suite whenever code changes are detected. Detection is handled by
 [`scripts/check_code_changes.py`](scripts/check_code_changes.py), which
 inspects diffs and skips CI when only documentation or comments change.
+The workflow installs its dependencies from `requirements-ci.txt`.
 
 ## Contributing
 
