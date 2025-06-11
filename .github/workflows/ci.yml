@@ -58,7 +58,11 @@ jobs:
       - run: flake8 src tests
       - env:
           PYTHONPATH: src
-        run: pytest -v
+        run: pytest --cov=src --cov-report=xml
+      - uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: coverage.xml
       - name: Cleanup NATS container
         if: always()
         run: docker rm -f dtr_nats
