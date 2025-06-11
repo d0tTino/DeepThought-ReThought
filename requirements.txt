@@ -18,3 +18,4 @@ flask
 discord.py
 textblob
 networkx
+pydantic-settings

@@ -154,8 +154,20 @@ Tests are implemented using the `pytest` framework. To run the tests:
     ```
     Or, to run tests from a specific directory:
     ```bash
-    PYTHONPATH=src pytest tests/
+PYTHONPATH=src pytest tests/
+```
+4.  Check code style with flake8:
+    ```bash
+    flake8 src tests
     ```
+    The default settings are configured in [.flake8](.flake8).
+
+## Continuous Integration
+
+The project includes a GitHub Actions workflow that runs `flake8` and
+the test suite whenever code changes are detected. Detection is handled by
+[`scripts/check_code_changes.py`](scripts/check_code_changes.py), which
+inspects diffs and skips CI when only documentation or comments change.
 
 ## Contributing
 
