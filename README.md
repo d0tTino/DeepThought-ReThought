@@ -184,6 +184,16 @@ the test suite whenever code changes are detected. Detection is handled by
 inspects diffs and skips CI when only documentation or comments change.
 The workflow installs its dependencies from `requirements-ci.txt`.
 
+You can run the same check locally:
+
+```bash
+python scripts/check_code_changes.py
+```
+
+The script compares your commit to the previous one and outputs `true` when any
+non-comment code lines changed. The CI workflow uses this output to determine
+whether tests and linters need to run.
+
 ## Contributing
 
 This is currently a solo project developed by d0tTino. Contributions are not actively sought at this stage, but feel free to fork the repository or open issues for discussion.
