@@ -148,6 +148,7 @@ Tests are implemented using the `pytest` framework. To run the tests:
       ./scripts/start_nats.sh
       ```
     * If no server is available, tests that require NATS will be skipped automatically.
+    * **For full test coverage, JetStream must be available.** Tests that rely on persistence or streaming features will be skipped when JetStream is not running.
 2.  Navigate to the root directory of the project.
 3.  Run pytest with the project root added to `PYTHONPATH` so the `src` modules
     are discoverable:
