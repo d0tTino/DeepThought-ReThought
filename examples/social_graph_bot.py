@@ -1,19 +1,19 @@
 import asyncio
-import os
 import json
 import logging
+import os
 import random
 from datetime import timezone
+from typing import List, Tuple
 
 import aiohttp
 import aiosqlite
 import discord
 from textblob import TextBlob
-from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = 'social_graph.db'
+DB_PATH = "social_graph.db"
 
 # Configuration values
 MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
@@ -76,6 +76,7 @@ async def init_db():
         )
         await db.commit()
 
+
 async def log_interaction(user_id: int, target_id: int) -> None:
     """Insert a user interaction record into the database."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -89,18 +90,15 @@ async def log_interaction(user_id: int, target_id: int) -> None:
 async def recall_user(user_id: int):
     """Retrieve memories for a given user."""
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT topic, memory FROM memories WHERE user_id = ?", (str(user_id),)
-        ) as cur:
+        async with db.execute("SELECT topic, memory FROM memories WHERE user_id = ?", (str(user_id),)) as cur:
             return await cur.fetchall()
+
 
 async def send_to_prism(data: dict) -> None:
     """Send collected data to a Prism endpoint."""
     try:
         async with aiohttp.ClientSession() as session:
-            await session.post(
-                "http://localhost:5000/receive_data", json=data, timeout=5
-            )
+            await session.post("http://localhost:5000/receive_data", json=data, timeout=5)
     except Exception as exc:
         logger.warning("Failed to send data to Prism: %s", exc)
 
@@ -231,13 +229,16 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                 await asyncio.sleep(random.uniform(3, 10))
                 await channel.send(prompt)
         else:
-            idle_minutes = (discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+            idle_minutes = (
+                discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)
+            ).total_seconds() / 60
             if idle_minutes >= IDLE_TIMEOUT_MINUTES:
                 prompt = random.choice(idle_response_candidates)
                 async with channel.typing():
                     await asyncio.sleep(random.uniform(3, 10))
                     await channel.send(prompt)
         await asyncio.sleep(60)
+
 
 class SocialGraphBot(discord.Client):
     """Discord bot that records interactions and demonstrates simple awareness."""
@@ -269,12 +270,13 @@ class SocialGraphBot(discord.Client):
             await asyncio.sleep(random.uniform(1, 3))
             await message.channel.send("I'm pondering your message...")
 
-
-        await send_to_prism({
-            "user_id": str(message.author.id),
-            "channel_id": str(message.channel.id),
-            "content": message.content,
-        })
+        await send_to_prism(
+            {
+                "user_id": str(message.author.id),
+                "channel_id": str(message.channel.id),
+                "content": message.content,
+            }
+        )
 
         memories = await recall_user(message.author.id)
         if memories:
@@ -296,8 +298,10 @@ def run(token: str, monitor_channel_id: int) -> None:
     bot = SocialGraphBot(monitor_channel_id=monitor_channel_id)
     bot.run(token)
 
+
 if __name__ == "__main__":
     import os
+
     token = os.getenv("DISCORD_TOKEN")
     channel_id = int(os.getenv("MONITOR_CHANNEL", "0"))
     if not token or channel_id == 0:

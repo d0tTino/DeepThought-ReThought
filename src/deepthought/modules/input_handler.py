@@ -2,13 +2,16 @@
 import logging
 import uuid
 from datetime import datetime, timezone
+
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
+
 # Assuming eda modules are in parent dir relative to modules dir
 from ..eda.events import EventSubjects, InputReceivedPayload
 from ..eda.publisher import Publisher
 
 logger = logging.getLogger(__name__)
+
 
 class InputHandler:
     """Handles user input and publishes InputReceived event via JetStream."""
@@ -23,14 +26,11 @@ class InputHandler:
         input_id = str(uuid.uuid4())
         # Use timezone-aware UTC timestamp
         timestamp = datetime.now(timezone.utc).isoformat()
-        payload = InputReceivedPayload(
-            user_input=user_input, input_id=input_id, timestamp=timestamp
-        )
+        payload = InputReceivedPayload(user_input=user_input, input_id=input_id, timestamp=timestamp)
         try:
             # Always use JetStream for input events in this version
             await self._publisher.publish(
-                EventSubjects.INPUT_RECEIVED, payload,
-                use_jetstream=True, timeout=10.0 # Use JS, increased timeout
+                EventSubjects.INPUT_RECEIVED, payload, use_jetstream=True, timeout=10.0  # Use JS, increased timeout
             )
             logger.info(f"Published input ID {input_id} (JetStream)")
             return input_id

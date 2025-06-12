@@ -3,6 +3,7 @@ import sys
 import types
 
 import pytest
+
 from deepthought import modules
 
 
@@ -44,6 +45,7 @@ def test_basic_llm_instantiation(monkeypatch):
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
     import deepthought.modules.llm_basic as llm_basic
+
     importlib.reload(llm_basic)
 
     try:

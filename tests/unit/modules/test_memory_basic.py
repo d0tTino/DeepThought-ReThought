@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
+
 import pytest
 
 import deepthought.modules.memory_basic as memory_basic

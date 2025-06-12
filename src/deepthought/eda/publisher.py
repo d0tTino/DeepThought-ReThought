@@ -1,10 +1,12 @@
 # File: src/deepthought/eda/publisher.py
 import logging
 from typing import Any, Dict, Optional, Union
+
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
 logger = logging.getLogger(__name__)
+
 
 class Publisher:
     """A publisher using a shared NATS client and JetStream context."""
@@ -44,7 +46,7 @@ class Publisher:
         try:
             if use_jetstream:
                 # Use JetStream publish with timeout
-                ack = await self._js.publish(subject, data, timeout=timeout) # Use timeout
+                ack = await self._js.publish(subject, data, timeout=timeout)  # Use timeout
                 logger.debug(f"Published to '{subject}' via JetStream: seq={ack.seq}")
                 return {"seq": ack.seq, "stream": ack.stream}
             else:
@@ -53,5 +55,5 @@ class Publisher:
                 logger.debug(f"Published basic NATS message to '{subject}'")
                 return None
         except Exception as e:
-            logger.error(f"Failed to publish to '{subject}': {e}", exc_info=True) # Log traceback
+            logger.error(f"Failed to publish to '{subject}': {e}", exc_info=True)  # Log traceback
             raise e

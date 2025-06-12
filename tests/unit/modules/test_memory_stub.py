@@ -1,16 +1,20 @@
-from types import SimpleNamespace
-import pytest
 from datetime import datetime, timezone
+from types import SimpleNamespace
+
+import pytest
 
 import deepthought.modules.memory_stub as memory_stub
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
+
 
 class DummyNATS:
     def __init__(self):
         self.is_connected = True
 
+
 class DummyJS:
     pass
+
 
 class DummyPublisher:
     def __init__(self, *args, **kwargs):
@@ -20,9 +24,11 @@ class DummyPublisher:
         self.published.append((subject, payload))
         return SimpleNamespace(seq=1, stream="test")
 
+
 class FailingPublisher(DummyPublisher):
     async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
         raise RuntimeError("boom")
+
 
 class DummySubscriber:
     def __init__(self, *args, **kwargs):
@@ -33,6 +39,7 @@ class DummySubscriber:
 
     async def unsubscribe_all(self):
         pass
+
 
 class DummyMsg:
     def __init__(self, data):

@@ -1,17 +1,19 @@
 import asyncio
-import nats
-import pytest
 import logging
 import uuid
+
+import nats
+import pytest
 
 from tests.helpers import nats_server_available
 
 # Basic logging for the test
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 TEST_SUBJECT = f"test.basic_communication.{uuid.uuid4()}"
 TEST_PAYLOAD = b"ping"
+
 
 @pytest.mark.asyncio
 async def test_nats_basic_pub_sub():
@@ -46,7 +48,7 @@ async def test_nats_basic_pub_sub():
         # Subscribe
         logger.info(f"Subscribing to subject: {TEST_SUBJECT}")
         sub = await nc_sub.subscribe(TEST_SUBJECT, cb=message_handler)
-        await asyncio.sleep(0.1) # Allow subscription to register
+        await asyncio.sleep(0.1)  # Allow subscription to register
 
         # Publish
         logger.info(f"Publishing message to subject: {TEST_SUBJECT}")
@@ -59,7 +61,9 @@ async def test_nats_basic_pub_sub():
 
         # Assertions
         assert received_message is not None, "Did not receive any message"
-        assert received_message == TEST_PAYLOAD, f"Received payload '{received_message.decode()}' does not match expected '{TEST_PAYLOAD.decode()}'"
+        assert (
+            received_message == TEST_PAYLOAD
+        ), f"Received payload '{received_message.decode()}' does not match expected '{TEST_PAYLOAD.decode()}'"
         logger.info("Message received and verified successfully.")
 
     except asyncio.TimeoutError:
@@ -82,4 +86,4 @@ async def test_nats_basic_pub_sub():
             logger.info("Publisher client closed.")
         if nc_sub and nc_sub.is_connected:
             await nc_sub.close()
-            logger.info("Subscriber client closed.") 
+            logger.info("Subscriber client closed.")

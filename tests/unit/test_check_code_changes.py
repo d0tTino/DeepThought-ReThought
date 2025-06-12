@@ -1,7 +1,6 @@
 import subprocess
 from pathlib import Path
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "check_code_changes.py"
 
 
@@ -15,9 +14,7 @@ def _init_repo(repo_path: Path) -> None:
 
 
 def _run_script(repo_path: Path) -> str:
-    result = subprocess.run(
-        ["python", str(SCRIPT_PATH)], cwd=repo_path, stdout=subprocess.PIPE, text=True, check=True
-    )
+    result = subprocess.run(["python", str(SCRIPT_PATH)], cwd=repo_path, stdout=subprocess.PIPE, text=True, check=True)
     return result.stdout.strip()
 
 

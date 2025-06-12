@@ -3,15 +3,18 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
+
 from ..config import settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 
 logger = logging.getLogger(__name__)
+
 
 class BasicMemory:
     """File-backed memory module storing past inputs."""
@@ -63,9 +66,7 @@ class BasicMemory:
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
 
-            await self._publisher.publish(
-                EventSubjects.MEMORY_RETRIEVED, payload, use_jetstream=True, timeout=10.0
-            )
+            await self._publisher.publish(EventSubjects.MEMORY_RETRIEVED, payload, use_jetstream=True, timeout=10.0)
             logger.info("BasicMemory published memory event ID %s", input_id)
             await msg.ack()
         except Exception as e:
