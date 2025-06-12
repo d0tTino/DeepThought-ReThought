@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+
 import pytest
 
 import deepthought.modules.memory_kg as memory_kg

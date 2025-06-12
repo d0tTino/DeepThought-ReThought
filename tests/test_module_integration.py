@@ -4,45 +4,49 @@ Integration test for DeepThought reThought system modules.
 Tests the full event flow between basic functional modules.
 """
 import asyncio
+import json
 import logging
 import os
-import json
 import sys
 import tempfile
-import pytest
 
-from tests.helpers import nats_server_available
+import pytest
 from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
-from nats.js.api import StreamConfig, RetentionPolicy, StorageType, DiscardPolicy
+from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
+
+from tests.helpers import nats_server_available
 
 # Add the src directory to the path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Import the modules to test
 from src.deepthought.modules import (
-    InputHandler,
+    BasicLLM,
     BasicMemory,
     GraphMemory,
-    BasicLLM,
-    ProductionLLM,
+    InputHandler,
     LLMStub,
     OutputHandler,
+    ProductionLLM,
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 # Helper function to get NATS URL from environment variable
 def get_nats_url() -> str:
     return os.getenv("NATS_URL", "nats://localhost:4222")
+
 
 # Stream name - using the same as in setup_jetstream.py
 STREAM_NAME = "deepthought_events"
 
 # Temporary file used for GraphMemory integration tests
 GRAPH_MEMORY_FILE = tempfile.mktemp(suffix="_graph.json")
+
 
 # Helper function to ensure the JetStream stream exists
 async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
@@ -55,7 +59,7 @@ async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
         return True
     except Exception as e:
         logger.info(f"Stream '{stream_name}' does not exist, creating it... ({e})")
-        
+
         # Create the stream with appropriate settings
         stream_config = StreamConfig(
             name=stream_name,
@@ -65,7 +69,7 @@ async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
             max_msgs_per_subject=100,
             discard=DiscardPolicy.OLD,
         )
-        
+
         try:
             await js.add_stream(stream_config)
             logger.info(f"Stream '{stream_name}' created successfully.")
@@ -73,6 +77,7 @@ async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
         except Exception as create_err:
             logger.error(f"Failed to create stream '{stream_name}': {create_err}")
             return False
+
 
 # The integration test function
 @pytest.mark.asyncio
@@ -90,7 +95,7 @@ async def test_full_module_flow():
     memory_module = None
     llm_module = None
     output_handler = None
-    
+
     try:
         # --- Connect NATS ---
         logger.info(f"Attempting to connect to NATS at {get_nats_url()}")
@@ -99,23 +104,23 @@ async def test_full_module_flow():
         if not nc.is_connected:
             pytest.fail("NATS connection failed")
         logger.info("NATS connection successful.")
-        
+
         # --- Get JetStream context ---
         logger.info("Getting JetStream context...")
         js = nc.jetstream(timeout=30.0)
         if not js:
             pytest.fail("Failed to get JetStream context.")
         logger.info("JetStream context obtained.")
-        
+
         # --- Ensure stream exists ---
         if not await ensure_stream_exists(js, STREAM_NAME):
             pytest.fail(f"Failed to ensure stream '{STREAM_NAME}' exists.")
-        
+
         # --- Create event for completion signaling ---
         final_response_received_event = asyncio.Event()
         responses = {}
         test_input_id = None
-        
+
         # --- Define output callback ---
         def output_callback(input_id, response):
             nonlocal test_input_id
@@ -127,7 +132,7 @@ async def test_full_module_flow():
                 final_response_received_event.set()
             else:
                 logger.warning(f"Callback received response for unexpected ID {input_id}, expected {test_input_id}")
-        
+
         # --- Instantiate module stubs ---
         logger.info("Initializing modules...")
         memory_file = tempfile.mktemp(suffix=".json")
@@ -144,14 +149,14 @@ async def test_full_module_flow():
 
         output_handler = OutputHandler(nc, js, output_callback=output_callback)
         logger.info("Modules initialized.")
-        
+
         # --- Set up subscriptions for the modules ---
         logger.info("Starting listeners...")
         results = await asyncio.gather(
             memory_module.start_listening(durable_name="test_mem_listener"),
             llm_module.start_listening(durable_name="test_llm_listener"),
             output_handler.start_listening(durable_name="test_out_listener"),
-            return_exceptions=True  # Capture exceptions instead of raising immediately
+            return_exceptions=True,  # Capture exceptions instead of raising immediately
         )
 
         # Check if any listeners failed to start
@@ -164,18 +169,18 @@ async def test_full_module_flow():
                 pytest.fail(f"Listener {i} reported failure to start.")
 
         logger.info("Listeners started successfully.")
-        
+
         # Wait briefly for all subscriptions to be established
         await asyncio.sleep(1.0)
-        
+
         # --- Trigger the flow ---
         sample_input = "Test the full module integration flow"
         logger.info(f"Processing input: '{sample_input}'")
-        
+
         # Process the input via InputHandler
         test_input_id = await input_handler.process_input(sample_input)
         logger.info(f"Input processed, ID: {test_input_id}")
-        
+
         # --- Wait for the complete flow to finish ---
         logger.info("Waiting for complete flow to finish (final response)...")
         try:
@@ -184,7 +189,7 @@ async def test_full_module_flow():
         except asyncio.TimeoutError:
             logger.error("Timeout waiting for final response.")
             pytest.fail("Timeout: Final response was not received within 20 seconds.")
-        
+
         # --- Assertions ---
         assert final_response_received_event.is_set(), "Final response signal was not received via callback"
         assert test_input_id in responses, f"OutputHandler did not record response for input_id {test_input_id}"
@@ -196,14 +201,14 @@ async def test_full_module_flow():
         assert history[-1]["user_input"] == sample_input
 
         logger.info("Full module flow test completed successfully.")
-        
+
     except Exception as e:
         logger.error(f"An unexpected error occurred during the test: {e}", exc_info=True)
         pytest.fail(f"Test failed due to unexpected error: {e}")
     finally:
         # --- Cleanup ---
         logger.info("Cleaning up test resources...")
-        
+
         # --- Stop stub listeners ---
         logger.info("Stopping listeners...")
         stubs_to_stop = []
@@ -213,12 +218,14 @@ async def test_full_module_flow():
             stubs_to_stop.append(llm_module.stop_listening())
         if output_handler:
             stubs_to_stop.append(output_handler.stop_listening())
-            
+
         if stubs_to_stop:
             results = await asyncio.gather(*stubs_to_stop, return_exceptions=True)
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    logger.error(f"Error during stub listener cleanup {i}: {result}", exc_info=False)  # Avoid deep traceback in cleanup
+                    logger.error(
+                        f"Error during stub listener cleanup {i}: {result}", exc_info=False
+                    )  # Avoid deep traceback in cleanup
         logger.info("Listeners stopped.")
 
         if os.path.exists(memory_file):
@@ -233,7 +240,7 @@ async def test_full_module_flow():
             logger.warning("NATS client existed but was not connected during teardown.")
         else:
             logger.warning("NATS client was not created during setup.")
-        
+
         logger.info("Test cleanup finished.")
 
 
@@ -332,4 +339,3 @@ async def test_full_module_flow_graph_memory():
         else:
             logger.warning("NATS client was not created during setup.")
         logger.info("Graph memory test cleanup finished.")
-

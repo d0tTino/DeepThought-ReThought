@@ -41,11 +41,13 @@ doc_extensions = {".md", ".markdown", ".mdown", ".rst", ".txt"}
 
 # Helper to determine if a file is documentation
 
+
 def is_doc_file(path: str) -> bool:
     """Return True if the path looks like documentation."""
     p = Path(path)
     suffix = p.suffix.lower()
     return suffix in doc_extensions or path.startswith("docs/")
+
 
 # If all changed files are docs, tests are unnecessary
 if changed_files and all(is_doc_file(f) for f in changed_files):
@@ -64,10 +66,10 @@ diff_lines = result.stdout.decode().splitlines()
 comment_prefixes = ("#", "//", "/*", "*", '"""', "'''")
 code_changed = False
 for line in diff_lines:
-    if not line.startswith(('+', '-')):
+    if not line.startswith(("+", "-")):
         continue
     # Ignore diff metadata markers
-    if line.startswith('+++') or line.startswith('---'):
+    if line.startswith("+++") or line.startswith("---"):
         continue
     content = line[1:].strip()
     if not content:

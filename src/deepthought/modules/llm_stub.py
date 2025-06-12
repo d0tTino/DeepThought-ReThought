@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -51,9 +52,7 @@ class LLMStub:
                 confidence=0.95,
             )
 
-            logger.info(
-                f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}"
-            )
+            logger.info(f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}")
             try:
                 await self._publisher.publish(
                     EventSubjects.RESPONSE_GENERATED,
@@ -61,9 +60,7 @@ class LLMStub:
                     use_jetstream=True,
                     timeout=10.0,
                 )
-                logger.debug(
-                    f"LLMStub: Successfully published RESPONSE_GENERATED for {input_id}"
-                )
+                logger.debug(f"LLMStub: Successfully published RESPONSE_GENERATED for {input_id}")
                 await msg.ack()
                 logger.debug(f"LLMStub: Acked message for {input_id} in LLMStub")
             except Exception as e:
@@ -99,9 +96,7 @@ class LLMStub:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info(
-                f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}."
-            )
+            logger.info(f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}.")
             return True
         except Exception as e:
             logger.error(f"LLMStub failed to subscribe: {e}", exc_info=True)

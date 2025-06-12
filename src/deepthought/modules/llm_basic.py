@@ -61,6 +61,7 @@ class BasicLLM:
             generated = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
             response_text = generated[len(prompt) :].strip()  # noqa: E203
 
+
             payload = ResponseGeneratedPayload(
                 final_response=response_text,
                 input_id=input_id,

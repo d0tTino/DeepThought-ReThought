@@ -184,6 +184,14 @@ PYTHONPATH=src pytest tests/
     ```
     The configuration is provided in [.pre-commit-config.yaml](.pre-commit-config.yaml).
 
+6.  Alternatively, run the helper script that mirrors the CI workflow and
+    automates setup:
+    ```bash
+    ./scripts/codex_setup.sh
+    ```
+    This script installs dependencies, starts a local NATS server, sets up
+    JetStream, and executes flake8 and pytest **only when code has changed**.
+
 ## Continuous Integration
 
 The project includes a GitHub Actions workflow that runs `flake8` and

@@ -3,12 +3,15 @@ import pytest
 import deepthought.modules.output_handler as output_handler
 from deepthought.eda.events import ResponseGeneratedPayload
 
+
 class DummyNATS:
     def __init__(self):
         self.is_connected = True
 
+
 class DummyJS:
     pass
+
 
 class DummySubscriber:
     def __init__(self, *args, **kwargs):
@@ -19,6 +22,7 @@ class DummySubscriber:
 
     async def unsubscribe_all(self):
         pass
+
 
 class DummyMsg:
     def __init__(self, data):
@@ -37,9 +41,10 @@ def create_handler(monkeypatch, callback=None):
 @pytest.mark.asyncio
 async def test_handle_response_success(monkeypatch):
     received = {}
+
     def cb(iid, resp):
-        received['id'] = iid
-        received['resp'] = resp
+        received["id"] = iid
+        received["resp"] = resp
 
     handler = create_handler(monkeypatch, cb)
     payload = ResponseGeneratedPayload(final_response="ok", input_id="42")
@@ -47,8 +52,8 @@ async def test_handle_response_success(monkeypatch):
     await handler._handle_response_event(msg)
 
     assert handler.get_response("42") == "ok"
-    assert received['id'] == "42"
-    assert received['resp'] == "ok"
+    assert received["id"] == "42"
+    assert received["resp"] == "ok"
     assert msg.acked
 
 

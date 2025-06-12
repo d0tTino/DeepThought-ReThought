@@ -77,9 +77,7 @@ class GraphMemory:
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
 
-            await self._publisher.publish(
-                EventSubjects.MEMORY_RETRIEVED, payload, use_jetstream=True, timeout=10.0
-            )
+            await self._publisher.publish(EventSubjects.MEMORY_RETRIEVED, payload, use_jetstream=True, timeout=10.0)
             logger.info("GraphMemory published memory event ID %s", input_id)
             await msg.ack()
         except Exception as e:
@@ -118,4 +116,3 @@ class GraphMemory:
             logger.info("GraphMemory stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
-

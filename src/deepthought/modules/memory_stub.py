@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -88,9 +89,7 @@ class MemoryStub:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info(
-                f"MemoryStub successfully subscribed to {EventSubjects.INPUT_RECEIVED}."
-            )
+            logger.info(f"MemoryStub successfully subscribed to {EventSubjects.INPUT_RECEIVED}.")
             return True
         except Exception as e:
             logger.error(f"MemoryStub failed to subscribe: {e}", exc_info=True)

@@ -3,7 +3,9 @@ import sys
 import types
 from datetime import datetime, timezone
 from types import SimpleNamespace
+
 import pytest
+
 from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload
 
 
@@ -100,11 +102,11 @@ def create_llm(monkeypatch):
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
     import deepthought.modules.llm_basic as llm_basic
+
     importlib.reload(llm_basic)
     monkeypatch.setattr(llm_basic, "Publisher", DummyPublisher)
     monkeypatch.setattr(llm_basic, "Subscriber", DummySubscriber)
     return llm_basic.BasicLLM(DummyNATS(), DummyJS(), model_name="dummy")
-
 
 
 @pytest.mark.asyncio
