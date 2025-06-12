@@ -2,6 +2,7 @@
 import json
 import logging
 from typing import Callable, Dict, Optional
+
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -54,9 +55,7 @@ class OutputHandler:
             logger.error(f"Error in OutputHandler handler: {e}", exc_info=True)
             # Do not ack/nak on failure; leave for broker retry
 
-    async def start_listening(
-        self, durable_name: str = "output_handler_listener"
-    ) -> bool:
+    async def start_listening(self, durable_name: str = "output_handler_listener") -> bool:
         """
         Starts the NATS subscriber to listen for RESPONSE_GENERATED events.
 
@@ -71,18 +70,14 @@ class OutputHandler:
             return False
 
         try:
-            logger.info(
-                f"OutputHandler subscribing to {EventSubjects.RESPONSE_GENERATED}..."
-            )
+            logger.info(f"OutputHandler subscribing to {EventSubjects.RESPONSE_GENERATED}...")
             await self._subscriber.subscribe(
                 subject=EventSubjects.RESPONSE_GENERATED,
                 handler=self._handle_response_event,
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info(
-                f"OutputHandler successfully subscribed to {EventSubjects.RESPONSE_GENERATED}."
-            )
+            logger.info(f"OutputHandler successfully subscribed to {EventSubjects.RESPONSE_GENERATED}.")
             return True
         except Exception as e:
             logger.error(f"OutputHandler failed to subscribe: {e}", exc_info=True)

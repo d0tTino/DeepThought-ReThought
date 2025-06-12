@@ -1,6 +1,7 @@
 import os
 import socket
 
+
 def nats_server_available(url=None):
     """Check if a NATS server is reachable."""
     if url is None:

@@ -1,4 +1,3 @@
-
 import aiosqlite
 import pytest
 
@@ -57,4 +56,3 @@ def test_evaluate_triggers():
     assert ("social chameleon", 0.6) in sg.evaluate_triggers(m1)
     m2 = Dummy("hello", 2)
     assert ("insomniac", 0.7) in sg.evaluate_triggers(m2)
-

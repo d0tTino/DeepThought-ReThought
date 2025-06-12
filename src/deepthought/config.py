@@ -1,4 +1,5 @@
 """Central configuration for DeepThought reThought."""
+
 from __future__ import annotations
 
 import json
@@ -52,6 +53,7 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
                 data = json.load(f)
         return Settings.parse_obj(data)
     return Settings()
+
 
 # Module level singleton for convenience
 settings = load_settings()

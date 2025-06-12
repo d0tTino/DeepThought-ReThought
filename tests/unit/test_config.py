@@ -31,4 +31,3 @@ def test_file_load(tmp_path):
     assert settings.db.port == 123
     assert settings.model_path == "file/model"
     assert settings.memory_file == "filemem.json"
-

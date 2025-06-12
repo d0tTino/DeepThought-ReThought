@@ -6,16 +6,17 @@ Tests for the EDA flow using NATS JetStream in DeepThought reThought.
 import asyncio
 import logging
 import os
+
 import pytest
 import pytest_asyncio
-
-from tests.helpers import nats_server_available
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
-from nats.js.api import StreamConfig, DeliverPolicy, RetentionPolicy, StorageType, DiscardPolicy
+from nats.js.api import DeliverPolicy, DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
+
+from tests.helpers import nats_server_available
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Define subjects and stream name
@@ -27,9 +28,11 @@ SUBJECT_TASK_STATUS_UPDATE = f"{SUBJECT_PREFIX}.status.update"
 SUBJECT_GET_FINAL_RESULT = f"{SUBJECT_PREFIX}.result.get"
 STREAM_NAME = "deepthought_events"
 
+
 # Helper function to get NATS URL from environment variable
 def get_nats_url() -> str:
     return os.getenv("NATS_URL", "nats://localhost:4222")
+
 
 # NATS connection fixture
 @pytest_asyncio.fixture
@@ -41,17 +44,17 @@ async def nats_connection():
     if not nats_server_available(get_nats_url()):
         pytest.skip("NATS server not available")
     nc = None
-    
+
     try:
         # Connect to NATS
         logger.info(f"Fixture: Connecting to NATS at {get_nats_url()}")
         nc = NATS()
         await nc.connect(servers=[get_nats_url()], connect_timeout=30)  # Increased timeout
         logger.info("Fixture: NATS connection successful")
-        
+
         # Yield only the NATS client
         yield nc
-        
+
     finally:
         # Close NATS connection
         if nc and nc.is_connected:
@@ -59,12 +62,14 @@ async def nats_connection():
             await nc.close()
             logger.info("Fixture: NATS connection closed")
 
+
 # Simple test to check that the fixture works
 @pytest.mark.asyncio
 async def test_nats_connection_fixture(nats_connection):
     """Test that the NATS connection fixture is working properly."""
     assert nats_connection.is_connected, "NATS connection should be connected"
     logger.info("NATS connection fixture test passed")
+
 
 # The test function using an ephemeral consumer
 @pytest.mark.asyncio
@@ -82,7 +87,7 @@ async def test_full_flow_direct_subscribe(nats_connection):
         if not nc.is_connected:
             pytest.fail("NATS connection is not connected")
         logger.info("NATS connection from fixture is connected.")
-        
+
         # --- Existing Test Logic START ---
         logger.info("Starting test_full_flow_direct_subscribe...")
 
@@ -114,7 +119,7 @@ async def test_full_flow_direct_subscribe(nats_connection):
             if not js:
                 pytest.fail("Failed to get JetStream context inside test function.")
             logger.info("JetStream context obtained successfully inside test function.")
-            
+
             # Ensure stream exists
             try:
                 logger.info(f"Checking if stream '{STREAM_NAME}' exists...")
@@ -142,7 +147,7 @@ async def test_full_flow_direct_subscribe(nats_connection):
                 except Exception as e:
                     logger.error(f"Failed to create stream: {e}")
                     pytest.fail(f"Failed to create stream: {e}")
-            
+
             logger.info(f"Creating ephemeral push consumer by subscribing directly to '{SUBJECT_PREFIX}.>'...")
             ephemeral_sub = await js.subscribe(
                 subject=f"{SUBJECT_PREFIX}.>",
@@ -152,30 +157,36 @@ async def test_full_flow_direct_subscribe(nats_connection):
                 deliver_policy=DeliverPolicy.NEW,  # Only receive new messages
             )
             logger.info("Ephemeral consumer subscription successful.")
-            subscription_ready.set() # Signal that subscription is ready
-            
+            subscription_ready.set()  # Signal that subscription is ready
+
             # Wait briefly for subscription to be fully established
             await asyncio.sleep(1.0)  # Increased wait time
-            
+
             # Publish messages
             logger.info(f"Publishing task request to '{SUBJECT_REQUEST_NEW_TASK}'...")
-            await asyncio.wait_for(js.publish(SUBJECT_REQUEST_NEW_TASK, str(task_request_payload).encode()), timeout=30.0)  # Added explicit timeout
+            await asyncio.wait_for(
+                js.publish(SUBJECT_REQUEST_NEW_TASK, str(task_request_payload).encode()), timeout=30.0
+            )  # Added explicit timeout
             logger.info("Task request published.")
-            
+
             # Wait briefly between publishes
             await asyncio.sleep(0.5)
-            
+
             logger.info(f"Publishing status update to '{SUBJECT_TASK_STATUS_UPDATE}'...")
-            await asyncio.wait_for(js.publish(SUBJECT_TASK_STATUS_UPDATE, str(status_update_payload).encode()), timeout=30.0)  # Added explicit timeout
+            await asyncio.wait_for(
+                js.publish(SUBJECT_TASK_STATUS_UPDATE, str(status_update_payload).encode()), timeout=30.0
+            )  # Added explicit timeout
             logger.info("Status update published.")
-            
+
             # Wait briefly between publishes
             await asyncio.sleep(0.5)
-            
+
             logger.info(f"Publishing final result to '{SUBJECT_GET_FINAL_RESULT}'...")
-            await asyncio.wait_for(js.publish(SUBJECT_GET_FINAL_RESULT, str(final_result_payload).encode()), timeout=30.0)  # Added explicit timeout
+            await asyncio.wait_for(
+                js.publish(SUBJECT_GET_FINAL_RESULT, str(final_result_payload).encode()), timeout=30.0
+            )  # Added explicit timeout
             logger.info("Final result published.")
-            
+
             # Wait for all messages to be received by the handler
             try:
                 logger.info("Waiting for all messages to be received by ephemeral consumer...")
@@ -184,22 +195,24 @@ async def test_full_flow_direct_subscribe(nats_connection):
             except asyncio.TimeoutError:
                 logger.error(f"Timeout waiting for messages. Received {len(received_messages)} messages.")
                 pytest.fail(f"Timeout: Did not receive all 3 messages. Received: {received_messages}")
-            
+
             # Verification
             assert len(received_messages) == 3, f"Expected 3 messages, got {len(received_messages)}"
             logger.info("Verifying received messages...")
-            
+
             # We convert payloads to strings for comparison as they were published
             expected_payloads = {
                 SUBJECT_REQUEST_NEW_TASK: str(task_request_payload),
                 SUBJECT_TASK_STATUS_UPDATE: str(status_update_payload),
-                SUBJECT_GET_FINAL_RESULT: str(final_result_payload)
+                SUBJECT_GET_FINAL_RESULT: str(final_result_payload),
             }
             received_payloads = {subj: data for subj, data in received_messages}
-            
-            assert received_payloads == expected_payloads, f"Received payloads do not match expected. Got: {received_payloads}"
+
+            assert (
+                received_payloads == expected_payloads
+            ), f"Received payloads do not match expected. Got: {received_payloads}"
             logger.info("Received messages verified successfully.")
-            
+
         except ErrTimeout:
             logger.error("NATS operation timed out.")
             pytest.fail("NATS operation timed out.")
@@ -218,10 +231,10 @@ async def test_full_flow_direct_subscribe(nats_connection):
                 except Exception as e:
                     logger.error(f"Error during ephemeral subscription cleanup: {e}", exc_info=True)
             logger.info("Test cleanup (subscription) finished.")
-        
+
         logger.info("test_full_flow_direct_subscribe completed successfully.")
         # --- Existing Test Logic END ---
-        
+
     except Exception as e:
         logger.error(f"Unexpected error in top-level test: {e}", exc_info=True)
         pytest.fail(f"Test failed due to unexpected error: {e}")

@@ -1,10 +1,12 @@
 import json
-import pytest
-from types import SimpleNamespace
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
-from deepthought.modules.input_handler import InputHandler
+import pytest
+
 from deepthought.eda.events import EventSubjects
+from deepthought.modules.input_handler import InputHandler
+
 
 class DummyNATS:
     def __init__(self):
@@ -14,6 +16,7 @@ class DummyNATS:
     async def publish(self, subject, data):
         self.published.append((subject, data))
 
+
 class DummyJS:
     def __init__(self):
         self.published = []
@@ -21,6 +24,7 @@ class DummyJS:
     async def publish(self, subject, data, timeout=10.0):
         self.published.append((subject, data))
         return SimpleNamespace(seq=1, stream="test")
+
 
 @pytest.mark.asyncio
 async def test_process_input_success():
@@ -40,9 +44,11 @@ async def test_process_input_success():
     parsed = datetime.fromisoformat(ts)
     assert parsed.tzinfo == timezone.utc
 
+
 class FailingJS(DummyJS):
     async def publish(self, subject, data, timeout=10.0):
         raise RuntimeError("publish error")
+
 
 @pytest.mark.asyncio
 async def test_process_input_error():
