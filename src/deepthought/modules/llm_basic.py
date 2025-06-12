@@ -2,17 +2,20 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
+
+import torch
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from ..config import settings
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 
 logger = logging.getLogger(__name__)
+
 
 class BasicLLM:
     """Simple LLM module using a small HuggingFace model."""
@@ -56,7 +59,7 @@ class BasicLLM:
             with torch.no_grad():
                 outputs = self._model.generate(**inputs, max_length=inputs["input_ids"].shape[1] + 20)
             generated = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
-            response_text = generated[len(prompt):].strip()
+            response_text = generated[len(prompt) :].strip()  # noqa: E203
 
             payload = ResponseGeneratedPayload(
                 final_response=response_text,

@@ -79,6 +79,13 @@ Users would typically incorporate these scripts into their Unity projects and us
         python setup_jetstream.py
         ```
 5.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
+6.  **CI-style setup:** A helper script mirrors the project\'s continuous integration workflow.
+    It installs dependencies, starts a temporary NATS server, initializes JetStream, and runs
+    linters and tests only when code changes are detected:
+    ```bash
+    ./scripts/codex_setup.sh
+    ```
+
 
 ### Configuration
 

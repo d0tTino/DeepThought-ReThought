@@ -4,12 +4,12 @@ import os
 from datetime import datetime, timezone
 from typing import List, Optional
 
+import torch
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
-import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ..config import settings
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
@@ -66,11 +66,9 @@ class ProductionLLM:
             prompt = self._build_prompt([str(f) for f in facts])
             inputs = self._tokenizer(prompt, return_tensors="pt")
             with torch.no_grad():
-                outputs = self._model.generate(
-                    **inputs, max_length=inputs["input_ids"].shape[1] + 20
-                )
+                outputs = self._model.generate(**inputs, max_length=inputs["input_ids"].shape[1] + 20)
             generated = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
-            response_text = generated[len(prompt):].strip()
+            response_text = generated[len(prompt) :].strip()  # noqa: E203
 
             payload = ResponseGeneratedPayload(
                 final_response=response_text,
@@ -78,9 +76,7 @@ class ProductionLLM:
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 confidence=0.5,
             )
-            await self._publisher.publish(
-                EventSubjects.RESPONSE_GENERATED, payload, use_jetstream=True, timeout=10.0
-            )
+            await self._publisher.publish(EventSubjects.RESPONSE_GENERATED, payload, use_jetstream=True, timeout=10.0)
             logger.info("ProductionLLM published RESPONSE_GENERATED for %s", input_id)
             await msg.ack()
         except Exception as e:  # pragma: no cover - runtime errors are logged
