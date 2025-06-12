@@ -59,8 +59,8 @@ class BasicLLM:
             with torch.no_grad():
                 outputs = self._model.generate(**inputs, max_length=inputs["input_ids"].shape[1] + 20)
             generated = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
-            start = len(prompt)
-            response_text = generated[start:].strip()
+            response_text = generated[len(prompt) :].strip()  # noqa: E203
+
 
             payload = ResponseGeneratedPayload(
                 final_response=response_text,
