@@ -19,13 +19,17 @@ class BasicLLM:
 
     def __init__(
         self,
-        nats_client: NATS,
-        js_context: JetStreamContext,
+        nats_client: Optional[NATS] = None,
+        js_context: Optional[JetStreamContext] = None,
         model_name: Optional[str] = None,
     ) -> None:
         model_name = model_name or settings.model_path
-        self._publisher = Publisher(nats_client, js_context)
-        self._subscriber = Subscriber(nats_client, js_context)
+        if nats_client is not None and js_context is not None:
+            self._publisher: Optional[Publisher] = Publisher(nats_client, js_context)
+            self._subscriber: Optional[Subscriber] = Subscriber(nats_client, js_context)
+        else:
+            self._publisher = None
+            self._subscriber = None
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._model = AutoModelForCausalLM.from_pretrained(model_name)
         logger.info("BasicLLM initialized with model %s", model_name)
@@ -60,10 +64,19 @@ class BasicLLM:
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 confidence=0.5,
             )
-            await self._publisher.publish(
-                EventSubjects.RESPONSE_GENERATED, payload, use_jetstream=True, timeout=10.0
-            )
-            logger.info("BasicLLM published RESPONSE_GENERATED for %s", input_id)
+            if self._publisher is not None:
+                await self._publisher.publish(
+                    EventSubjects.RESPONSE_GENERATED,
+                    payload,
+                    use_jetstream=True,
+                    timeout=10.0,
+                )
+                logger.info("BasicLLM published RESPONSE_GENERATED for %s", input_id)
+            else:
+                logger.warning(
+                    "Cannot publish RESPONSE_GENERATED for %s - publisher not initialized",
+                    input_id,
+                )
             await msg.ack()
         except Exception as e:
             logger.error("Error in BasicLLM handler: %s", e, exc_info=True)
