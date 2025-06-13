@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -91,3 +92,15 @@ async def test_handle_input_error(tmp_path, monkeypatch):
     with open(mem_file, "r", encoding="utf-8") as f:
         history = json.load(f)
     assert history[-1]["user_input"] == "boom"
+
+
+def test_read_memory_invalid_json_logs_error(tmp_path, monkeypatch, caplog):
+    mem_file = tmp_path / "mem.json"
+    mem_file.write_text("{ invalid json")
+    mem = create_memory(monkeypatch, mem_file)
+
+    with caplog.at_level(logging.ERROR):
+        data = mem._read_memory()
+
+    assert data == []
+    assert any("Failed to read memory file" in record.getMessage() for record in caplog.records)
