@@ -1,4 +1,5 @@
 import json
+import yaml
 
 from deepthought.config import load_settings
 
@@ -31,3 +32,20 @@ def test_file_load(tmp_path):
     assert settings.db.port == 123
     assert settings.model_path == "file/model"
     assert settings.memory_file == "filemem.json"
+
+
+def test_yaml_file_load(tmp_path):
+    data = {
+        "nats_url": "nats://yaml:4222",
+        "db": {"user": "yamluser", "password": "p", "host": "dbyaml", "port": 456},
+        "model_path": "yaml/model",
+        "memory_file": "yaml.json",
+    }
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text(yaml.safe_dump(data))
+
+    settings = load_settings(str(cfg))
+    assert settings.nats_url == "nats://yaml:4222"
+    assert settings.db.port == 456
+    assert settings.model_path == "yaml/model"
+    assert settings.memory_file == "yaml.json"
