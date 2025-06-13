@@ -14,6 +14,9 @@ import uuid
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# NATS server URL used for the test script
+NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
+
 # Add the src directory to the path for imports before loading project modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "src")))
 
@@ -76,7 +79,7 @@ async def test_subject(nc, subject, payload):
 
 async def run_test():
     print("Connecting to NATS server...")
-    nc = await nats.connect("nats://localhost:4222")
+    nc = await nats.connect(NATS_URL)
     print(f"Connected to NATS server at {nc.connected_url.netloc}")
 
     try:
