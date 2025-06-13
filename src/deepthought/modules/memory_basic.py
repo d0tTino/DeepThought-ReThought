@@ -38,7 +38,8 @@ class BasicMemory:
         try:
             with open(self._memory_file, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except Exception as e:
+            logger.error("Failed to read memory file: %s", e)
             return []
 
     def _write_memory(self, data: List[Dict[str, Any]]) -> None:
