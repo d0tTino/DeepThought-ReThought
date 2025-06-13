@@ -51,7 +51,7 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
                 data = yaml.safe_load(f)
             else:
                 data = json.load(f)
-        return Settings.parse_obj(data)
+        return Settings.model_validate(data)
     return Settings()
 
 
