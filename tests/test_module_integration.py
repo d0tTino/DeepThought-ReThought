@@ -45,7 +45,7 @@ def get_nats_url() -> str:
 STREAM_NAME = "deepthought_events"
 
 # Temporary file used for GraphMemory integration tests
-GRAPH_MEMORY_FILE = tempfile.mktemp(suffix="_graph.json")
+GRAPH_MEMORY_FILE = tempfile.NamedTemporaryFile(delete=False, suffix="_graph.json").name
 
 
 # Helper function to ensure the JetStream stream exists
@@ -135,7 +135,7 @@ async def test_full_module_flow():
 
         # --- Instantiate module stubs ---
         logger.info("Initializing modules...")
-        memory_file = tempfile.mktemp(suffix=".json")
+        memory_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json").name
         if os.path.exists(memory_file):
             os.remove(memory_file)
         input_handler = InputHandler(nc, js)
