@@ -98,6 +98,13 @@ export DT_MEMORY_FILE=/tmp/my_memory.json
 If unset, the default `memory.json` in the current directory is used.
 Settings can also be loaded from a configuration file by setting the `DT_CONFIG_FILE` environment variable.
 
+Specify the NATS server address with the `NATS_URL` environment variable. If not set,
+`nats://localhost:4222` is used by default:
+
+```bash
+export NATS_URL=nats://my-nats:4222
+```
+
 ## Running a Local NATS Server
 
 If you don't already have a NATS server running locally, you can start one easily.
