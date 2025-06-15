@@ -19,6 +19,7 @@ DB_PATH = "social_graph.db"
 MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
 IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "5"))
 REFLECTION_CHECK_SECONDS = int(os.getenv("REFLECTION_CHECK_SECONDS", "300"))
+SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
 
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
@@ -92,6 +93,26 @@ async def recall_user(user_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT topic, memory FROM memories WHERE user_id = ?", (str(user_id),)) as cur:
             return await cur.fetchall()
+
+
+async def recall_recent_memories(user_id: int, limit: int = 5):
+    """Retrieve recent memories for a user ordered by timestamp descending."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT topic, memory, sentiment_score, timestamp FROM memories WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?",
+            (str(user_id), limit),
+        ) as cur:
+            return await cur.fetchall()
+
+
+async def store_memory(user_id: int, topic: str, memory: str, sentiment_score: float) -> None:
+    """Persist a memory snippet associated with a user."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
+            (str(user_id), topic, memory, sentiment_score),
+        )
+        await db.commit()
 
 
 async def send_to_prism(data: dict) -> None:
@@ -269,6 +290,11 @@ class SocialGraphBot(discord.Client):
         async with message.channel.typing():
             await asyncio.sleep(random.uniform(1, 3))
             await message.channel.send("I'm pondering your message...")
+
+        blob = TextBlob(message.content)
+        sentiment_score = blob.sentiment.polarity
+        if sentiment_score > SENTIMENT_THRESHOLD or sentiment_score < -SENTIMENT_THRESHOLD:
+            await store_memory(message.author.id, "message", message.content, sentiment_score)
 
         await send_to_prism(
             {
