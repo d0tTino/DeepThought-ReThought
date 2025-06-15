@@ -136,6 +136,11 @@ Ensure the dependency is installed (included in `requirements.txt`).
 
 An example Discord bot demonstrating social graph logging is available at `examples/social_graph_bot.py`. It records user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`.
 
+## Discord Bot Roadmap
+
+For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
+
+
 
 ## Basic Modules
 
