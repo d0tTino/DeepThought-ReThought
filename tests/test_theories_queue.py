@@ -33,6 +33,21 @@ async def test_store_theory_update(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_store_memory(tmp_path):
+    db_file = tmp_path / "db.sqlite"
+    sg.DB_PATH = str(db_file)
+    await sg.init_db()
+    await sg.store_memory("u1", "hello", 0.3)
+    async with aiosqlite.connect(sg.DB_PATH) as db:
+        async with db.execute(
+            "SELECT memory, sentiment_score FROM memories WHERE user_id=?",
+            ("u1",),
+        ) as cur:
+            row = await cur.fetchone()
+    assert row == ("hello", 0.3)
+
+
+@pytest.mark.asyncio
 async def test_queue_deep_reflection(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.DB_PATH = str(db_file)

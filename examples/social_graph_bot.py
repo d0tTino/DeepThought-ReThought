@@ -19,6 +19,7 @@ DB_PATH = "social_graph.db"
 MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
 IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "5"))
 REFLECTION_CHECK_SECONDS = int(os.getenv("REFLECTION_CHECK_SECONDS", "300"))
+SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
 
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
@@ -102,6 +103,7 @@ async def store_memory(user_id: int, memory: str, topic: str = "") -> None:
         await db.execute(
             "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
             (str(user_id), topic, memory, polarity),
+
         )
         await db.commit()
 
@@ -270,6 +272,10 @@ class SocialGraphBot(discord.Client):
         if message.author == self.user:
             return
 
+        blob = TextBlob(message.content)
+        score = blob.sentiment.polarity
+        await store_memory(message.author.id, message.content, score)
+
         bots, _ = await who_is_active(message.channel)
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
             # Too many bots talking and we're not addressed directly
@@ -281,6 +287,11 @@ class SocialGraphBot(discord.Client):
         async with message.channel.typing():
             await asyncio.sleep(random.uniform(1, 3))
             await message.channel.send("I'm pondering your message...")
+
+        blob = TextBlob(message.content)
+        sentiment_score = blob.sentiment.polarity
+        if sentiment_score > SENTIMENT_THRESHOLD or sentiment_score < -SENTIMENT_THRESHOLD:
+            await store_memory(message.author.id, "message", message.content, sentiment_score)
 
         await send_to_prism(
             {
@@ -305,6 +316,9 @@ class SocialGraphBot(discord.Client):
             {"channel_id": message.channel.id, "message_id": message.id},
             message.content,
         )
+
+        if hasattr(self, "process_commands"):
+            await self.process_commands(message)
 
 
 def run(token: str, monitor_channel_id: int) -> None:
