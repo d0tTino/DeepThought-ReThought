@@ -95,22 +95,13 @@ async def recall_user(user_id: int):
             return await cur.fetchall()
 
 
-async def recall_recent_memories(user_id: int, limit: int = 5):
-    """Retrieve recent memories for a user ordered by timestamp descending."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT topic, memory, sentiment_score, timestamp FROM memories WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?",
-            (str(user_id), limit),
-        ) as cur:
-            return await cur.fetchall()
-
-
-async def store_memory(user_id: int, topic: str, memory: str, sentiment_score: float) -> None:
-    """Persist a memory snippet associated with a user."""
+async def store_memory(user_id: int, text: str, score: float, topic: str = "message") -> None:
+    """Persist the raw message text and sentiment score."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
-            (str(user_id), topic, memory, sentiment_score),
+            (str(user_id), topic, text, score),
+
         )
         await db.commit()
 
@@ -279,6 +270,10 @@ class SocialGraphBot(discord.Client):
         if message.author == self.user:
             return
 
+        blob = TextBlob(message.content)
+        score = blob.sentiment.polarity
+        await store_memory(message.author.id, message.content, score)
+
         bots, _ = await who_is_active(message.channel)
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
             # Too many bots talking and we're not addressed directly
@@ -317,6 +312,9 @@ class SocialGraphBot(discord.Client):
             {"channel_id": message.channel.id, "message_id": message.id},
             message.content,
         )
+
+        if hasattr(self, "process_commands"):
+            await self.process_commands(message)
 
 
 def run(token: str, monitor_channel_id: int) -> None:
