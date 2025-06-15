@@ -161,6 +161,11 @@ Run the bot:
 python examples/social_graph_bot.py
 ```
 
+## Discord Bot Roadmap
+
+For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
+
+
 
 ## Basic Modules
 
