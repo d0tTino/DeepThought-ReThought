@@ -95,12 +95,14 @@ async def recall_user(user_id: int):
             return await cur.fetchall()
 
 
-async def store_memory(user_id: int, text: str, score: float, topic: str = "message") -> None:
-    """Persist the raw message text and sentiment score."""
+async def store_memory(user_id: int, memory: str, topic: str = "") -> None:
+    """Persist a memory snippet with sentiment analysis."""
+    blob = TextBlob(memory)
+    polarity = blob.sentiment.polarity
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
-            (str(user_id), topic, text, score),
+            (str(user_id), topic, memory, polarity),
 
         )
         await db.commit()
@@ -298,6 +300,8 @@ class SocialGraphBot(discord.Client):
                 "content": message.content,
             }
         )
+
+        await store_memory(message.author.id, message.content)
 
         memories = await recall_user(message.author.id)
         if memories:
