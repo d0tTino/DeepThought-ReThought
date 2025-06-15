@@ -134,7 +134,37 @@ Ensure the dependency is installed (included in `requirements.txt`).
 
 ## Social Graph Bot Example
 
-An example Discord bot demonstrating social graph logging is available at `examples/social_graph_bot.py`. It records user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`.
+
+An example Discord bot demonstrating social graph logging is available at
+`examples/social_graph_bot.py`. It records user interactions in a SQLite
+database, monitors channel activity, and forwards data to a Prism endpoint
+implemented in `examples/prism_server.py`.
+
+### Quick Start
+
+Install the optional dependencies:
+
+```bash
+pip install discord.py aiohttp aiosqlite textblob
+```
+
+Set the environment variables used by the bot:
+
+```bash
+export DISCORD_TOKEN=your_token
+export MONITOR_CHANNEL=1234567890
+```
+
+Run the bot:
+
+```bash
+python examples/social_graph_bot.py
+```
+
+## Discord Bot Roadmap
+
+For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
+
 
 
 ## Basic Modules
