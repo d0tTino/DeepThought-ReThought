@@ -37,7 +37,7 @@ async def test_store_memory(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.DB_PATH = str(db_file)
     await sg.init_db()
-    await sg.store_memory("u1", "hello", 0.3)
+    await sg.store_memory("u1", "hello", sentiment_score=0.3)
     async with aiosqlite.connect(sg.DB_PATH) as db:
         async with db.execute(
             "SELECT memory, sentiment_score FROM memories WHERE user_id=?",
