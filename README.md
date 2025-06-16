@@ -164,6 +164,7 @@ python examples/social_graph_bot.py
 ## Discord Bot Roadmap
 
 For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
+For the comprehensive plan outlining each phase, see [docs/discord_bot_phase_report.md](docs/discord_bot_phase_report.md).
 
 
 
