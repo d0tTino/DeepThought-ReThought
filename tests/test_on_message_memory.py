@@ -75,3 +75,27 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch):
     stored_memory, score = rows[0]
     assert stored_memory == message.content
     assert isinstance(score, float)
+
+
+@pytest.mark.asyncio
+async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls):
+    sg.DB_PATH = str(tmp_path / "sg.db")
+    await sg.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set()))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+
+    message = DummyMessage("send prism")
+    await bot.on_message(message)
+
+    assert len(prism_calls) == 1
+    assert prism_calls[0]["content"] == "send prism"
