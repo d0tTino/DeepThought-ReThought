@@ -95,15 +95,21 @@ async def recall_user(user_id: int):
             return await cur.fetchall()
 
 
-async def store_memory(user_id: int, memory: str, topic: str = "") -> None:
-    """Persist a memory snippet with sentiment analysis."""
-    blob = TextBlob(memory)
-    polarity = blob.sentiment.polarity
+async def store_memory(
+    user_id: int,
+    memory: str,
+    topic: str = "",
+    sentiment_score: float | None = None,
+) -> None:
+    """Persist a memory snippet with optional sentiment analysis."""
+    if sentiment_score is None:
+        blob = TextBlob(memory)
+        sentiment_score = blob.sentiment.polarity
+
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
-            (str(user_id), topic, memory, polarity),
-
+            (str(user_id), topic, memory, sentiment_score),
         )
         await db.commit()
 
@@ -274,7 +280,11 @@ class SocialGraphBot(discord.Client):
 
         blob = TextBlob(message.content)
         score = blob.sentiment.polarity
-        await store_memory(message.author.id, message.content, score)
+        await store_memory(
+            message.author.id,
+            message.content,
+            sentiment_score=score,
+        )
 
         bots, _ = await who_is_active(message.channel)
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
@@ -291,7 +301,12 @@ class SocialGraphBot(discord.Client):
         blob = TextBlob(message.content)
         sentiment_score = blob.sentiment.polarity
         if sentiment_score > SENTIMENT_THRESHOLD or sentiment_score < -SENTIMENT_THRESHOLD:
-            await store_memory(message.author.id, "message", message.content, sentiment_score)
+            await store_memory(
+                message.author.id,
+                message.content,
+                topic="message",
+                sentiment_score=sentiment_score,
+            )
 
         await send_to_prism(
             {
