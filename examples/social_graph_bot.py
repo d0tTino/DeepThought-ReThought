@@ -278,12 +278,13 @@ class SocialGraphBot(discord.Client):
         if message.author == self.user:
             return
 
-        blob = TextBlob(message.content)
-        score = blob.sentiment.polarity
+        sentiment_score = TextBlob(message.content).sentiment.polarity
+        topic = "message" if abs(sentiment_score) > SENTIMENT_THRESHOLD else ""
         await store_memory(
             message.author.id,
             message.content,
-            sentiment_score=score,
+            topic=topic,
+            sentiment_score=sentiment_score,
         )
 
         bots, _ = await who_is_active(message.channel)
@@ -298,16 +299,6 @@ class SocialGraphBot(discord.Client):
             await asyncio.sleep(random.uniform(1, 3))
             await message.channel.send("I'm pondering your message...")
 
-        blob = TextBlob(message.content)
-        sentiment_score = blob.sentiment.polarity
-        if sentiment_score > SENTIMENT_THRESHOLD or sentiment_score < -SENTIMENT_THRESHOLD:
-            await store_memory(
-                message.author.id,
-                message.content,
-                topic="message",
-                sentiment_score=sentiment_score,
-            )
-
         await send_to_prism(
             {
                 "user_id": str(message.author.id),
@@ -315,8 +306,6 @@ class SocialGraphBot(discord.Client):
                 "content": message.content,
             }
         )
-
-        await store_memory(message.author.id, message.content)
 
         memories = await recall_user(message.author.id)
         if memories:
