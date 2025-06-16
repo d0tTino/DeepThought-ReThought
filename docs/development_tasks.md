@@ -28,3 +28,7 @@ This document lists actionable tasks derived from the project documentation and 
 For additional context on the Discord bot development phases, see
 [Discord Bot Phase Report](discord_bot_phase_report.md).
 
+Additional planning notes and a more detailed checklist are available in
+[Prism Discord Bot Report](prism_discord_bot_report.md) and
+[Prism Discord Bot Tasks](prism_discord_bot_tasks.md).
+
