@@ -16,8 +16,15 @@ This document lists actionable tasks derived from the project documentation and 
 - [ ] Configure Discord intents so the bot can read message content.
 - [ ] Implement situational awareness checks (idle monitoring, bot chatter limits) in `examples/social_graph_bot.py`.
 - [ ] Forward interaction data to the Prism endpoint in `examples/prism_server.py`.
+- [ ] Implement bullying detection and optional snide replies in `examples/social_graph_bot.py`.
+- [ ] Track per-user/channel sentiment trends for theme modeling.
+- [ ] Respect `do_not_mock` flags for sensitive users.
+- [ ] Add tests verifying the new features.
 
 ## Documentation
 - [ ] Convert information from the old `.docx` progress report to Markdown.
 - [ ] Record any environment-specific steps in `docs/setup_log.md`.
+
+For additional context on the Discord bot development phases, see
+[Discord Bot Phase Report](discord_bot_phase_report.md).
 
