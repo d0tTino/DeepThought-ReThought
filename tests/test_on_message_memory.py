@@ -72,6 +72,7 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch):
             rows = await cur.fetchall()
 
     assert rows, "Memory row should be inserted"
+    assert len(rows) == 1, "Only one memory row should be created"
     stored_memory, score = rows[0]
     assert stored_memory == message.content
     assert isinstance(score, float)
