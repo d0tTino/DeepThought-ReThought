@@ -28,6 +28,9 @@ idle_response_candidates = [
     "Silence can be golden, but conversation is better.",
 ]
 
+# Simple list of phrases considered bullying
+BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
+
 
 async def init_db():
     """Initialize the SQLite database for tracking interactions and memories."""
@@ -72,6 +75,14 @@ async def init_db():
                 prompt TEXT,
                 status TEXT DEFAULT 'pending',
                 created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_flags (
+                user_id TEXT PRIMARY KEY,
+                do_not_mock INTEGER DEFAULT 0
             )
             """
         )
@@ -158,6 +169,31 @@ async def queue_deep_reflection(user_id: int, context: dict, prompt: str) -> int
         )
         await db.commit()
         return cur.lastrowid
+
+
+async def set_do_not_mock(user_id: int, flag: bool = True) -> None:
+    """Set or unset the do_not_mock flag for a user."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO user_flags (user_id, do_not_mock)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET do_not_mock=excluded.do_not_mock
+            """,
+            (str(user_id), int(flag)),
+        )
+        await db.commit()
+
+
+async def is_do_not_mock(user_id: int) -> bool:
+    """Return True if the user is protected from mock replies."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT do_not_mock FROM user_flags WHERE user_id=?",
+            (str(user_id),),
+        ) as cur:
+            row = await cur.fetchone()
+            return bool(row[0]) if row else False
 
 
 def generate_reflection(prompt: str) -> str:
@@ -306,6 +342,19 @@ class SocialGraphBot(discord.Client):
                 "content": message.content,
             }
         )
+
+        if any(phrase in message.content.lower() for phrase in BULLYING_PHRASES):
+            if not await is_do_not_mock(message.author.id):
+                sarcastic = random.choice(
+                    [
+                        "Oh, how original.",
+                        "Wow, such eloquence.",
+                        "Tell us how you really feel!",
+                    ]
+                )
+                async with message.channel.typing():
+                    await asyncio.sleep(random.uniform(1, 2))
+                    await message.channel.send(sarcastic)
 
         memories = await recall_user(message.author.id)
         if memories:
