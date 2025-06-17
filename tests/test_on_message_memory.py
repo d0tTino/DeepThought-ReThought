@@ -61,6 +61,8 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", noop)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
+    assert bot.intents.members
+    assert bot.intents.presences
 
     message = DummyMessage("hello world")
     await bot.on_message(message)
@@ -95,6 +97,8 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
     monkeypatch.setattr(asyncio, "sleep", noop)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
+    assert bot.intents.members
+    assert bot.intents.presences
 
     message = DummyMessage("send prism")
     await bot.on_message(message)
@@ -134,6 +138,8 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", noop)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
+    assert bot.intents.members
+    assert bot.intents.presences
 
     message = DummyMessage("hello again")
     await bot.on_message(message)
@@ -141,4 +147,3 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
     trend = await sg.get_sentiment_trend(message.author.id, message.channel.id)
     expected = sg.TextBlob(message.content).sentiment.polarity
     assert trend == (expected, 1)
-

@@ -333,6 +333,8 @@ class SocialGraphBot(discord.Client):
     def __init__(self, *args, monitor_channel_id: int, **kwargs):
         intents = discord.Intents.default()
         intents.message_content = True
+        intents.members = True
+        intents.presences = True
         super().__init__(*args, intents=intents, **kwargs)
         self.monitor_channel_id = monitor_channel_id
 

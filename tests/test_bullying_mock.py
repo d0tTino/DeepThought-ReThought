@@ -68,6 +68,8 @@ async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch):
     monkeypatch.setattr(sg, "is_do_not_mock", allow_mock)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
+    assert bot.intents.members
+    assert bot.intents.presences
 
     message = DummyMessage("You are an idiot")
     await bot.on_message(message)
@@ -100,6 +102,8 @@ async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch):
     monkeypatch.setattr(sg, "is_do_not_mock", prevent_mock)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
+    assert bot.intents.members
+    assert bot.intents.presences
 
     message = DummyMessage("You are an idiot")
     await bot.on_message(message)
