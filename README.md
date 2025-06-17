@@ -161,6 +161,12 @@ Run the bot:
 python examples/social_graph_bot.py
 ```
 
+Alternatively, launch the same bot using the helper script at the project root:
+
+```bash
+python bot.py
+```
+
 ### Running the Prism Server
 
 To test Prism integration, start the simple Flask server:
