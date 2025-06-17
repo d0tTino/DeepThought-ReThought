@@ -12,6 +12,7 @@ import discord
 from textblob import TextBlob
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 DB_PATH = "social_graph.db"
 
@@ -340,6 +341,10 @@ class SocialGraphBot(discord.Client):
         await init_db()
         self.loop.create_task(monitor_channels(self, self.monitor_channel_id))
         self.loop.create_task(process_deep_reflections(self))
+
+    async def on_ready(self) -> None:
+        """Log basic information once the bot connects."""
+        logger.info("Logged in as %s (%s)", self.user.name, self.user.id)
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author == self.user:
