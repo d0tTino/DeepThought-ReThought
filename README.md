@@ -161,6 +161,17 @@ Run the bot:
 python examples/social_graph_bot.py
 ```
 
+### Running the Prism Server
+
+To test Prism integration, start the simple Flask server:
+
+```bash
+python examples/prism_server.py
+```
+
+The bot's `send_to_prism` function posts JSON data to
+`http://localhost:5000/receive_data`.
+
 ## Discord Bot Roadmap
 
 For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
