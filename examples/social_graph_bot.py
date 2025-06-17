@@ -80,9 +80,13 @@ async def init_db():
         )
         await db.execute(
             """
-            CREATE TABLE IF NOT EXISTS user_flags (
-                user_id TEXT PRIMARY KEY,
-                do_not_mock INTEGER DEFAULT 0
+            CREATE TABLE IF NOT EXISTS sentiment_trends (
+                user_id TEXT,
+                channel_id TEXT,
+                sentiment_sum REAL DEFAULT 0,
+                message_count INTEGER DEFAULT 0,
+                PRIMARY KEY(user_id, channel_id)
+
             )
             """
         )
@@ -155,6 +159,36 @@ async def get_theories(subject_id: int):
             (str(subject_id),),
         ) as cur:
             return await cur.fetchall()
+
+
+async def update_sentiment_trend(
+    user_id: int,
+    channel_id: int,
+    sentiment_score: float,
+) -> None:
+    """Update cumulative sentiment metrics for a user and channel."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO sentiment_trends (user_id, channel_id, sentiment_sum, message_count)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(user_id, channel_id) DO UPDATE SET
+                sentiment_sum=sentiment_trends.sentiment_sum + excluded.sentiment_sum,
+                message_count=sentiment_trends.message_count + 1
+            """,
+            (str(user_id), str(channel_id), sentiment_score),
+        )
+        await db.commit()
+
+
+async def get_sentiment_trend(user_id: int, channel_id: int):
+    """Retrieve cumulative sentiment statistics."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT sentiment_sum, message_count FROM sentiment_trends WHERE user_id=? AND channel_id=?",
+            (str(user_id), str(channel_id)),
+        ) as cur:
+            return await cur.fetchone()
 
 
 async def queue_deep_reflection(user_id: int, context: dict, prompt: str) -> int:
@@ -319,6 +353,7 @@ class SocialGraphBot(discord.Client):
             topic=topic,
             sentiment_score=sentiment_score,
         )
+        await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
 
         bots, _ = await who_is_active(message.channel)
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:

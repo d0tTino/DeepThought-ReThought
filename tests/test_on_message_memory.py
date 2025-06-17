@@ -104,35 +104,19 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
 
 
 @pytest.mark.asyncio
-async def test_bullying_triggers_mocking(tmp_path, monkeypatch):
+async def test_update_sentiment_trend(tmp_path):
     sg.DB_PATH = str(tmp_path / "sg.db")
     await sg.init_db()
 
-    async def noop(*args, **kwargs):
-        return None
+    await sg.update_sentiment_trend("u1", "c1", 0.2)
+    await sg.update_sentiment_trend("u1", "c1", -0.1)
 
-    f = asyncio.Future()
-    f.set_result((set(), set()))
-    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
-    monkeypatch.setattr(sg, "store_theory", noop)
-    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
-    monkeypatch.setattr(asyncio, "sleep", noop)
-
-    async def not_protected(uid):
-        return False
-
-    monkeypatch.setattr(sg, "is_do_not_mock", not_protected)
-    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
-
-    bot = sg.SocialGraphBot(monitor_channel_id=1)
-    message = DummyMessage("you are an idiot")
-    await bot.on_message(message)
-
-    assert "Oh, how original." in message.channel.sent_messages
+    row = await sg.get_sentiment_trend("u1", "c1")
+    assert row == (0.1, 2)
 
 
 @pytest.mark.asyncio
-async def test_bullying_respects_do_not_mock(tmp_path, monkeypatch):
+async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
 
     sg.DB_PATH = str(tmp_path / "sg.db")
     await sg.init_db()
@@ -143,20 +127,18 @@ async def test_bullying_respects_do_not_mock(tmp_path, monkeypatch):
     f = asyncio.Future()
     f.set_result((set(), set()))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
 
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
 
-    async def protected(uid):
-        return True
-
-    monkeypatch.setattr(sg, "is_do_not_mock", protected)
-    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
-
     bot = sg.SocialGraphBot(monitor_channel_id=1)
-    message = DummyMessage("you are an idiot")
+
+    message = DummyMessage("hello again")
     await bot.on_message(message)
 
-    assert "Oh, how original." not in message.channel.sent_messages
+    trend = await sg.get_sentiment_trend(message.author.id, message.channel.id)
+    expected = sg.TextBlob(message.content).sentiment.polarity
+    assert trend == (expected, 1)
 
