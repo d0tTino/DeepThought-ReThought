@@ -148,6 +148,12 @@ Install the optional dependencies:
 pip install discord.py aiohttp aiosqlite textblob
 ```
 
+After installing TextBlob, download its corpora:
+
+```bash
+python -m textblob.download_corpora
+```
+
 Set the environment variables used by the bot:
 
 ```bash
