@@ -13,7 +13,7 @@ from textblob import TextBlob
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = "social_graph.db"
+DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
 
 # Configuration values
 MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))

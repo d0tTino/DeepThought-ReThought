@@ -44,6 +44,7 @@ pip install discord.py aiohttp aiosqlite textblob
 
 export DISCORD_TOKEN=your_token
 export MONITOR_CHANNEL=1234567890
+export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
 
 python examples/social_graph_bot.py
 ```

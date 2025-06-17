@@ -153,6 +153,7 @@ Set the environment variables used by the bot:
 ```bash
 export DISCORD_TOKEN=your_token
 export MONITOR_CHANNEL=1234567890
+export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
 ```
 
 Run the bot:
