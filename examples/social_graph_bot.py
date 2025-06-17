@@ -90,6 +90,14 @@ async def init_db():
             )
             """
         )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_flags (
+                user_id TEXT PRIMARY KEY,
+                do_not_mock INTEGER
+            )
+            """
+        )
         await db.commit()
 
 
