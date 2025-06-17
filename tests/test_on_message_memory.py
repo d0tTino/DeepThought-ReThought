@@ -133,6 +133,7 @@ async def test_bullying_triggers_mocking(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_bullying_respects_do_not_mock(tmp_path, monkeypatch):
+
     sg.DB_PATH = str(tmp_path / "sg.db")
     await sg.init_db()
 
@@ -142,6 +143,7 @@ async def test_bullying_respects_do_not_mock(tmp_path, monkeypatch):
     f = asyncio.Future()
     f.set_result((set(), set()))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
@@ -157,3 +159,4 @@ async def test_bullying_respects_do_not_mock(tmp_path, monkeypatch):
     await bot.on_message(message)
 
     assert "Oh, how original." not in message.channel.sent_messages
+
