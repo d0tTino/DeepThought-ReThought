@@ -1,4 +1,5 @@
 import asyncio
+import random
 
 import aiosqlite
 import pytest
@@ -103,8 +104,35 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
 
 
 @pytest.mark.asyncio
-async def test_on_message_calls_send_to_prism_when_mentioned(tmp_path, monkeypatch, prism_calls):
-    """send_to_prism should still be invoked when the bot is mentioned."""
+async def test_bullying_triggers_mocking(tmp_path, monkeypatch):
+    sg.DB_PATH = str(tmp_path / "sg.db")
+    await sg.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set()))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+
+    async def not_protected(uid):
+        return False
+
+    monkeypatch.setattr(sg, "is_do_not_mock", not_protected)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    message = DummyMessage("you are an idiot")
+    await bot.on_message(message)
+
+    assert "Oh, how original." in message.channel.sent_messages
+
+
+@pytest.mark.asyncio
+async def test_bullying_respects_do_not_mock(tmp_path, monkeypatch):
 
     sg.DB_PATH = str(tmp_path / "sg.db")
     await sg.init_db()
@@ -112,22 +140,23 @@ async def test_on_message_calls_send_to_prism_when_mentioned(tmp_path, monkeypat
     async def noop(*args, **kwargs):
         return None
 
-    bots = set(range(sg.MAX_BOT_SPEAKERS + 1))
     f = asyncio.Future()
-    f.set_result((bots, set()))
+    f.set_result((set(), set()))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
 
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
 
+    async def protected(uid):
+        return True
+
+    monkeypatch.setattr(sg, "is_do_not_mock", protected)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+
     bot = sg.SocialGraphBot(monitor_channel_id=1)
-
-    message = DummyMessage("mention prism")
-    message.mentions = [bot.user]
-
+    message = DummyMessage("you are an idiot")
     await bot.on_message(message)
 
-    assert len(prism_calls) == 1
-    assert prism_calls[0]["content"] == "mention prism"
+    assert "Oh, how original." not in message.channel.sent_messages
 
