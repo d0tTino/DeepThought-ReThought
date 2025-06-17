@@ -23,9 +23,9 @@ This document lists actionable tasks derived from the project documentation and 
 
 ## Documentation
 - [x] Convert information from the old `.docx` progress report to Markdown.
-- [ ] Record any environment-specific steps in `docs/setup_log.md`.
+- [x] Record any environment-specific steps in `docs/setup_log.md`.
 
-Remaining tasks include implementing bullying detection, sentiment trend tracking, and honoring `do_not_mock` flags. Environment-specific steps should also be added to `docs/setup_log.md`.
+Remaining tasks include implementing bullying detection, sentiment trend tracking, and honoring `do_not_mock` flags.
 
 For additional context on the Discord bot development phases, see
 [Discord Bot Phase Report](discord_bot_phase_report.md).
