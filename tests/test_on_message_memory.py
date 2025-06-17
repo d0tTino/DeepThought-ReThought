@@ -1,4 +1,5 @@
 import asyncio
+import random
 
 import aiosqlite
 import pytest
@@ -116,6 +117,7 @@ async def test_update_sentiment_trend(tmp_path):
 
 @pytest.mark.asyncio
 async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
+
     sg.DB_PATH = str(tmp_path / "sg.db")
     await sg.init_db()
 
@@ -126,6 +128,7 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
     f.set_result((set(), set()))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
+
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
@@ -138,3 +141,4 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
     trend = await sg.get_sentiment_trend(message.author.id, message.channel.id)
     expected = sg.TextBlob(message.content).sentiment.polarity
     assert trend == (expected, 1)
+

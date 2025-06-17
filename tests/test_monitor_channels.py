@@ -66,3 +66,36 @@ async def test_monitor_channels_idle_prompt(monkeypatch):
     await sg.monitor_channels(bot, 1)
 
     assert channel.sent_messages == ["ping"]
+
+
+@pytest.mark.asyncio
+async def test_monitor_channels_idle_prompt_old_message(monkeypatch):
+    """Send a prompt when the last message is older than the idle timeout."""
+    channel = DummyChannel()
+    bot = DummyBot(channel)
+
+    from datetime import timedelta
+
+    from discord.utils import utcnow
+
+    class DummyMessage:
+        def __init__(self, created_at):
+            self.created_at = created_at
+
+    async def history_gen():
+        yield DummyMessage(utcnow() - timedelta(minutes=sg.IDLE_TIMEOUT_MINUTES + 1))
+
+    channel.history = lambda limit=1: history_gen()
+
+    monkeypatch.setattr(sg, "idle_response_candidates", ["ping"])  # deterministic prompt
+
+    async def fake_sleep(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+
+    await sg.monitor_channels(bot, 1)
+
+    assert channel.sent_messages == ["ping"]
