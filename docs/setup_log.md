@@ -34,8 +34,23 @@ Notes: Had to install `build-essential` and `cmake` first for `bitsandbytes` to 
 
 (Add your logs below this line)
 
-Date: 2025-06-16
-User: codex
-OS: Ubuntu 22.04
-Notes: Confirmed repo tests pass with Python 3.10
+Date: 2024-05-01
+User: ExampleSetup
+OS: Ubuntu 22.04 LTS
+Python: 3.11.4 (venv)
+NATS Server: v2.9 (Docker)
 
+Install & Start Commands:
+```bash
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+# Install dependencies
+pip install -r requirements.txt
+# Start NATS with JetStream enabled
+docker run --rm -p 4222:4222 -p 8222:8222 nats:latest -js
+# Initialize JetStream streams
+python setup_jetstream.py
+```
+
+Notes: Everything worked out of the box. Feel free to add your own setup notes below!
