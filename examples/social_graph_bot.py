@@ -101,10 +101,7 @@ async def store_memory(
     topic: str = "",
     sentiment_score: float | None = None,
 ) -> None:
-    """Persist a memory snippet with optional sentiment analysis."""
-    if sentiment_score is None:
-        blob = TextBlob(memory)
-        sentiment_score = blob.sentiment.polarity
+    """Persist a memory snippet."""
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
