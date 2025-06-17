@@ -100,3 +100,41 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
 
     assert len(prism_calls) == 1
     assert prism_calls[0]["content"] == "send prism"
+
+
+@pytest.mark.asyncio
+async def test_update_sentiment_trend(tmp_path):
+    sg.DB_PATH = str(tmp_path / "sg.db")
+    await sg.init_db()
+
+    await sg.update_sentiment_trend("u1", "c1", 0.2)
+    await sg.update_sentiment_trend("u1", "c1", -0.1)
+
+    row = await sg.get_sentiment_trend("u1", "c1")
+    assert row == (0.1, 2)
+
+
+@pytest.mark.asyncio
+async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
+    sg.DB_PATH = str(tmp_path / "sg.db")
+    await sg.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set()))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+
+    message = DummyMessage("hello again")
+    await bot.on_message(message)
+
+    trend = await sg.get_sentiment_trend(message.author.id, message.channel.id)
+    expected = sg.TextBlob(message.content).sentiment.polarity
+    assert trend == (expected, 1)
