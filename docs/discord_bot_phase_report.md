@@ -41,6 +41,12 @@ Install optional packages and run the bot:
 
 ```bash
 pip install discord.py aiohttp aiosqlite textblob
+```
+
+After installing TextBlob, download its corpora:
+
+```bash
+python -m textblob.download_corpora
 
 export DISCORD_TOKEN=your_token
 export MONITOR_CHANNEL=1234567890
