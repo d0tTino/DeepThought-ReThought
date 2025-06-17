@@ -18,10 +18,10 @@ This checklist breaks down the major steps from the full report. Use it to track
 - [x] Provide a recall function to fetch recent memories for a user.
 - [x] Detect crowded channels and limit bot chatter when multiple bots are present.
 - [x] Generate posts automatically after long idle periods.
-- [ ] Implement bullying detection and optional sarcastic replies.
-- [ ] Aggregate sentiment trends for thematic modeling.
+- [x] Implement bullying detection and optional sarcastic replies.
+- [x] Aggregate sentiment trends for thematic modeling.
 - [x] Maintain theories about users and reply cryptically when asked.
 - [x] Queue messages for delayed analysis and thoughtful responses.
 
-Remaining tasks include implementing bullying detection, sentiment trend aggregation, and creating a simple `bot.py` entrypoint.
+Remaining tasks include creating a simple `bot.py` entrypoint.
 
