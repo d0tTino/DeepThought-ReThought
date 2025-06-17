@@ -172,6 +172,43 @@ python examples/prism_server.py
 The bot's `send_to_prism` function posts JSON data to
 `http://localhost:5000/receive_data`.
 
+### Idle Channel Monitoring
+
+The example bot can gently revive a quiet channel. The `monitor_channels`
+function checks for recent activity and posts a random prompt if no one has
+spoken for a configurable number of minutes:
+
+```python
+async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
+    """Monitor a channel and occasionally speak during idle periods."""
+    await bot.wait_until_ready()
+    channel = bot.get_channel(channel_id)
+    while not bot.is_closed():
+        last_message = None
+        async for msg in channel.history(limit=1):
+            last_message = msg
+            break
+
+        if not last_message:
+            prompt = random.choice(idle_response_candidates)
+            async with channel.typing():
+                await asyncio.sleep(random.uniform(3, 10))
+                await channel.send(prompt)
+        else:
+            idle_minutes = (
+                discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)
+            ).total_seconds() / 60
+            if idle_minutes >= IDLE_TIMEOUT_MINUTES:
+                prompt = random.choice(idle_response_candidates)
+                async with channel.typing():
+                    await asyncio.sleep(random.uniform(3, 10))
+                    await channel.send(prompt)
+        await asyncio.sleep(60)
+```
+
+Set the `IDLE_TIMEOUT_MINUTES` environment variable to control the inactivity
+threshold. By default the bot waits five minutes before sending a prompt.
+
 ## Discord Bot Roadmap
 
 For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
