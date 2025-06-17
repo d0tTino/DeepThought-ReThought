@@ -25,7 +25,6 @@ This document lists actionable tasks derived from the project documentation and 
 - [x] Convert information from the old `.docx` progress report to Markdown.
 - [x] Record any environment-specific steps in `docs/setup_log.md`.
 
-Remaining tasks include creating a simple `bot.py` entrypoint and addressing any open issues.
 
 For additional context on the Discord bot development phases, see
 [Discord Bot Phase Report](discord_bot_phase_report.md).

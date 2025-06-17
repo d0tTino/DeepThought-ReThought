@@ -6,7 +6,7 @@ This checklist breaks down the major steps from the full report. Use it to track
 
 - [x] Initialize a new Discord bot with the required intents.
 - [x] Set up the Python project and virtual environment.
-- [ ] Implement basic `bot.py` that logs in and reports readiness.
+- [x] Implement basic `bot.py` that logs in and reports readiness.
 - [x] Integrate sentiment analysis using TextBlob or VADER.
 - [x] Create a SQLite database and log user interactions.
 - [x] Monitor idle channels and send prompts when no one is active.
@@ -23,5 +23,4 @@ This checklist breaks down the major steps from the full report. Use it to track
 - [x] Maintain theories about users and reply cryptically when asked.
 - [x] Queue messages for delayed analysis and thoughtful responses.
 
-Remaining tasks include creating a simple `bot.py` entrypoint.
 
