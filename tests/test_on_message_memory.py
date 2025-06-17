@@ -103,34 +103,31 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
 
 
 @pytest.mark.asyncio
-async def test_on_message_multiple_messages(tmp_path, monkeypatch):
-    """Each message should result in exactly one memory record."""
+async def test_on_message_calls_send_to_prism_when_mentioned(tmp_path, monkeypatch, prism_calls):
+    """send_to_prism should still be invoked when the bot is mentioned."""
+
     sg.DB_PATH = str(tmp_path / "sg.db")
     await sg.init_db()
 
     async def noop(*args, **kwargs):
         return None
 
+    bots = set(range(sg.MAX_BOT_SPEAKERS + 1))
     f = asyncio.Future()
-    f.set_result((set(), set()))
+    f.set_result((bots, set()))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
-    monkeypatch.setattr(sg, "send_to_prism", noop)
+
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
 
-    m1 = DummyMessage("first")
-    m2 = DummyMessage("second", message_id=11)
-    await bot.on_message(m1)
-    await bot.on_message(m2)
+    message = DummyMessage("mention prism")
+    message.mentions = [bot.user]
 
-    async with aiosqlite.connect(sg.DB_PATH) as db:
-        async with db.execute(
-            "SELECT COUNT(*) FROM memories WHERE user_id=?",
-            (str(m1.author.id),),
-        ) as cur:
-            count_row = await cur.fetchone()
+    await bot.on_message(message)
 
-    assert count_row[0] == 2
+    assert len(prism_calls) == 1
+    assert prism_calls[0]["content"] == "mention prism"
+
