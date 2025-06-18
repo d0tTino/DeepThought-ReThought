@@ -263,10 +263,24 @@ class DBManager:
             return bool(row[0]) if row else False
 
 
+DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
+LAST_INIT_PATH = DB_PATH
 
 
 async def init_db() -> None:
+    """Initialize the database, respecting any updated ``DB_PATH`` value."""
+    global db_manager, DB_PATH, LAST_INIT_PATH
+    if DB_PATH != LAST_INIT_PATH:
+        # ``DB_PATH`` was updated since the last init call
+        if db_manager.db_path != DB_PATH:
+            await db_manager.close()
+            db_manager = DBManager(DB_PATH)
+        LAST_INIT_PATH = DB_PATH
+    elif db_manager.db_path != DB_PATH:
+        # ``db_manager`` was replaced without updating ``DB_PATH``
+        DB_PATH = db_manager.db_path
+        LAST_INIT_PATH = DB_PATH
     await db_manager.init_db()
 
 
