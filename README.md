@@ -160,6 +160,7 @@ Set the environment variables used by the bot:
 export DISCORD_TOKEN=your_token
 export MONITOR_CHANNEL=1234567890
 export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
+export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
 ```
 
 Run the bot:
@@ -182,8 +183,9 @@ To test Prism integration, start the simple Flask server:
 python examples/prism_server.py
 ```
 
-The bot's `send_to_prism` function posts JSON data to
-`http://localhost:5000/receive_data`.
+The bot's `send_to_prism` function posts JSON data to the endpoint
+defined by the `PRISM_ENDPOINT` environment variable (default:
+`http://localhost:5000/receive_data`).
 
 ### Idle Channel Monitoring
 
