@@ -22,6 +22,10 @@ IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "5"))
 REFLECTION_CHECK_SECONDS = int(os.getenv("REFLECTION_CHECK_SECONDS", "300"))
 SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
 
+# Optional bot-to-bot chatter configuration
+# Accepts values like "true", "1", or "yes" (case-insensitive)
+BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {"true", "1", "yes"}
+
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
     "Ever feel like everyone vanished?",
@@ -309,6 +313,14 @@ async def who_is_active(channel: discord.TextChannel, limit: int = 20):
     return bots, humans
 
 
+async def last_human_message_age(channel: discord.TextChannel, limit: int = 50):
+    """Return minutes since the most recent human message or ``None`` if none."""
+    async for msg in channel.history(limit=limit):
+        if not msg.author.bot:
+            return (discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+    return None
+
+
 async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
     """Monitor a channel and occasionally speak during idle periods."""
     await bot.wait_until_ready()
@@ -319,19 +331,32 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
             last_message = msg
             break
 
+        respond_to = None
+        send_prompt = False
         if not last_message:
-            prompt = random.choice(idle_response_candidates)
-            async with channel.typing():
-                await asyncio.sleep(random.uniform(3, 10))
-                await channel.send(prompt)
+            send_prompt = True
         else:
             idle_minutes = (
                 discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)
             ).total_seconds() / 60
             if idle_minutes >= IDLE_TIMEOUT_MINUTES:
-                prompt = random.choice(idle_response_candidates)
-                async with channel.typing():
-                    await asyncio.sleep(random.uniform(3, 10))
+                send_prompt = True
+            elif BOT_CHAT_ENABLED:
+                bots, humans = await who_is_active(channel)
+                if bots and not humans:
+                    age = await last_human_message_age(channel)
+                    if age is None or age >= IDLE_TIMEOUT_MINUTES:
+                        send_prompt = True
+                        if last_message.author.bot:
+                            respond_to = last_message
+
+        if send_prompt:
+            prompt = random.choice(idle_response_candidates)
+            async with channel.typing():
+                await asyncio.sleep(random.uniform(3, 10))
+                if respond_to is not None:
+                    await channel.send(prompt, reference=respond_to)
+                else:
                     await channel.send(prompt)
         await asyncio.sleep(60)
 
