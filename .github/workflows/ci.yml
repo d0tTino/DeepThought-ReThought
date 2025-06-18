@@ -2,8 +2,22 @@ name: CI
 
 on:
   pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'examples/**'
+      - '**/*.py'
+      - '**/*.cs'
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'examples/**'
+      - '**/*.py'
+      - '**/*.cs'
 
 jobs:
   detect_changes:
