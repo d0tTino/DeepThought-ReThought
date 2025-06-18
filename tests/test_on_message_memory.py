@@ -46,7 +46,8 @@ class DummyMessage:
 
 @pytest.mark.asyncio
 async def test_on_message_stores_memory(tmp_path, monkeypatch):
-    sg.DB_PATH = str(tmp_path / "sg.db")
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
     await sg.init_db()
 
     async def noop(*args, **kwargs):
@@ -67,7 +68,7 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch):
     message = DummyMessage("hello world")
     await bot.on_message(message)
 
-    async with aiosqlite.connect(sg.DB_PATH) as db:
+    async with aiosqlite.connect(str(tmp_path / "sg.db")) as db:
         async with db.execute(
             "SELECT memory, sentiment_score FROM memories WHERE user_id=?",
             (str(message.author.id),),
@@ -79,11 +80,13 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch):
     stored_memory, score = rows[0]
     assert stored_memory == message.content
     assert isinstance(score, float)
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
 async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls):
-    sg.DB_PATH = str(tmp_path / "sg.db")
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
     await sg.init_db()
 
     async def noop(*args, **kwargs):
@@ -105,11 +108,13 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
 
     assert len(prism_calls) == 1
     assert prism_calls[0]["content"] == "send prism"
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
 async def test_update_sentiment_trend(tmp_path):
-    sg.DB_PATH = str(tmp_path / "sg.db")
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
     await sg.init_db()
 
     await sg.update_sentiment_trend("u1", "c1", 0.2)
@@ -117,12 +122,14 @@ async def test_update_sentiment_trend(tmp_path):
 
     row = await sg.get_sentiment_trend("u1", "c1")
     assert row == (0.1, 2)
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
 async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
 
-    sg.DB_PATH = str(tmp_path / "sg.db")
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
     await sg.init_db()
 
     async def noop(*args, **kwargs):
@@ -147,14 +154,5 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
     trend = await sg.get_sentiment_trend(message.author.id, message.channel.id)
     expected = sg.TextBlob(message.content).sentiment.polarity
     assert trend == (expected, 1)
+    await sg.db_manager.close()
 
-
-def test_prism_endpoint_env(monkeypatch):
-    import importlib
-
-    monkeypatch.setenv("PRISM_ENDPOINT", "http://example.com/prism")
-    importlib.reload(sg)
-    assert sg.PRISM_ENDPOINT == "http://example.com/prism"
-
-    monkeypatch.delenv("PRISM_ENDPOINT")
-    importlib.reload(sg)

@@ -36,10 +36,26 @@ idle_response_candidates = [
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
 
 
-async def init_db():
-    """Initialize the SQLite database for tracking interactions and memories."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+class DBManager:
+    """Lightweight wrapper managing a single aiosqlite connection."""
+
+    def __init__(self, db_path: str = DB_PATH) -> None:
+        self.db_path = db_path
+        self._db: aiosqlite.Connection | None = None
+
+    async def connect(self) -> None:
+        if self._db is None:
+            self._db = await aiosqlite.connect(self.db_path)
+
+    async def close(self) -> None:
+        if self._db is not None:
+            await self._db.close()
+            self._db = None
+
+    async def init_db(self) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS interactions (
                 user_id TEXT,
@@ -48,7 +64,7 @@ async def init_db():
             )
             """
         )
-        await db.execute(
+        await self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS memories (
                 user_id TEXT,
@@ -59,7 +75,7 @@ async def init_db():
             )
             """
         )
-        await db.execute(
+        await self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS theories (
                 subject_id TEXT,
@@ -70,7 +86,7 @@ async def init_db():
             )
             """
         )
-        await db.execute(
+        await self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS queued_tasks (
                 task_id INTEGER PRIMARY KEY,
@@ -82,7 +98,7 @@ async def init_db():
             )
             """
         )
-        await db.execute(
+        await self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS sentiment_trends (
                 user_id TEXT,
@@ -94,7 +110,7 @@ async def init_db():
             )
             """
         )
-        await db.execute(
+        await self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS user_flags (
                 user_id TEXT PRIMARY KEY,
@@ -102,24 +118,160 @@ async def init_db():
             )
             """
         )
-        await db.commit()
+        await self._db.commit()
 
-
-async def log_interaction(user_id: int, target_id: int) -> None:
-    """Insert a user interaction record into the database."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+    async def log_interaction(self, user_id: int, target_id: int) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
             "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
             (str(user_id), str(target_id)),
         )
-        await db.commit()
+        await self._db.commit()
+
+    async def recall_user(self, user_id: int):
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT topic, memory FROM memories WHERE user_id= ?",
+            (str(user_id),),
+        ) as cur:
+            return await cur.fetchall()
+
+    async def store_memory(
+        self,
+        user_id: int,
+        memory: str,
+        topic: str = "",
+        sentiment_score: float | None = None,
+    ) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
+            (str(user_id), topic, memory, sentiment_score),
+        )
+        await self._db.commit()
+
+    async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO theories (subject_id, theory, confidence)
+            VALUES (?, ?, ?)
+            ON CONFLICT(subject_id, theory) DO UPDATE SET
+                confidence=excluded.confidence,
+                updated=CURRENT_TIMESTAMP
+            """,
+            (str(subject_id), theory, confidence),
+        )
+        await self._db.commit()
+
+    async def get_theories(self, subject_id: int):
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT theory, confidence FROM theories WHERE subject_id=?",
+            (str(subject_id),),
+        ) as cur:
+            return await cur.fetchall()
+
+    async def update_sentiment_trend(
+        self,
+        user_id: int,
+        channel_id: int,
+        sentiment_score: float,
+    ) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO sentiment_trends (user_id, channel_id, sentiment_sum, message_count)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(user_id, channel_id) DO UPDATE SET
+                sentiment_sum=sentiment_trends.sentiment_sum + excluded.sentiment_sum,
+                message_count=sentiment_trends.message_count + 1
+            """,
+            (str(user_id), str(channel_id), sentiment_score),
+        )
+        await self._db.commit()
+
+    async def get_sentiment_trend(self, user_id: int, channel_id: int):
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT sentiment_sum, message_count FROM sentiment_trends WHERE user_id=? AND channel_id=?",
+            (str(user_id), str(channel_id)),
+        ) as cur:
+            return await cur.fetchone()
+
+    async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
+        await self.connect()
+        assert self._db
+        cur = await self._db.execute(
+            "INSERT INTO queued_tasks (user_id, context, prompt) VALUES (?, ?, ?)",
+            (str(user_id), json.dumps(context), prompt),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def list_pending_tasks(self):
+        """Return pending reflection tasks."""
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT task_id, user_id, context, prompt FROM queued_tasks WHERE status='pending'"
+        ) as cur:
+            return await cur.fetchall()
+
+    async def mark_task_done(self, task_id: int) -> None:
+        """Mark a queued task as completed."""
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "UPDATE queued_tasks SET status='done' WHERE task_id=?",
+            (task_id,),
+        )
+        await self._db.commit()
+
+    async def set_do_not_mock(self, user_id: int, flag: bool = True) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO user_flags (user_id, do_not_mock)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET do_not_mock=excluded.do_not_mock
+            """,
+            (str(user_id), int(flag)),
+        )
+        await self._db.commit()
+
+    async def is_do_not_mock(self, user_id: int) -> bool:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT do_not_mock FROM user_flags WHERE user_id=?",
+            (str(user_id),),
+        ) as cur:
+            row = await cur.fetchone()
+            return bool(row[0]) if row else False
+
+
+db_manager = DBManager()
+
+
+async def init_db() -> None:
+    await db_manager.init_db()
+
+
+async def log_interaction(user_id: int, target_id: int) -> None:
+    await db_manager.log_interaction(user_id, target_id)
 
 
 async def recall_user(user_id: int):
-    """Retrieve memories for a given user."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT topic, memory FROM memories WHERE user_id = ?", (str(user_id),)) as cur:
-            return await cur.fetchall()
+    return await db_manager.recall_user(user_id)
 
 
 async def store_memory(
@@ -128,14 +280,7 @@ async def store_memory(
     topic: str = "",
     sentiment_score: float | None = None,
 ) -> None:
-    """Persist a memory snippet."""
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
-            (str(user_id), topic, memory, sentiment_score),
-        )
-        await db.commit()
+    await db_manager.store_memory(user_id, memory, topic=topic, sentiment_score=sentiment_score)
 
 
 async def send_to_prism(data: dict) -> None:
@@ -148,29 +293,11 @@ async def send_to_prism(data: dict) -> None:
 
 
 async def store_theory(subject_id: int, theory: str, confidence: float) -> None:
-    """Persist an inferred theory about a user."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            """
-            INSERT INTO theories (subject_id, theory, confidence)
-            VALUES (?, ?, ?)
-            ON CONFLICT(subject_id, theory) DO UPDATE SET
-                confidence=excluded.confidence,
-                updated=CURRENT_TIMESTAMP
-            """,
-            (str(subject_id), theory, confidence),
-        )
-        await db.commit()
+    return await db_manager.store_theory(subject_id, theory, confidence)
 
 
 async def get_theories(subject_id: int):
-    """Retrieve stored theories about a subject."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT theory, confidence FROM theories WHERE subject_id=?",
-            (str(subject_id),),
-        ) as cur:
-            return await cur.fetchall()
+    return await db_manager.get_theories(subject_id)
 
 
 async def update_sentiment_trend(
@@ -178,65 +305,23 @@ async def update_sentiment_trend(
     channel_id: int,
     sentiment_score: float,
 ) -> None:
-    """Update cumulative sentiment metrics for a user and channel."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            """
-            INSERT INTO sentiment_trends (user_id, channel_id, sentiment_sum, message_count)
-            VALUES (?, ?, ?, 1)
-            ON CONFLICT(user_id, channel_id) DO UPDATE SET
-                sentiment_sum=sentiment_trends.sentiment_sum + excluded.sentiment_sum,
-                message_count=sentiment_trends.message_count + 1
-            """,
-            (str(user_id), str(channel_id), sentiment_score),
-        )
-        await db.commit()
+    await db_manager.update_sentiment_trend(user_id, channel_id, sentiment_score)
 
 
 async def get_sentiment_trend(user_id: int, channel_id: int):
-    """Retrieve cumulative sentiment statistics."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT sentiment_sum, message_count FROM sentiment_trends WHERE user_id=? AND channel_id=?",
-            (str(user_id), str(channel_id)),
-        ) as cur:
-            return await cur.fetchone()
+    return await db_manager.get_sentiment_trend(user_id, channel_id)
 
 
 async def queue_deep_reflection(user_id: int, context: dict, prompt: str) -> int:
-    """Add a deep reflection task to the queue."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
-            "INSERT INTO queued_tasks (user_id, context, prompt) VALUES (?, ?, ?)",
-            (str(user_id), json.dumps(context), prompt),
-        )
-        await db.commit()
-        return cur.lastrowid
+    return await db_manager.queue_deep_reflection(user_id, context, prompt)
 
 
 async def set_do_not_mock(user_id: int, flag: bool = True) -> None:
-    """Set or unset the do_not_mock flag for a user."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            """
-            INSERT INTO user_flags (user_id, do_not_mock)
-            VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET do_not_mock=excluded.do_not_mock
-            """,
-            (str(user_id), int(flag)),
-        )
-        await db.commit()
+    await db_manager.set_do_not_mock(user_id, flag)
 
 
 async def is_do_not_mock(user_id: int) -> bool:
-    """Return True if the user is protected from mock replies."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT do_not_mock FROM user_flags WHERE user_id=?",
-            (str(user_id),),
-        ) as cur:
-            row = await cur.fetchone()
-            return bool(row[0]) if row else False
+    return await db_manager.is_do_not_mock(user_id)
 
 
 def generate_reflection(prompt: str) -> str:
@@ -256,36 +341,28 @@ async def process_deep_reflections(bot: discord.Client) -> None:
     """Background task to process queued reflections."""
     await bot.wait_until_ready()
     while not bot.is_closed():
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
-                "SELECT task_id, user_id, context, prompt FROM queued_tasks WHERE status='pending'"
-            ) as cur:
-                rows = await cur.fetchall()
-            if not rows:
-                logger.debug("No queued reflections to process")
-            for task_id, user_id, ctx_json, prompt in rows:
-                context = json.loads(ctx_json)
-                channel = bot.get_channel(int(context.get("channel_id")))
-                msg_id = context.get("message_id")
-                ref = None
-                if channel and msg_id:
-                    try:
-                        ref = await channel.fetch_message(int(msg_id))
-                    except Exception:
-                        ref = None
-                if channel:
-                    await asyncio.sleep(2)
-                    reflection = generate_reflection(prompt)
-                    logger.info(f"Posting deep reflection for task {task_id}")
-                    await channel.send(
-                        f"After some thought... {reflection}",
-                        reference=ref,
-                    )
-                await db.execute(
-                    "UPDATE queued_tasks SET status='done' WHERE task_id=?",
-                    (task_id,),
+        rows = await db_manager.list_pending_tasks()
+        if not rows:
+            logger.debug("No queued reflections to process")
+        for task_id, user_id, ctx_json, prompt in rows:
+            context = json.loads(ctx_json)
+            channel = bot.get_channel(int(context.get("channel_id")))
+            msg_id = context.get("message_id")
+            ref = None
+            if channel and msg_id:
+                try:
+                    ref = await channel.fetch_message(int(msg_id))
+                except Exception:
+                    ref = None
+            if channel:
+                await asyncio.sleep(2)
+                reflection = generate_reflection(prompt)
+                logger.info(f"Posting deep reflection for task {task_id}")
+                await channel.send(
+                    f"After some thought... {reflection}",
+                    reference=ref,
                 )
-            await db.commit()
+            await db_manager.mark_task_done(task_id)
         await asyncio.sleep(REFLECTION_CHECK_SECONDS)
 
 
@@ -351,6 +428,7 @@ class SocialGraphBot(discord.Client):
         self.monitor_channel_id = monitor_channel_id
 
     async def setup_hook(self) -> None:
+        await db_manager.connect()
         await init_db()
         self.loop.create_task(monitor_channels(self, self.monitor_channel_id))
         self.loop.create_task(process_deep_reflections(self))
