@@ -18,7 +18,7 @@ feature.
    Replace `<OWNER>` and `<REPO>` with your repository information. The token is generated on the GitHub page and is time limited.
 5. Start the runner with `./run.sh` or install it as a service using `./svc.sh install` followed by `./svc.sh start`.
 
-Once the runner is online, you can change `.github/workflows/ci.yml` to target it by setting the job's `runs-on` value to:
+Once the runner is online, update `.github/workflows/ci.yml` whenever a job should run on your self-hosted machine instead of GitHub's hosted runners. Set the job's `runs-on` field to:
 
 ```yaml
 runs-on: ["self-hosted", "linux"]
