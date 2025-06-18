@@ -45,7 +45,8 @@ class DummyMessage:
 
 @pytest.mark.asyncio
 async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch):
-    sg.DB_PATH = str(tmp_path / "sg.db")
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
     await sg.init_db()
 
     async def noop(*args, **kwargs):
@@ -75,11 +76,13 @@ async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch):
     await bot.on_message(message)
 
     assert "Oh, how original." in message.channel.sent_messages
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
 async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch):
-    sg.DB_PATH = str(tmp_path / "sg.db")
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
     await sg.init_db()
 
     async def noop(*args, **kwargs):
@@ -109,3 +112,4 @@ async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch):
     await bot.on_message(message)
 
     assert "Oh, how original." not in message.channel.sent_messages
+    await sg.db_manager.close()

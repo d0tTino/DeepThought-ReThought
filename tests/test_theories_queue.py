@@ -7,56 +7,64 @@ import examples.social_graph_bot as sg
 @pytest.mark.asyncio
 async def test_store_theory(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.DB_PATH = str(db_file)
+    sg.db_manager = sg.DBManager(str(db_file))
+    await sg.db_manager.connect()
     await sg.init_db()
     await sg.store_theory("u1", "insomniac", 0.5)
-    async with aiosqlite.connect(sg.DB_PATH) as db:
+    async with aiosqlite.connect(str(db_file)) as db:
         async with db.execute("SELECT theory FROM theories WHERE subject_id=?", ("u1",)) as cur:
             row = await cur.fetchone()
     assert row[0] == "insomniac"
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
 async def test_store_theory_update(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.DB_PATH = str(db_file)
+    sg.db_manager = sg.DBManager(str(db_file))
+    await sg.db_manager.connect()
     await sg.init_db()
     await sg.store_theory("u1", "insomniac", 0.5)
     await sg.store_theory("u1", "insomniac", 0.8)
-    async with aiosqlite.connect(sg.DB_PATH) as db:
+    async with aiosqlite.connect(str(db_file)) as db:
         async with db.execute(
             "SELECT confidence FROM theories WHERE subject_id=? AND theory=?",
             ("u1", "insomniac"),
         ) as cur:
             row = await cur.fetchone()
     assert row[0] == 0.8
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
 async def test_store_memory(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.DB_PATH = str(db_file)
+    sg.db_manager = sg.DBManager(str(db_file))
+    await sg.db_manager.connect()
     await sg.init_db()
     await sg.store_memory("u1", "hello", sentiment_score=0.3)
-    async with aiosqlite.connect(sg.DB_PATH) as db:
+    async with aiosqlite.connect(str(db_file)) as db:
         async with db.execute(
             "SELECT memory, sentiment_score FROM memories WHERE user_id=?",
             ("u1",),
         ) as cur:
             row = await cur.fetchone()
     assert row == ("hello", 0.3)
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
 async def test_queue_deep_reflection(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.DB_PATH = str(db_file)
+    sg.db_manager = sg.DBManager(str(db_file))
+    await sg.db_manager.connect()
     await sg.init_db()
     task_id = await sg.queue_deep_reflection("u2", {"channel_id": 1}, "hello")
-    async with aiosqlite.connect(sg.DB_PATH) as db:
+    async with aiosqlite.connect(str(db_file)) as db:
         async with db.execute("SELECT status FROM queued_tasks WHERE task_id=?", (task_id,)) as cur:
             row = await cur.fetchone()
     assert row[0] == "pending"
+    await sg.db_manager.close()
 
 
 def test_evaluate_triggers():
