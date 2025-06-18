@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
 
+# limit to one concurrent run per branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
