@@ -264,7 +264,9 @@ class DBManager:
             return bool(row[0]) if row else False
 
 
+DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
+LAST_INIT_PATH = DB_PATH
 
 async def init_db(db_path: str | None = None) -> None:
     """Initialize the database, recreating the manager when the path changes."""
