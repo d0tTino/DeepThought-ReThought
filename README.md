@@ -318,9 +318,11 @@ The project includes a GitHub Actions workflow that runs `flake8` and
 the test suite whenever code changes are detected. Detection is handled by
 [`scripts/check_code_changes.py`](scripts/check_code_changes.py), which
 inspects diffs and skips CI when only documentation or comments change.
-The workflow installs its dependencies from `requirements-ci.txt`.
-If you would like to run the workflow on your own machine, see
-[docs/ci.md](docs/ci.md) for instructions on registering a self-hosted runner.
+The workflow installs its dependencies from `requirements-ci.txt` and
+only triggers for changes on the `main` and `develop` branches. Each run
+is isolated with a concurrency group so outdated jobs are cancelled
+automatically. If you would like to run the workflow on your own machine,
+see [docs/ci.md](docs/ci.md) for instructions on registering a self-hosted runner.
 
 You can run the same check locally:
 

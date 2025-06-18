@@ -1,6 +1,10 @@
 # Continuous Integration
 
-This project uses GitHub Actions for its CI workflow. By default, jobs run on GitHub-hosted runners. If you want to use your own machine, you can register a self-hosted runner and update the workflow accordingly.
+This project uses GitHub Actions for its CI workflow. Jobs run on a self-hosted
+runner for heavy tasks like linting and tests. Lightweight checks still use
+GitHub-hosted runners. Workflows are limited to the `main` and `develop`
+branches and old runs are cancelled automatically via GitHub's concurrency
+feature.
 
 ## Registering a Self-Hosted Runner
 
