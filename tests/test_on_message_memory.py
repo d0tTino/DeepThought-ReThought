@@ -155,3 +155,4 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
     expected = sg.TextBlob(message.content).sentiment.polarity
     assert trend == (expected, 1)
     await sg.db_manager.close()
+

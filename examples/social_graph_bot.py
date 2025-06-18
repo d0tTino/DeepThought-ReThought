@@ -16,6 +16,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 
 DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
 
+# Endpoint for forwarding collected data
+PRISM_ENDPOINT = os.getenv("PRISM_ENDPOINT", "http://localhost:5000/receive_data")
+
 # Configuration values
 MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
 IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "5"))
@@ -284,7 +287,7 @@ async def send_to_prism(data: dict) -> None:
     """Send collected data to a Prism endpoint."""
     try:
         async with aiohttp.ClientSession() as session:
-            await session.post("http://localhost:5000/receive_data", json=data, timeout=5)
+            await session.post(PRISM_ENDPOINT, json=data, timeout=5)
     except Exception as exc:
         logger.warning("Failed to send data to Prism: %s", exc)
 
