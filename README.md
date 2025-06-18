@@ -272,7 +272,12 @@ Tests are implemented using the `pytest` framework. To run the tests:
     * If no server is available, tests that require NATS will be skipped automatically.
     * **For full test coverage, JetStream must be available.** Tests that rely on persistence or streaming features will be skipped when JetStream is not running.
 2.  Navigate to the root directory of the project.
-3.  Run pytest with the project root added to `PYTHONPATH` so the `src` modules
+3.  Install the dependencies used for testing:
+    ```bash
+    pip install -r requirements-ci.txt
+    ```
+    (Use `requirements.txt` instead if you plan to run the full application.)
+4.  Run pytest with the project root added to `PYTHONPATH` so the `src` modules
     are discoverable:
     ```bash
     PYTHONPATH=src pytest
@@ -281,13 +286,13 @@ Tests are implemented using the `pytest` framework. To run the tests:
     ```bash
 PYTHONPATH=src pytest tests/
 ```
-4.  Check code style with flake8:
+5.  Check code style with flake8:
     ```bash
     flake8 src tests
     ```
     The default settings are configured in [.flake8](.flake8).
 
-5.  Install and run the `pre-commit` hooks to automatically format and lint
+6.  Install and run the `pre-commit` hooks to automatically format and lint
     your changes:
     ```bash
     pip install pre-commit
@@ -299,7 +304,7 @@ PYTHONPATH=src pytest tests/
     ```
     The configuration is provided in [.pre-commit-config.yaml](.pre-commit-config.yaml).
 
-6.  Alternatively, run the helper script that mirrors the CI workflow and
+7.  Alternatively, run the helper script that mirrors the CI workflow and
     automates setup:
     ```bash
     ./scripts/codex_setup.sh
