@@ -10,7 +10,7 @@ on:
       - '**/*.py'
       - '**/*.cs'
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - 'src/**'
       - 'tests/**'
@@ -18,21 +18,6 @@ on:
       - 'examples/**'
       - '**/*.py'
       - '**/*.cs'
-
-# limit to one concurrent run per branch
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-# limit to one concurrent run per branch
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-# limit to one concurrent run per branch
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 # limit to one concurrent run per branch
 concurrency:
@@ -62,7 +47,7 @@ jobs:
   lint_and_test:
     needs: detect_changes
     if: needs.detect_changes.outputs.code_changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "linux"]
     strategy:
       fail-fast: false
       matrix:
