@@ -11,6 +11,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Common documentation file extensions to ignore
+DOC_EXTENSIONS = {".md", ".markdown", ".mdown", ".rst", ".txt"}
+
+
+def is_doc_file(path: str) -> bool:
+    """Return True if the path looks like documentation."""
+    p = Path(path)
+    suffix = p.suffix.lower()
+    return suffix in DOC_EXTENSIONS or path.startswith("docs/")
+
 
 def main() -> None:
     """Entry point for the code change checker."""
@@ -39,16 +49,6 @@ def main() -> None:
     result = subprocess.run(diff_args, stdout=subprocess.PIPE, check=True)
 
     changed_files = [f for f in result.stdout.decode().splitlines() if f]
-
-    # Common documentation file extensions to ignore
-    doc_extensions = {".md", ".markdown", ".mdown", ".rst", ".txt"}
-
-    # Helper to determine if a file is documentation
-    def is_doc_file(path: str) -> bool:
-        """Return True if the path looks like documentation."""
-        p = Path(path)
-        suffix = p.suffix.lower()
-        return suffix in doc_extensions or path.startswith("docs/")
 
     # If all changed files are docs, tests are unnecessary
     if changed_files and all(is_doc_file(f) for f in changed_files):
