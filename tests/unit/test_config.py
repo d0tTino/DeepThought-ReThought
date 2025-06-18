@@ -1,4 +1,5 @@
 import json
+
 import yaml
 
 from deepthought.config import load_settings

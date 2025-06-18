@@ -269,6 +269,7 @@ DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
 _manager_id = id(db_manager)
 
+
 async def init_db(db_path: str | None = None) -> None:
     """Initialize the database, recreating the manager when the path changes."""
     global db_manager, CURRENT_DB_PATH
@@ -276,16 +277,13 @@ async def init_db(db_path: str | None = None) -> None:
     target_path = (
         db_path
         if db_path is not None
-        else (
-            DB_PATH if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH else db_manager.db_path
-        )
+        else (DB_PATH if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH else db_manager.db_path)
     )
 
     if db_manager.db_path != target_path:
         if db_manager._db is not None:
             await db_manager.close()
         db_manager = DBManager(target_path)
-
 
     await db_manager.init_db()
     CURRENT_DB_PATH = db_manager.db_path
