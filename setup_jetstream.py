@@ -105,7 +105,8 @@ async def setup_jetstream():
             logger.error("Please ensure your NATS server is started with JetStream enabled (e.g., 'nats-server -js').")
         else:  # General advice for other errors
             logger.error(
-                "An unexpected error occurred. Ensure NATS is running, JetStream is enabled ('-js' flag), and the server is accessible at %s." % NATS_URL
+                "An unexpected error occurred. Ensure NATS is running, JetStream is enabled ('-js' flag), and the server is accessible at %s."
+                % NATS_URL
             )
         sys.exit(1)
     finally:

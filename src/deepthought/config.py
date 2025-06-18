@@ -34,9 +34,7 @@ class Settings(BaseSettings):
     model_path: str = "distilgpt2"
     memory_file: str = "memory.json"
 
-    model_config = SettingsConfigDict(
-        env_prefix="DT_", env_nested_delimiter="__"
-    )
+    model_config = SettingsConfigDict(env_prefix="DT_", env_nested_delimiter="__")
 
 
 def load_settings(config_file: Optional[str] = None) -> Settings:

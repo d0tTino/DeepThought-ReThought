@@ -101,7 +101,6 @@ async def test_full_flow_direct_subscribe(nats_connection):
         all_messages_received = asyncio.Event()
 
         async def message_handler(msg):
-            nonlocal received_messages
             subject = msg.subject
             data = msg.data.decode()
             logger.info(f"Ephemeral consumer received message on subject '{subject}': {data}")

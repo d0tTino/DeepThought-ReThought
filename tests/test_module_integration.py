@@ -123,7 +123,6 @@ async def test_full_module_flow():
 
         # --- Define output callback ---
         def output_callback(input_id, response):
-            nonlocal test_input_id
             logger.info(f"Output callback received response for input_id={input_id}: {response}")
             responses[input_id] = response
             # Only set event if it matches the ID we sent for this test run
@@ -272,7 +271,6 @@ async def test_full_module_flow_graph_memory():
         test_input_id = None
 
         def output_callback(input_id, response):
-            nonlocal test_input_id
             responses[input_id] = response
             if input_id == test_input_id:
                 final_response_received_event.set()
