@@ -1,23 +1,14 @@
-# tests/test_basic.py
+import json
+
+from deepthought.config import load_settings
 
 
-def test_example_basic_assertion():
-    """A basic test that always passes, confirming test setup works."""
-    assert True, "This basic assertion should always pass."
+def test_load_settings_via_env_file(monkeypatch, tmp_path):
+    """Settings should load from a config file referenced by DT_CONFIG_FILE."""
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"nats_url": "nats://envfile:4222", "db": {"host": "envdb"}}))
+    monkeypatch.setenv("DT_CONFIG_FILE", str(cfg))
 
-
-# Example of importing a module
-try:
-    from src.deepthought import config  # Assuming a config.py exists in src/deepthought
-except ImportError:
-    config = None  # Handle if module cannot be imported
-
-
-def test_import_config():
-    """Tests if a core configuration module can be imported."""
-    # This test would fail if 'from src.deepthought import config' fails
-    # Pytest typically handles PYTHONPATH for 'src' if 'src' is at the project root,
-    # but try-except makes it robust.
-    assert (
-        config is not None
-    ), "Failed to import config module from src.deepthought. Check PYTHONPATH and src/deepthought/config.py."
+    settings = load_settings()
+    assert settings.nats_url == "nats://envfile:4222"
+    assert settings.db.host == "envdb"
