@@ -72,7 +72,9 @@ Users would typically incorporate these scripts into their Unity projects and us
         pip install -r requirements.txt
         ```
     *   A trimmed-down `requirements-ci.txt` is included for CI jobs and only
-        contains the packages needed for testing and linting.
+        contains the packages needed for testing and linting. The versions in
+        this file are pinned so CI and local setups use exactly the same
+        dependencies.
 4.  **Initialize JetStream:**
     *   Run the `setup_jetstream.py` script to create the necessary JetStream streams:
         ```bash
@@ -276,6 +278,7 @@ Tests are implemented using the `pytest` framework. To run the tests:
     ```bash
     pip install -r requirements-ci.txt
     ```
+    The pinned versions in this file match the CI environment.
     (Use `requirements.txt` instead if you plan to run the full application.)
 4.  Run pytest with the project root added to `PYTHONPATH` so the `src` modules
     are discoverable:
@@ -319,6 +322,7 @@ the test suite whenever code changes are detected. Detection is handled by
 [`scripts/check_code_changes.py`](scripts/check_code_changes.py), which
 inspects diffs and skips CI when only documentation or comments change.
 The workflow installs its dependencies from `requirements-ci.txt` and
+uses the pinned versions to ensure consistent results across runs. It
 only triggers for changes on the `main` and `develop` branches. Each run
 is isolated with a concurrency group so outdated jobs are cancelled
 automatically. If you would like to run the workflow on your own machine,
