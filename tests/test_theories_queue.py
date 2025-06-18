@@ -126,6 +126,7 @@ class DummyBot:
 @pytest.mark.asyncio
 async def test_process_deep_reflections_posts(tmp_path, monkeypatch):
     sg.DB_PATH = str(tmp_path / "db.sqlite")
+    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
     await sg.init_db()
 
     bot = DummyBot()
@@ -150,6 +151,7 @@ async def test_process_deep_reflections_posts(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_process_deep_reflections_negative(tmp_path, monkeypatch):
     sg.DB_PATH = str(tmp_path / "db.sqlite")
+    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
     await sg.init_db()
 
     bot = DummyBot()

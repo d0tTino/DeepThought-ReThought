@@ -265,6 +265,7 @@ class DBManager:
             return bool(row[0]) if row else False
 
 
+DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
 _manager_id = id(db_manager)
 
@@ -279,6 +280,7 @@ async def init_db() -> None:
         db_manager = DBManager(DB_PATH)
         _manager_id = id(db_manager)
     DB_PATH = db_manager.db_path
+
     await db_manager.init_db()
 
 
