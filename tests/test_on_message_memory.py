@@ -147,3 +147,14 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
     trend = await sg.get_sentiment_trend(message.author.id, message.channel.id)
     expected = sg.TextBlob(message.content).sentiment.polarity
     assert trend == (expected, 1)
+
+
+def test_prism_endpoint_env(monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("PRISM_ENDPOINT", "http://example.com/prism")
+    importlib.reload(sg)
+    assert sg.PRISM_ENDPOINT == "http://example.com/prism"
+
+    monkeypatch.delenv("PRISM_ENDPOINT")
+    importlib.reload(sg)
