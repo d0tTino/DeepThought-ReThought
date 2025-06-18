@@ -5,6 +5,10 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: write
+
 # limit to one concurrent run per branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
