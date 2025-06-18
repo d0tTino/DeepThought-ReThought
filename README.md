@@ -325,6 +325,15 @@ The script compares your commit to the previous one and outputs `true` when any
 non-comment code lines changed. The CI workflow uses this output to determine
 whether tests and linters need to run.
 
+## Manual Release
+
+The `Release` workflow runs automatically whenever a GitHub Release is
+published. You can also trigger it manually thanks to the
+`workflow_dispatch` event. Navigate to the **Actions** tab on GitHub,
+select the **Release** workflow, click **Run workflow**, and confirm to
+start a manual release. This is useful for verifying the packaging steps
+without creating a new tag.
+
 ## Contributing
 
 This is currently a solo project developed by d0tTino. Contributions are not actively sought at this stage, but feel free to fork the repository or open issues for discussion.

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
+CURRENT_DB_PATH = DB_PATH
 
 # Endpoint for forwarding collected data
 PRISM_ENDPOINT = os.getenv("PRISM_ENDPOINT", "http://localhost:5000/receive_data")
@@ -265,9 +266,25 @@ class DBManager:
 
 db_manager = DBManager()
 
+async def init_db(db_path: str | None = None) -> None:
+    """Initialize the database, recreating the manager when the path changes."""
+    global db_manager, CURRENT_DB_PATH
 
-async def init_db() -> None:
+    target_path = (
+        db_path
+        if db_path is not None
+        else (
+            DB_PATH if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH else db_manager.db_path
+        )
+    )
+
+    if db_manager.db_path != target_path:
+        if db_manager._db is not None:
+            await db_manager.close()
+        db_manager = DBManager(target_path)
+
     await db_manager.init_db()
+    CURRENT_DB_PATH = db_manager.db_path
 
 
 async def log_interaction(user_id: int, target_id: int) -> None:
