@@ -14,7 +14,9 @@ from textblob import TextBlob
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
+DEFAULT_DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
+# Current database path used by ``db_manager``. Tests may override this.
+DB_PATH = DEFAULT_DB_PATH
 
 # Endpoint for forwarding collected data
 PRISM_ENDPOINT = os.getenv("PRISM_ENDPOINT", "http://localhost:5000/receive_data")
@@ -265,22 +267,20 @@ class DBManager:
 
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
-LAST_INIT_PATH = DB_PATH
+_manager_id = id(db_manager)
 
 
 async def init_db() -> None:
-    """Initialize the database, respecting any updated ``DB_PATH`` value."""
-    global db_manager, DB_PATH, LAST_INIT_PATH
-    if DB_PATH != LAST_INIT_PATH:
-        # ``DB_PATH`` was updated since the last init call
-        if db_manager.db_path != DB_PATH:
-            await db_manager.close()
-            db_manager = DBManager(DB_PATH)
-        LAST_INIT_PATH = DB_PATH
-    elif db_manager.db_path != DB_PATH:
-        # ``db_manager`` was replaced without updating ``DB_PATH``
+    global db_manager, DB_PATH, _manager_id
+    if id(db_manager) != _manager_id:
+        _manager_id = id(db_manager)
         DB_PATH = db_manager.db_path
-        LAST_INIT_PATH = DB_PATH
+    elif db_manager.db_path != DB_PATH:
+        await db_manager.close()
+        db_manager = DBManager(DB_PATH)
+        _manager_id = id(db_manager)
+    DB_PATH = db_manager.db_path
+
     await db_manager.init_db()
 
 
