@@ -30,13 +30,21 @@ class LLMStub:
         input_id = "unknown"
         data = None
         try:
-            data = json.loads(msg.data.decode())
+            raw = json.loads(msg.data.decode())
+            if not isinstance(raw, dict):
+                logger.warning("Unexpected MemoryRetrieved payload format: %s", type(raw))
+                data = {}
+            else:
+                data = raw
             input_id = data.get("input_id", "unknown")
             retrieved = data.get("retrieved_knowledge", {})
             if isinstance(retrieved, dict) and "retrieved_knowledge" in retrieved:
                 knowledge = retrieved.get("retrieved_knowledge", {})
-            else:
+            elif isinstance(retrieved, dict):
                 knowledge = retrieved
+            else:
+                logger.warning("Unexpected retrieved_knowledge format: %s", type(retrieved))
+                knowledge = {}
             facts = knowledge.get("facts", [])
             logger.info(f"LLMStub received memory event ID {input_id}")
 
