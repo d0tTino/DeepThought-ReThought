@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 
 import pytest
@@ -148,3 +149,24 @@ async def test_monitor_channels_idle_prompt_old_message(monkeypatch):
     await sg.monitor_channels(bot, 1)
 
     assert channel.sent_messages == ["ping"]
+
+
+class DummyNoChannelBot:
+    async def wait_until_ready(self):
+        return None
+
+    def get_channel(self, cid):
+        return None
+
+    def is_closed(self):
+        return True
+
+
+@pytest.mark.asyncio
+async def test_monitor_channels_no_channel(monkeypatch, caplog):
+    bot = DummyNoChannelBot()
+
+    with caplog.at_level(logging.ERROR):
+        await sg.monitor_channels(bot, 123)
+
+    assert any("does not exist" in r.getMessage() for r in caplog.records)
