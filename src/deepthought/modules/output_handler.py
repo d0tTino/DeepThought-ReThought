@@ -2,6 +2,7 @@
 import json
 import logging
 from typing import Callable, Dict, Optional
+from collections import OrderedDict
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -22,11 +23,13 @@ class OutputHandler:
         nats_client: NATS,
         js_context: JetStreamContext,
         output_callback: Optional[Callable[[str, str], None]] = None,
+        max_responses: int = 100,
     ):
         """Initialize with shared NATS client and JetStream context."""
         self._subscriber = Subscriber(nats_client, js_context)
-        self._responses = {}
+        self._responses: "OrderedDict[str, str]" = OrderedDict()
         self._output_callback = output_callback
+        self._max_responses = max_responses
         logger.info("OutputHandler initialized (JetStream enabled).")
 
     async def _handle_response_event(self, msg: Msg) -> None:
@@ -40,6 +43,8 @@ class OutputHandler:
             logger.info(f"OutputHandler received response event ID {input_id}")
 
             self._responses[input_id] = final_response  # Store response
+            if len(self._responses) > self._max_responses:
+                self._responses.popitem(last=False)
 
             # Use callback or print
             if self._output_callback:

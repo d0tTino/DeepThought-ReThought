@@ -33,9 +33,9 @@ class DummyMsg:
         self.acked = True
 
 
-def create_handler(monkeypatch, callback=None):
+def create_handler(monkeypatch, callback=None, max_responses=100):
     monkeypatch.setattr(output_handler, "Subscriber", DummySubscriber)
-    return output_handler.OutputHandler(DummyNATS(), DummyJS(), callback)
+    return output_handler.OutputHandler(DummyNATS(), DummyJS(), callback, max_responses)
 
 
 @pytest.mark.asyncio
@@ -65,3 +65,18 @@ async def test_handle_response_error(monkeypatch):
 
     assert handler.get_all_responses() == {}
     assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_cache_limit(monkeypatch):
+    handler = create_handler(monkeypatch, max_responses=2)
+
+    for i in range(3):
+        payload = ResponseGeneratedPayload(final_response=f"r{i}", input_id=str(i))
+        msg = DummyMsg(payload.to_json())
+        await handler._handle_response_event(msg)
+
+    responses = handler.get_all_responses()
+    assert len(responses) == 2
+    assert "0" not in responses
+    assert set(responses.keys()) == {"1", "2"}
