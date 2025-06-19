@@ -3,12 +3,17 @@
 Integration test for DeepThought reThought system modules.
 Tests the full event flow between all stub modules.
 """
+import os
+import pytest
+
+# Skip this module unless RUN_NATS_TESTS=1 is set
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
+
 import asyncio
 import logging
-import os
 import json
 import sys
-import pytest
 import pytest_asyncio
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -18,6 +23,10 @@ from nats.errors import TimeoutError
 
 # Add the src directory to the path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Skip this module unless RUN_NATS_TESTS=1 is set
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
 
 # Import the modules to test
 from src.deepthought.modules import InputHandler, MemoryStub, LLMStub, OutputHandler

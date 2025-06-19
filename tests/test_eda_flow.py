@@ -3,16 +3,25 @@
 Tests for the EDA flow using NATS JetStream in DeepThought reThought.
 (Simplified test with direct subscription and event sync)
 """
-import asyncio
-import logging
 import os
 import pytest
+
+# Skip this module unless RUN_NATS_TESTS=1 is set
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
+
+import asyncio
+import logging
 import pytest_asyncio
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
 from nats.js import JetStreamContext
 from nats.js.api import StreamConfig, ConsumerConfig, AckPolicy, DeliverPolicy, RetentionPolicy, StorageType, DiscardPolicy
 from nats.js.errors import Error
+
+# Skip this module unless RUN_NATS_TESTS=1 is set
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

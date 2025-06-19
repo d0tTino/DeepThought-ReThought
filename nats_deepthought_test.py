@@ -9,6 +9,11 @@ import datetime
 import sys
 import os
 import logging
+import pytest
+
+# Skip running under pytest unless RUN_NATS_TESTS=1
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
 
 # Configure logging
 logging.basicConfig(
