@@ -1,10 +1,6 @@
 # Continuous Integration
 
-This project uses GitHub Actions for its CI workflow. Jobs run on a self-hosted
-runner for heavy tasks like linting and tests. Lightweight checks still use
-GitHub-hosted runners. Workflows are limited to the `main` and `develop`
-branches and old runs are cancelled automatically via GitHub's concurrency
-feature.
+This project uses GitHub Actions for its CI workflow. All jobs now run exclusively on a self-hosted runner, ensuring a consistent environment for linting, tests, and deployment tasks. Workflows are limited to the `main` and `develop` branches and old runs are cancelled automatically via GitHub's concurrency feature.
 
 ## Registering a Self-Hosted Runner
 
@@ -18,9 +14,14 @@ feature.
    Replace `<OWNER>` and `<REPO>` with your repository information. The token is generated on the GitHub page and is time limited.
 5. Start the runner with `./run.sh` or install it as a service using `./svc.sh install` followed by `./svc.sh start`.
 
-Once the runner is online, update `.github/workflows/ci.yml` whenever a job should run on your self-hosted machine instead of GitHub's hosted runners. Set the job's `runs-on` field to:
+Once the runner is online, update `.github/workflows/ci.yml` to use the self-hosted runner by setting:
 
 ```yaml
 runs-on: ["self-hosted", "linux"]
 ```
 
+## Runner Maintenance
+
+- Ensure the service remains active by periodically checking `./svc.sh status`.
+- Keep the operating system and dependencies up to date.
+- Monitor disk space and clean up old build artifacts.
