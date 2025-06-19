@@ -2,7 +2,7 @@ import json
 
 import yaml
 
-from deepthought.config import load_settings
+from deepthought.config import get_settings, load_settings
 
 
 def test_env_overrides(monkeypatch):
@@ -50,3 +50,18 @@ def test_yaml_file_load(tmp_path):
     assert settings.db.port == 456
     assert settings.model_path == "yaml/model"
     assert settings.memory_file == "yaml.json"
+
+
+def test_get_settings_reload(monkeypatch, tmp_path):
+    cfg1 = tmp_path / "cfg1.json"
+    cfg1.write_text(json.dumps({"nats_url": "nats://first"}))
+    cfg2 = tmp_path / "cfg2.json"
+    cfg2.write_text(json.dumps({"nats_url": "nats://second"}))
+
+    monkeypatch.setenv("DT_CONFIG_FILE", str(cfg1))
+    first = get_settings(str(cfg1))
+    assert first.nats_url == "nats://first"
+
+    monkeypatch.setenv("DT_CONFIG_FILE", str(cfg2))
+    second = get_settings()
+    assert second.nats_url == "nats://second"
