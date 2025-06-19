@@ -42,6 +42,7 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: '3.x'
+          cache: 'pip'
       - id: diff
         env:
           GITHUB_BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -69,17 +70,7 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-      - id: requirements-hash
-        run: |
-          echo "hash=$(pip hash requirements-ci.txt | \
-            awk 'NR==2 {print \$1}' | cut -d: -f2)" >> "$GITHUB_OUTPUT"
-      - name: Cache pip packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: pip-${{ steps.requirements-hash.outputs.hash }}
-          restore-keys: |
-            pip-
+          cache: 'pip'
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements-ci.txt
       - run: pip install -e . --no-deps
