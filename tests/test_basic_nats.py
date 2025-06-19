@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import uuid
+from src.deepthought.config import DEFAULT_CONFIG
 
 import nats
 import pytest
@@ -11,11 +12,14 @@ if os.getenv("RUN_NATS_TESTS") != "1":
     pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
 
 # Basic logging for the test
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 TEST_SUBJECT = f"test.basic_communication.{uuid.uuid4()}"
 TEST_PAYLOAD = b"ping"
+
 
 @pytest.mark.asyncio
 async def test_nats_basic_pub_sub():
@@ -35,20 +39,20 @@ async def test_nats_basic_pub_sub():
     try:
         # Connect Publisher Client
         logger.info("Connecting publisher client...")
-        nc_pub = await nats.connect("nats://localhost:4222", name="pytest_basic_pub")
+        nc_pub = await nats.connect(DEFAULT_CONFIG.nats_url, name="pytest_basic_pub")
         assert nc_pub.is_connected
         logger.info("Publisher client connected.")
 
         # Connect Subscriber Client
         logger.info("Connecting subscriber client...")
-        nc_sub = await nats.connect("nats://localhost:4222", name="pytest_basic_sub")
+        nc_sub = await nats.connect(DEFAULT_CONFIG.nats_url, name="pytest_basic_sub")
         assert nc_sub.is_connected
         logger.info("Subscriber client connected.")
 
         # Subscribe
         logger.info(f"Subscribing to subject: {TEST_SUBJECT}")
         sub = await nc_sub.subscribe(TEST_SUBJECT, cb=message_handler)
-        await asyncio.sleep(0.1) # Allow subscription to register
+        await asyncio.sleep(0.1)  # Allow subscription to register
 
         # Publish
         logger.info(f"Publishing message to subject: {TEST_SUBJECT}")
@@ -61,7 +65,9 @@ async def test_nats_basic_pub_sub():
 
         # Assertions
         assert received_message is not None, "Did not receive any message"
-        assert received_message == TEST_PAYLOAD, f"Received payload '{received_message.decode()}' does not match expected '{TEST_PAYLOAD.decode()}'"
+        assert (
+            received_message == TEST_PAYLOAD
+        ), f"Received payload '{received_message.decode()}' does not match expected '{TEST_PAYLOAD.decode()}'"
         logger.info("Message received and verified successfully.")
 
     except asyncio.TimeoutError:
@@ -84,4 +90,4 @@ async def test_nats_basic_pub_sub():
             logger.info("Publisher client closed.")
         if nc_sub and nc_sub.is_connected:
             await nc_sub.close()
-            logger.info("Subscriber client closed.") 
+            logger.info("Subscriber client closed.")
