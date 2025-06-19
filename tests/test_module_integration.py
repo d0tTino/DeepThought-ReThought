@@ -19,6 +19,10 @@ from nats.errors import TimeoutError
 # Add the src directory to the path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Skip this module unless RUN_NATS_TESTS=1 is set
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
+
 # Import the modules to test
 from src.deepthought.modules import InputHandler, MemoryStub, LLMStub, OutputHandler
 from src.deepthought.eda.events import EventSubjects
