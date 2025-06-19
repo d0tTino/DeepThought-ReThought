@@ -36,7 +36,7 @@ class Publisher:
             data = payload.encode()
         elif hasattr(payload, "to_json"):
             data = payload.to_json().encode()
-        elif isinstance(payload, (Dict, list)):
+        elif isinstance(payload, (dict, list)):
             import json
 
             data = json.dumps(payload).encode()
