@@ -9,6 +9,9 @@ on:
       - 'examples/**'
       - '**/*.py'
       - '**/*.cs'
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   push:
     branches: [main, develop]
     paths:
