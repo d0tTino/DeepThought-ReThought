@@ -38,6 +38,25 @@ class BasicMemory:
         try:
             with open(self._memory_file, "r", encoding="utf-8") as f:
                 return json.load(f)
+        except json.JSONDecodeError as e:  # corrupted file
+            logger.error(
+                "Corrupted memory file %s: %s",
+                self._memory_file,
+                e,
+                exc_info=True,
+            )
+            backup_file = f"{self._memory_file}.bak"
+            try:
+                os.rename(self._memory_file, backup_file)
+            except OSError as rename_error:  # pragma: no cover - unlikely
+                logger.error(
+                    "Failed to rename corrupted memory file %s: %s",
+                    self._memory_file,
+                    rename_error,
+                    exc_info=True,
+                )
+            self._write_memory([])
+            return []
         except Exception as e:
             logger.error("Failed to read memory file: %s", e)
             return []
