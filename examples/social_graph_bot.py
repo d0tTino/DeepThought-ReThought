@@ -424,6 +424,9 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
     """Monitor a channel and occasionally speak during idle periods."""
     await bot.wait_until_ready()
     channel = bot.get_channel(channel_id)
+    if channel is None:
+        logger.error("Channel %s does not exist", channel_id)
+        return
     while not bot.is_closed():
         last_message = None
         async for msg in channel.history(limit=1):
