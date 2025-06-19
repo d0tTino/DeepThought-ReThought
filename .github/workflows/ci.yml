@@ -65,7 +65,7 @@ jobs:
             -p 4222:4222 -p 8222:8222 nats:latest -js
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: ${{ matrix.python-version }}
       - id: requirements-hash
         run: |
           echo "hash=$(pip hash requirements-ci.txt | \
