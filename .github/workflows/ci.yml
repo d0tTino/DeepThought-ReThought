@@ -42,9 +42,9 @@ jobs:
           fi
           for f in $files; do
             if git diff -U0 "$base" HEAD -- "$f" \
-                | grep -E '^\+' \
-                | grep -vE '^\+\+\+' \
-                | grep -vqE '^\+\s*(#|$)'; then
+                | grep -E '^[+-]' \
+                | grep -vE '^(\+\+\+|---)' \
+                | grep -vqE '^[+-]\s*(#|"""|\'\'\'|$)'; then
               echo "changed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
