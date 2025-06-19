@@ -53,5 +53,15 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
     return Settings()
 
 
-# Module level singleton for convenience
-settings = load_settings()
+_settings_cache: Optional[Settings] = None
+_settings_path: Optional[str] = None
+
+
+def get_settings(config_file: Optional[str] = None) -> Settings:
+    """Return cached :class:`Settings`, reloading if the config source changed."""
+    global _settings_cache, _settings_path
+    path = config_file or os.getenv("DT_CONFIG_FILE")
+    if _settings_cache is None or path != _settings_path or config_file:
+        _settings_cache = load_settings(config_file)
+        _settings_path = path
+    return _settings_cache

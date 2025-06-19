@@ -8,7 +8,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-from ..config import settings
+from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -27,7 +27,7 @@ class BasicMemory:
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._memory_file = memory_file or settings.memory_file
+        self._memory_file = memory_file or get_settings().memory_file
 
         if not os.path.exists(self._memory_file):
             with open(self._memory_file, "w", encoding="utf-8") as f:

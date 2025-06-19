@@ -9,7 +9,7 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from ..config import settings
+from ..config import get_settings
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -26,7 +26,7 @@ class BasicLLM:
         js_context: Optional[JetStreamContext] = None,
         model_name: Optional[str] = None,
     ) -> None:
-        model_name = model_name or settings.model_path
+        model_name = model_name or get_settings().model_path
         if nats_client is not None and js_context is not None:
             self._publisher: Optional[Publisher] = Publisher(nats_client, js_context)
             self._subscriber: Optional[Subscriber] = Subscriber(nats_client, js_context)
@@ -52,9 +52,7 @@ class BasicLLM:
             elif isinstance(retrieved, dict):
                 knowledge = retrieved
             else:
-                logger.warning(
-                    "Unexpected retrieved_knowledge format: %s", type(retrieved)
-                )
+                logger.warning("Unexpected retrieved_knowledge format: %s", type(retrieved))
                 knowledge = {}
             facts = knowledge.get("facts", [])
             logger.info("BasicLLM received memory event ID %s", input_id)
