@@ -53,4 +53,19 @@ def test_read_graph_invalid_json(tmp_path, monkeypatch, caplog):
     assert isinstance(mem._graph, nx.DiGraph)
     assert len(mem._graph.nodes) == 0
     error_logs = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert any("Failed to read graph file" in r.getMessage() for r in error_logs)
+    assert any("Corrupted graph file" in r.getMessage() for r in error_logs)
+
+
+def test_read_graph_invalid_json_backup(tmp_path, monkeypatch):
+    graph_file = tmp_path / "graph.json"
+    graph_file.write_text("{ invalid json")
+
+    mem = create_memory(monkeypatch, graph_file)
+
+    assert isinstance(mem._graph, nx.DiGraph)
+    assert len(mem._graph.nodes) == 0
+    backup_path = tmp_path / "graph.json.bak"
+    assert backup_path.exists()
+    assert graph_file.exists()
+    json.load(open(graph_file, "r", encoding="utf-8"))  # valid JSON
+    assert "{ invalid json" in backup_path.read_text()

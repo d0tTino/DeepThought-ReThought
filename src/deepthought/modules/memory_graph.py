@@ -35,6 +35,21 @@ class GraphMemory:
             with open(self._graph_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return nx.readwrite.json_graph.node_link_graph(data)
+        except json.JSONDecodeError as e:  # corrupted file
+            logger.error("Corrupted graph file %s: %s", self._graph_file, e, exc_info=True)
+            backup_file = f"{self._graph_file}.bak"
+            try:
+                os.rename(self._graph_file, backup_file)
+            except OSError as rename_error:  # pragma: no cover - unlikely
+                logger.error(
+                    "Failed to rename corrupted graph file %s: %s",
+                    self._graph_file,
+                    rename_error,
+                    exc_info=True,
+                )
+            self._graph = nx.DiGraph()
+            self._write_graph()
+            return self._graph
         except Exception as e:
             logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
             return nx.DiGraph()

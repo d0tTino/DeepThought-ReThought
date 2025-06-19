@@ -103,4 +103,19 @@ def test_read_memory_invalid_json_logs_error(tmp_path, monkeypatch, caplog):
         data = mem._read_memory()
 
     assert data == []
-    assert any("Failed to read memory file" in record.getMessage() for record in caplog.records)
+    assert any("Corrupted memory file" in record.getMessage() for record in caplog.records)
+
+
+def test_read_memory_invalid_json_backup(tmp_path, monkeypatch):
+    mem_file = tmp_path / "mem.json"
+    mem_file.write_text("{ invalid json")
+    mem = create_memory(monkeypatch, mem_file)
+
+    data = mem._read_memory()
+
+    assert data == []
+    backup_path = tmp_path / "mem.json.bak"
+    assert backup_path.exists()
+    assert mem_file.exists()
+    assert json.load(open(mem_file, "r", encoding="utf-8")) == []
+    assert "{ invalid json" in backup_path.read_text()
