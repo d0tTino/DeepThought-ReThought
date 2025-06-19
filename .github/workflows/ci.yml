@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   detect_changes:
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "linux"]
     outputs:
       code_changed: ${{ steps.diff.outputs.changed }}
     steps:
