@@ -1,9 +1,16 @@
-import asyncio
-import nats
+import os
 import pytest
+
+# Skip this module unless RUN_NATS_TESTS=1 is set
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
+
+import asyncio
 import logging
 import uuid
 from src.deepthought.config import DEFAULT_CONFIG
+
+import nats
 
 # Basic logging for the test
 logging.basicConfig(

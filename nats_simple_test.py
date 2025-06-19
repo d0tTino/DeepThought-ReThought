@@ -2,6 +2,12 @@
 Simple test script for NATS communication.
 """
 
+import os
+import pytest
+
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
+
 import asyncio
 import json
 import uuid
