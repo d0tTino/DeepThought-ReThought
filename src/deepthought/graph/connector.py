@@ -46,8 +46,11 @@ class GraphConnector:
         if hasattr(conn, "execute"):
             return conn.execute(query, params or {})
         cur = conn.cursor()
-        cur.execute(query, params or {})
-        rows = cur.fetchall()
-        if hasattr(cur, "close"):
+        try:
+            cur.execute(query, params or {})
+            rows = cur.fetchall()
+            if hasattr(conn, "commit"):
+                conn.commit()
+            return rows
+        finally:
             cur.close()
-        return rows
