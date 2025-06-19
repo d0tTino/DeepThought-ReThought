@@ -79,10 +79,14 @@ Users would typically incorporate these scripts into their Unity projects and us
 
 ## Testing
 
-Tests are implemented using the `pytest` framework. To run the tests:
+Tests are implemented using the `pytest` framework. A running NATS server with
+JetStream enabled is required. To run the tests:
 
-1.  Ensure a NATS server with JetStream enabled is running and accessible.
-2.  Navigate to the root directory of the project.
+1.  Ensure the NATS server is running and accessible.
+2.  Install the Python dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
 3.  Run pytest:
     ```bash
     pytest
