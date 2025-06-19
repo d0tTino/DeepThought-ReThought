@@ -49,8 +49,13 @@ class BasicLLM:
             retrieved = data.get("retrieved_knowledge", {})
             if isinstance(retrieved, dict) and "retrieved_knowledge" in retrieved:
                 knowledge = retrieved.get("retrieved_knowledge", {})
-            else:
+            elif isinstance(retrieved, dict):
                 knowledge = retrieved
+            else:
+                logger.warning(
+                    "Unexpected retrieved_knowledge format: %s", type(retrieved)
+                )
+                knowledge = {}
             facts = knowledge.get("facts", [])
             logger.info("BasicLLM received memory event ID %s", input_id)
 
