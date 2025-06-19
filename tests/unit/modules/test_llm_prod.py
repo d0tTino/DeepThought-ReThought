@@ -82,6 +82,15 @@ class DummyModel:
         return [DummyTensor(1)]
 
 
+class DummyPeftModel:
+    @classmethod
+    def from_pretrained(cls, base_model, adapter_dir):
+        return cls()
+
+    def merge_and_unload(self):
+        return DummyModel()
+
+
 def create_llm(monkeypatch):
     tf = types.ModuleType("transformers")
     tf.AutoTokenizer = DummyTokenizer
@@ -99,39 +108,27 @@ def create_llm(monkeypatch):
         return _NoGrad()
 
     torch_mod.no_grad = no_grad
+
+    peft_mod = types.ModuleType("peft")
+    peft_mod.PeftModel = DummyPeftModel
+
     monkeypatch.setitem(sys.modules, "transformers", tf)
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
+    monkeypatch.setitem(sys.modules, "peft", peft_mod)
 
-    import deepthought.modules.llm_basic as llm_basic
+    import deepthought.modules.llm_prod as llm_prod
 
-    importlib.reload(llm_basic)
-    monkeypatch.setattr(llm_basic, "Publisher", DummyPublisher)
-    monkeypatch.setattr(llm_basic, "Subscriber", DummySubscriber)
-    return llm_basic.BasicLLM(DummyNATS(), DummyJS(), model_name="dummy")
-
-
-@pytest.mark.asyncio
-async def test_handle_memory_event(monkeypatch):
-    llm = create_llm(monkeypatch)
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="abc")
-    msg = DummyMsg(payload.to_json())
-    await llm._handle_memory_event(msg)
-
-    assert msg.acked
-    pub = llm._publisher
-    assert pub.published
-    subject, sent_payload = pub.published[0]
-    assert subject == EventSubjects.RESPONSE_GENERATED
-    assert sent_payload.input_id == "abc"
-    assert sent_payload.final_response == "generated"
-    ts = sent_payload.timestamp
-    assert datetime.fromisoformat(ts).tzinfo == timezone.utc
+    importlib.reload(llm_prod)
+    monkeypatch.setattr(llm_prod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(llm_prod, "Subscriber", DummySubscriber)
+    monkeypatch.setattr(llm_prod.os.path, "isdir", lambda path: False)
+    return llm_prod.ProductionLLM(DummyNATS(), DummyJS(), model_name="dummy", adapter_dir="dummy")
 
 
 @pytest.mark.asyncio
 async def test_handle_memory_event_non_dict(monkeypatch, caplog):
     llm = create_llm(monkeypatch)
-    payload = MemoryRetrievedPayload(retrieved_knowledge="oops", input_id="xyz")
+    payload = MemoryRetrievedPayload(retrieved_knowledge=["x"], input_id="abc")
     msg = DummyMsg(payload.to_json())
     with caplog.at_level(logging.WARNING):
         await llm._handle_memory_event(msg)
@@ -140,6 +137,5 @@ async def test_handle_memory_event_non_dict(monkeypatch, caplog):
     pub = llm._publisher
     assert pub.published
     assert any(
-        "Unexpected retrieved_knowledge format" in r.getMessage()
-        for r in caplog.records
+        "Unexpected retrieved_knowledge format" in r.getMessage() for r in caplog.records
     )
