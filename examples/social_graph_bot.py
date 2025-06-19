@@ -267,7 +267,6 @@ class DBManager:
 
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
-_manager_id = id(db_manager)
 
 
 async def init_db(db_path: str | None = None) -> None:
