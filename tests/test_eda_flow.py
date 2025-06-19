@@ -23,6 +23,10 @@ from nats.js.api import (
 )
 from nats.js.errors import Error
 
+# Skip this module unless RUN_NATS_TESTS=1 is set
+if os.getenv("RUN_NATS_TESTS") != "1":
+    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
