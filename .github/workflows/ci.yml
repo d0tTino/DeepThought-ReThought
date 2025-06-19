@@ -29,6 +29,7 @@ jobs:
       - name: Check code changes
         id: code_changed
         run: |
+          # Skip lint and tests when only comments or blank lines change
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             base="$GITHUB_BASE_SHA"
           else
