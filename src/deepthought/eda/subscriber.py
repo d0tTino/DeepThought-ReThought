@@ -3,6 +3,7 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
+import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -56,6 +57,9 @@ class Subscriber:
 
             self._subscriptions.append(sub)  # Store subscription object for cleanup
 
+        except nats.errors.Error as e:
+            logger.error(f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}", exc_info=True)
+            raise e
         except Exception as e:
             logger.error(f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}", exc_info=True)
             raise e
@@ -84,6 +88,6 @@ class Subscriber:
             try:
                 await msg.ack()
                 logger.debug(f"Acked message in default handler for subject {msg.subject}")
-            except Exception as e:
+            except nats.errors.Error as e:
                 logger.error(f"Error acking message in default handler: {e}")
         # Basic NATS messages don't need ack.
