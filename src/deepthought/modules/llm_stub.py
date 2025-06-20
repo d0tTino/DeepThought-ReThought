@@ -43,9 +43,34 @@ class LLMStub:
             elif isinstance(retrieved, dict):
                 knowledge = retrieved
             else:
-                logger.warning("Unexpected retrieved_knowledge format: %s", type(retrieved))
-                knowledge = {}
-            facts = knowledge.get("facts", [])
+                logger.error("retrieved_knowledge is not a dict for input_id %s", input_id)
+                if hasattr(msg, "nak") and callable(msg.nak):
+                    try:
+                        await msg.nak()
+                    except Exception:
+                        logger.error("Failed to NAK message", exc_info=True)
+                elif hasattr(msg, "ack") and callable(msg.ack):
+                    try:
+                        await msg.ack()
+                    except Exception:
+                        logger.error("Failed to ack message after error", exc_info=True)
+                return
+
+            facts = knowledge.get("facts")
+            if not isinstance(facts, list):
+                logger.error("retrieved_knowledge missing facts list for input_id %s", input_id)
+                if hasattr(msg, "nak") and callable(msg.nak):
+                    try:
+                        await msg.nak()
+                    except Exception:
+                        logger.error("Failed to NAK message", exc_info=True)
+                elif hasattr(msg, "ack") and callable(msg.ack):
+                    try:
+                        await msg.ack()
+                    except Exception:
+                        logger.error("Failed to ack message after error", exc_info=True)
+                return
+
             logger.info(f"LLMStub received memory event ID {input_id}")
 
             await asyncio.sleep(0.5)  # Simulate work

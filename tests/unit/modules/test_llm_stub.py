@@ -91,7 +91,7 @@ async def test_handle_memory_error(monkeypatch):
     msg = DummyMsg(payload.to_json())
     await stub._handle_memory_event(msg)
 
-    assert not msg.acked
+    assert msg.acked
 
 
 @pytest.mark.asyncio
@@ -104,8 +104,8 @@ async def test_handle_memory_event_non_dict_retrieved(monkeypatch, caplog):
 
     assert msg.acked
     pub = stub._publisher
-    assert pub.published
-    assert any("Unexpected retrieved_knowledge format" in r.getMessage() for r in caplog.records)
+    assert not pub.published
+    assert any("not a dict" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -117,5 +117,33 @@ async def test_handle_memory_event_payload_not_dict(monkeypatch, caplog):
 
     assert msg.acked
     pub = stub._publisher
-    assert pub.published
+    assert not pub.published
     assert any("Unexpected MemoryRetrieved payload format" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_missing_facts(monkeypatch, caplog):
+    stub = create_stub(monkeypatch)
+    payload = MemoryRetrievedPayload(retrieved_knowledge={}, input_id="m1")
+    msg = DummyMsg(payload.to_json())
+    with caplog.at_level(logging.ERROR):
+        await stub._handle_memory_event(msg)
+
+    assert msg.acked
+    pub = stub._publisher
+    assert not pub.published
+    assert any("missing facts" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_facts_not_list(monkeypatch, caplog):
+    stub = create_stub(monkeypatch)
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": "x"}, input_id="m2")
+    msg = DummyMsg(payload.to_json())
+    with caplog.at_level(logging.ERROR):
+        await stub._handle_memory_event(msg)
+
+    assert msg.acked
+    pub = stub._publisher
+    assert not pub.published
+    assert any("missing facts" in r.getMessage() for r in caplog.records)
