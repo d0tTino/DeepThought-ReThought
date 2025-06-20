@@ -1,9 +1,9 @@
 import importlib
+import logging
 import sys
 import types
 from datetime import datetime, timezone
 from types import SimpleNamespace
-import logging
 
 import pytest
 
@@ -135,7 +135,33 @@ async def test_handle_memory_event_non_dict(monkeypatch, caplog):
 
     assert msg.acked
     pub = llm._publisher
-    assert pub.published
-    assert any(
-        "Unexpected retrieved_knowledge format" in r.getMessage() for r in caplog.records
-    )
+    assert not pub.published
+    assert any("not a dict" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_missing_facts(monkeypatch, caplog):
+    llm = create_llm(monkeypatch)
+    payload = MemoryRetrievedPayload(retrieved_knowledge={}, input_id="p1")
+    msg = DummyMsg(payload.to_json())
+    with caplog.at_level(logging.ERROR):
+        await llm._handle_memory_event(msg)
+
+    assert msg.acked
+    pub = llm._publisher
+    assert not pub.published
+    assert any("missing facts" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_facts_not_list(monkeypatch, caplog):
+    llm = create_llm(monkeypatch)
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": "bad"}, input_id="p2")
+    msg = DummyMsg(payload.to_json())
+    with caplog.at_level(logging.ERROR):
+        await llm._handle_memory_event(msg)
+
+    assert msg.acked
+    pub = llm._publisher
+    assert not pub.published
+    assert any("missing facts" in r.getMessage() for r in caplog.records)
