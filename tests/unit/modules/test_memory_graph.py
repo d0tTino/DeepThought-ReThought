@@ -1,3 +1,4 @@
+import builtins
 import json
 import logging
 from types import SimpleNamespace
@@ -82,3 +83,30 @@ def test_init_creates_directory(tmp_path, monkeypatch):
     assert isinstance(mem._graph, nx.DiGraph)
     with open(graph_file, "r", encoding="utf-8") as f:
         assert isinstance(json.load(f), dict)
+
+
+def test_write_graph_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
+    graph_file = tmp_path / "graph.json"
+    mem = create_memory(monkeypatch, graph_file)
+
+    def fail_open(*args, **kwargs):
+        raise IOError("fail")
+
+    monkeypatch.setattr(builtins, "open", fail_open)
+    with caplog.at_level(logging.ERROR), pytest.raises(IOError):
+        mem._write_graph()
+
+    assert any("Failed to write graph file" in r.getMessage() for r in caplog.records)
+
+
+def test_init_write_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
+    graph_file = tmp_path / "graph.json"
+
+    def fail_open(*args, **kwargs):
+        raise IOError("fail")
+
+    monkeypatch.setattr(builtins, "open", fail_open)
+    with caplog.at_level(logging.ERROR), pytest.raises(IOError):
+        memory_graph.GraphMemory(DummyNATS(), DummyJS(), graph_file=graph_file)
+
+    assert any("Failed to write graph file" in r.getMessage() for r in caplog.records)

@@ -35,8 +35,12 @@ class BasicMemory:
             os.makedirs(dir_path, exist_ok=True)
 
         if not os.path.exists(self._memory_file):
-            with open(self._memory_file, "w", encoding="utf-8") as f:
-                json.dump([], f)
+            try:
+                with open(self._memory_file, "w", encoding="utf-8") as f:
+                    json.dump([], f)
+            except Exception as e:
+                logger.error("Failed to initialize memory file %s: %s", self._memory_file, e, exc_info=True)
+                raise
         logger.info("BasicMemory initialized with file %s", self._memory_file)
 
     def _read_memory(self) -> List[Dict[str, Any]]:
@@ -51,8 +55,12 @@ class BasicMemory:
             return []
 
     def _write_memory(self, data: List[Dict[str, Any]]) -> None:
-        with open(self._memory_file, "w", encoding="utf-8") as f:
-            json.dump(data, f)
+        try:
+            with open(self._memory_file, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.error("Failed to write memory file %s: %s", self._memory_file, e, exc_info=True)
+            raise
 
     async def _handle_input_event(self, msg: Msg) -> None:
         input_id = "unknown"
