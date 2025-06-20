@@ -32,7 +32,11 @@ class GraphMemory:
             self._graph = self._read_graph()
         else:
             self._graph = nx.DiGraph()
-            self._write_graph()
+            try:
+                self._write_graph()
+            except Exception:
+                # _write_graph already logs the error
+                raise
         logger.info("GraphMemory initialized with file %s", self._graph_file)
 
     def _read_graph(self) -> nx.DiGraph:
@@ -46,8 +50,12 @@ class GraphMemory:
 
     def _write_graph(self) -> None:
         data = nx.readwrite.json_graph.node_link_data(self._graph)
-        with open(self._graph_file, "w", encoding="utf-8") as f:
-            json.dump(data, f)
+        try:
+            with open(self._graph_file, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.error("Failed to write graph file %s: %s", self._graph_file, e, exc_info=True)
+            raise
 
     def _add_interaction(self, user_input: str) -> str:
         timestamp = datetime.now(timezone.utc).isoformat()

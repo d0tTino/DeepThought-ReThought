@@ -1,3 +1,4 @@
+import builtins
 import json
 import logging
 from datetime import datetime, timezone
@@ -113,3 +114,30 @@ def test_init_creates_directory(tmp_path, monkeypatch):
     assert mem_file.exists()
     with open(mem_file, "r", encoding="utf-8") as f:
         assert json.load(f) == []
+
+
+def test_write_memory_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
+    mem_file = tmp_path / "mem.json"
+    mem = create_memory(monkeypatch, mem_file)
+
+    def fail_open(*args, **kwargs):
+        raise IOError("fail")
+
+    monkeypatch.setattr(builtins, "open", fail_open)
+    with caplog.at_level(logging.ERROR), pytest.raises(IOError):
+        mem._write_memory([{"test": 1}])
+
+    assert any("Failed to write memory file" in r.getMessage() for r in caplog.records)
+
+
+def test_init_write_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
+    mem_file = tmp_path / "mem.json"
+
+    def fail_open(*args, **kwargs):
+        raise IOError("fail")
+
+    monkeypatch.setattr(builtins, "open", fail_open)
+    with caplog.at_level(logging.ERROR), pytest.raises(IOError):
+        memory_basic.BasicMemory(DummyNATS(), DummyJS(), memory_file=mem_file)
+
+    assert any("Failed to initialize memory file" in r.getMessage() for r in caplog.records)
