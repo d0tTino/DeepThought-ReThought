@@ -3,6 +3,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
+import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
@@ -37,6 +38,9 @@ class InputHandler:
             )
             logger.info(f"Published input ID {input_id} (JetStream)")
             return input_id
+        except nats.errors.TimeoutError as e:
+            logger.error(f"NATS timeout publishing input: {e}", exc_info=True)
+            raise
         except Exception as e:
             logger.error(f"Failed to publish input: {e}", exc_info=True)
             raise

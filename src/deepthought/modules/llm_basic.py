@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
+import nats
 import torch
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -91,7 +92,10 @@ class BasicLLM:
             with torch.no_grad():
                 outputs = self._model.generate(**inputs, max_length=inputs["input_ids"].shape[1] + 20)
             generated = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
-            response_text = generated[len(prompt) :].strip()  # noqa: E203
+            if generated.startswith(prompt):
+                response_text = generated[len(prompt) :].strip()  # noqa: E203
+            else:
+                response_text = generated.strip()
 
             payload = ResponseGeneratedPayload(
                 final_response=response_text,
@@ -125,17 +129,18 @@ class BasicLLM:
                     await msg.ack()
                 except Exception:
                     logger.error("Failed to ack message after error", exc_info=True)
+
         except Exception as e:
             logger.error("Error in BasicLLM handler: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
-                except Exception:
+                except nats.errors.Error:
                     logger.error("Failed to NAK message", exc_info=True)
             elif hasattr(msg, "ack") and callable(msg.ack):
                 try:
                     await msg.ack()
-                except Exception:
+                except nats.errors.Error:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "llm_basic_listener") -> bool:
@@ -151,6 +156,9 @@ class BasicLLM:
             )
             logger.info("BasicLLM subscribed to %s", EventSubjects.MEMORY_RETRIEVED)
             return True
+        except nats.errors.Error as e:
+            logger.error("BasicLLM failed to subscribe: %s", e, exc_info=True)
+            return False
         except Exception as e:
             logger.error("BasicLLM failed to subscribe: %s", e, exc_info=True)
             return False

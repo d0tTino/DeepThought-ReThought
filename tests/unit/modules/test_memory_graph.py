@@ -1,3 +1,4 @@
+import builtins
 import json
 import logging
 from types import SimpleNamespace
@@ -69,6 +70,24 @@ def test_read_graph_invalid_json(tmp_path, monkeypatch, caplog):
     assert any("Failed to read graph file" in r.getMessage() for r in error_logs)
 
 
+def test_invalid_json_rewritten_and_readable(tmp_path, monkeypatch, caplog):
+    graph_file = tmp_path / "graph.json"
+    graph_file.write_text("{ invalid json")
+
+    caplog.set_level(logging.ERROR)
+    create_memory(monkeypatch, graph_file)
+
+    with open(graph_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    assert data == nx.readwrite.json_graph.node_link_data(nx.DiGraph())
+
+    caplog.clear()
+    create_memory(monkeypatch, graph_file)
+
+    assert not any(
+        "Failed to read graph file" in r.getMessage() for r in caplog.records
+    )
+
 def test_init_creates_directory(tmp_path, monkeypatch):
     graph_file = tmp_path / "newdir" / "graph.json"
     mem = create_memory(monkeypatch, graph_file)
@@ -77,7 +96,6 @@ def test_init_creates_directory(tmp_path, monkeypatch):
     assert isinstance(mem._graph, nx.DiGraph)
     with open(graph_file, "r", encoding="utf-8") as f:
         assert isinstance(json.load(f), dict)
-
 
 @pytest.mark.asyncio
 async def test_handle_input_invalid_payload(tmp_path, monkeypatch):
@@ -99,3 +117,4 @@ async def test_handle_input_missing_fields(tmp_path, monkeypatch):
 
     assert msg.nacked
     assert not msg.acked
+

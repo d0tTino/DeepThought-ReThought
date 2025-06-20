@@ -1,5 +1,6 @@
 import json
 
+
 import pytest
 
 import deepthought.modules.output_handler as output_handler
@@ -107,3 +108,27 @@ async def test_cache_limit(monkeypatch):
     assert len(responses) == 2
     assert "0" not in responses
     assert set(responses.keys()) == {"1", "2"}
+
+
+@pytest.mark.asyncio
+async def test_handle_response_logs_when_no_callback(monkeypatch, caplog):
+    handler = create_handler(monkeypatch)
+
+    called = False
+
+    def fake_print(*args, **kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr("builtins.print", fake_print)
+    payload = ResponseGeneratedPayload(final_response="hello", input_id="99")
+    msg = DummyMsg(payload.to_json())
+    with caplog.at_level(logging.INFO):
+        await handler._handle_response_event(msg)
+
+    assert (
+        "deepthought.modules.output_handler",
+        logging.INFO,
+        "Output (99): hello",
+    ) in caplog.record_tuples
+    assert not called

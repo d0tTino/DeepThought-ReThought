@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
+import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -79,17 +80,18 @@ class MemoryStub:
                     await msg.ack()
                 except Exception:
                     logger.error("Failed to ack message after error", exc_info=True)
+
         except Exception as e:
             logger.error(f"Error in MemoryStub handler: {e}", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
-                except Exception:
+                except nats.errors.Error:
                     logger.error("Failed to NAK message", exc_info=True)
             elif hasattr(msg, "ack") and callable(msg.ack):
                 try:
                     await msg.ack()
-                except Exception:
+                except nats.errors.Error:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "memory_stub_listener") -> bool:
@@ -116,6 +118,9 @@ class MemoryStub:
             )
             logger.info(f"MemoryStub successfully subscribed to {EventSubjects.INPUT_RECEIVED}.")
             return True
+        except nats.errors.Error as e:
+            logger.error(f"MemoryStub failed to subscribe: {e}", exc_info=True)
+            return False
         except Exception as e:
             logger.error(f"MemoryStub failed to subscribe: {e}", exc_info=True)
             return False

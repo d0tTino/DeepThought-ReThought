@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
+import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -95,6 +96,12 @@ class LLMStub:
                 logger.debug(f"LLMStub: Successfully published RESPONSE_GENERATED for {input_id}")
                 await msg.ack()
                 logger.debug(f"LLMStub: Acked message for {input_id} in LLMStub")
+            except nats.errors.TimeoutError as e:
+                logger.error(
+                    f"LLMStub: Timeout publishing RESPONSE_GENERATED for {input_id}: {e}",
+                    exc_info=True,
+                )
+                # Do not ack/nak on failure; leave to message broker
             except Exception as e:
                 logger.error(
                     f"LLMStub: Failed to publish RESPONSE_GENERATED for {input_id}: {e}",
@@ -113,6 +120,7 @@ class LLMStub:
                 try:
                     await msg.ack()
                 except Exception:
+
                     logger.error("Failed to ack message after error", exc_info=True)
         except Exception as e:
             logger.error(f"Error in LLMStub handler: {e}", exc_info=True)
@@ -142,6 +150,9 @@ class LLMStub:
             )
             logger.info(f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}.")
             return True
+        except nats.errors.Error as e:
+            logger.error(f"LLMStub failed to subscribe: {e}", exc_info=True)
+            return False
         except Exception as e:
             logger.error(f"LLMStub failed to subscribe: {e}", exc_info=True)
             return False

@@ -181,3 +181,4 @@ async def test_handle_memory_event_missing_input_id(monkeypatch):
     assert msg.nacked
     pub = llm._publisher
     assert not pub.published
+

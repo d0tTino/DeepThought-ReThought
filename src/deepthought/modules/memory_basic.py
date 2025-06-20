@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -34,21 +35,32 @@ class BasicMemory:
             os.makedirs(dir_path, exist_ok=True)
 
         if not os.path.exists(self._memory_file):
-            with open(self._memory_file, "w", encoding="utf-8") as f:
-                json.dump([], f)
+            try:
+                with open(self._memory_file, "w", encoding="utf-8") as f:
+                    json.dump([], f)
+            except Exception as e:
+                logger.error("Failed to initialize memory file %s: %s", self._memory_file, e, exc_info=True)
+                raise
         logger.info("BasicMemory initialized with file %s", self._memory_file)
 
     def _read_memory(self) -> List[Dict[str, Any]]:
         try:
             with open(self._memory_file, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception as e:
+        except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
             logger.error("Failed to read memory file: %s", e)
+            return []
+        except Exception as e:  # fallback
+            logger.error("Unexpected error reading memory file: %s", e, exc_info=True)
             return []
 
     def _write_memory(self, data: List[Dict[str, Any]]) -> None:
-        with open(self._memory_file, "w", encoding="utf-8") as f:
-            json.dump(data, f)
+        try:
+            with open(self._memory_file, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.error("Failed to write memory file %s: %s", self._memory_file, e, exc_info=True)
+            raise
 
     async def _handle_input_event(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -90,17 +102,18 @@ class BasicMemory:
                     await msg.ack()
                 except Exception:
                     logger.error("Failed to ack message after error", exc_info=True)
+
         except Exception as e:
             logger.error("Error in BasicMemory handler: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
-                except Exception:
+                except nats.errors.Error:
                     logger.error("Failed to NAK message", exc_info=True)
             elif hasattr(msg, "ack") and callable(msg.ack):
                 try:
                     await msg.ack()
-                except Exception:
+                except nats.errors.Error:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "memory_basic_listener") -> bool:
@@ -116,6 +129,9 @@ class BasicMemory:
             )
             logger.info("BasicMemory subscribed to %s", EventSubjects.INPUT_RECEIVED)
             return True
+        except nats.errors.Error as e:
+            logger.error("BasicMemory failed to subscribe: %s", e, exc_info=True)
+            return False
         except Exception as e:
             logger.error("BasicMemory failed to subscribe: %s", e, exc_info=True)
             return False
