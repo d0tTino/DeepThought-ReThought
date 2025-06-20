@@ -41,8 +41,23 @@ class GraphMemory:
                 data = json.load(f)
             return nx.readwrite.json_graph.node_link_graph(data)
         except Exception as e:
-            logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
-            return nx.DiGraph()
+            logger.error(
+                "Failed to read graph file %s: %s", self._graph_file, e, exc_info=True
+            )
+            empty_graph = nx.DiGraph()
+            try:
+                with open(self._graph_file, "w", encoding="utf-8") as f:
+                    json.dump(
+                        nx.readwrite.json_graph.node_link_data(empty_graph), f
+                    )
+            except Exception as write_err:
+                logger.error(
+                    "Failed to write empty graph file %s: %s",
+                    self._graph_file,
+                    write_err,
+                    exc_info=True,
+                )
+            return empty_graph
 
     def _write_graph(self) -> None:
         data = nx.readwrite.json_graph.node_link_data(self._graph)
