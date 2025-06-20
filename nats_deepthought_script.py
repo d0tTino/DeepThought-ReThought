@@ -83,10 +83,14 @@ async def run_test():
     print(f"Connected to NATS server at {nc.connected_url.netloc}")
 
     try:
-        # Print NATS server info
-        server_info = nc._server_info
+        # Print NATS server info using documented attributes
+        server_info = {
+            "server_version": str(nc.connected_server_version),
+            "client_id": nc.client_id,
+            "max_payload": nc.max_payload,
+        }
         print(f"Server info: {server_info}")
-        print(f"Server ID: {server_info['server_id']}")
+        print(f"Server version: {server_info['server_version']}")
 
         # Create a unique input ID for this test
         input_id = str(uuid.uuid4())
