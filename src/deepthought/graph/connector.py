@@ -42,9 +42,29 @@ class GraphConnector:
         self._connection = None
 
     def execute(self, query: str, params: Optional[Dict[str, Any]] = None) -> list:
+        """Execute ``query`` and return the resulting rows as a list.
+
+        If the underlying connection exposes an ``execute`` method (for
+        example ``pymemgraph.Memgraph``), that method is used directly. In this
+        case the connection is committed when possible and any results are
+        collected into a list before being returned.
+        """
+
         conn = self.connect()
         if hasattr(conn, "execute"):
-            return conn.execute(query, params or {})
+            result = conn.execute(query, params or {})
+            if hasattr(conn, "commit"):
+                conn.commit()
+
+            if hasattr(result, "fetchall"):
+                return result.fetchall()
+            if hasattr(conn, "fetchall"):
+                return conn.fetchall()
+            try:
+                return list(result)
+            except Exception:
+                return [result] if result is not None else []
+
         cur = conn.cursor()
         try:
             cur.execute(query, params or {})
