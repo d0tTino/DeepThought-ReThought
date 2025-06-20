@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -39,9 +40,13 @@ class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
         self.acked = False
+        self.nacked = False
 
     async def ack(self):
         self.acked = True
+
+    async def nak(self):
+        self.nacked = True
 
 
 class DummyConnector:
@@ -87,5 +92,28 @@ async def test_handle_input_error(monkeypatch):
     msg = DummyMsg(payload.to_json())
     await mem._handle_input_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
+    assert not msg.acked
     assert connector.executed == []
+
+
+@pytest.mark.asyncio
+async def test_handle_input_invalid_payload(monkeypatch):
+    connector = DummyConnector()
+    mem = create_memory(monkeypatch, connector)
+    msg = DummyMsg("not json")
+    await mem._handle_input_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_input_missing_fields(monkeypatch):
+    connector = DummyConnector()
+    mem = create_memory(monkeypatch, connector)
+    msg = DummyMsg(json.dumps({"user_input": "hi"}))
+    await mem._handle_input_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked

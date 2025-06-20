@@ -31,8 +31,12 @@ class MemoryStub:
         data = None
         try:
             data = json.loads(msg.data.decode())
-            input_id = data.get("input_id", "unknown")
-            user_input = data.get("user_input", "")
+            if not isinstance(data, dict):
+                raise ValueError("InputReceived payload must be a dict")
+            input_id = data.get("input_id")
+            user_input = data.get("user_input")
+            if not isinstance(input_id, str) or not isinstance(user_input, str):
+                raise ValueError("Invalid input payload fields")
             logger.info(f"MemoryStub received input event ID {input_id}")
 
             await asyncio.sleep(0.1)  # Simulate work
@@ -63,6 +67,18 @@ class MemoryStub:
             await msg.ack()
             logger.debug(f"Acked message for {input_id} in MemoryStub")
 
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid InputReceived payload: {e}", exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                except Exception:
+                    logger.error("Failed to NAK message", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message after error", exc_info=True)
         except Exception as e:
             logger.error(f"Error in MemoryStub handler: {e}", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):

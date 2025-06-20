@@ -37,6 +37,19 @@ class DummySubscriber:
         pass
 
 
+class DummyMsg:
+    def __init__(self, data):
+        self.data = data.encode()
+        self.acked = False
+        self.nacked = False
+
+    async def ack(self):
+        self.acked = True
+
+    async def nak(self):
+        self.nacked = True
+
+
 def create_memory(monkeypatch, graph_file):
     monkeypatch.setattr(memory_graph, "Publisher", DummyPublisher)
     monkeypatch.setattr(memory_graph, "Subscriber", DummySubscriber)
@@ -64,3 +77,25 @@ def test_init_creates_directory(tmp_path, monkeypatch):
     assert isinstance(mem._graph, nx.DiGraph)
     with open(graph_file, "r", encoding="utf-8") as f:
         assert isinstance(json.load(f), dict)
+
+
+@pytest.mark.asyncio
+async def test_handle_input_invalid_payload(tmp_path, monkeypatch):
+    graph_file = tmp_path / "graph.json"
+    mem = create_memory(monkeypatch, graph_file)
+    msg = DummyMsg("not json")
+    await mem._handle_input_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_input_missing_fields(tmp_path, monkeypatch):
+    graph_file = tmp_path / "graph.json"
+    mem = create_memory(monkeypatch, graph_file)
+    msg = DummyMsg(json.dumps({"user_input": "hi"}))
+    await mem._handle_input_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked

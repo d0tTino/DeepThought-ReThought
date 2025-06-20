@@ -57,3 +57,12 @@ async def test_process_input_error():
     handler = InputHandler(nc, js)
     with pytest.raises(RuntimeError):
         await handler.process_input("boom")
+
+
+@pytest.mark.asyncio
+async def test_process_input_invalid_type():
+    js = DummyJS()
+    nc = DummyNATS()
+    handler = InputHandler(nc, js)
+    with pytest.raises(ValueError):
+        await handler.process_input(123)

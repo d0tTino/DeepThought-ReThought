@@ -45,8 +45,12 @@ class BasicLLM:
         input_id = "unknown"
         try:
             data = json.loads(msg.data.decode())
-            input_id = data.get("input_id", "unknown")
-            retrieved = data.get("retrieved_knowledge", {})
+            if not isinstance(data, dict):
+                raise ValueError("MemoryRetrieved payload must be a dict")
+            input_id = data.get("input_id")
+            retrieved = data.get("retrieved_knowledge")
+            if not isinstance(input_id, str) or retrieved is None:
+                raise ValueError("Invalid memory payload fields")
             if isinstance(retrieved, dict) and "retrieved_knowledge" in retrieved:
                 knowledge = retrieved.get("retrieved_knowledge", {})
             elif isinstance(retrieved, dict):
@@ -109,6 +113,18 @@ class BasicLLM:
                     input_id,
                 )
             await msg.ack()
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error("Invalid MemoryRetrieved payload: %s", e, exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                except Exception:
+                    logger.error("Failed to NAK message", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message after error", exc_info=True)
         except Exception as e:
             logger.error("Error in BasicLLM handler: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):

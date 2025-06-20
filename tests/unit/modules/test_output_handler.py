@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 import deepthought.modules.output_handler as output_handler
@@ -70,6 +72,26 @@ async def test_handle_response_error(monkeypatch):
     assert handler.get_all_responses() == {}
     assert msg.nacked
     assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_response_missing_fields(monkeypatch):
+    handler = create_handler(monkeypatch)
+    msg = DummyMsg(json.dumps({"input_id": "1"}))
+    await handler._handle_response_event(msg)
+
+    assert handler.get_all_responses() == {}
+    assert msg.nacked
+
+
+@pytest.mark.asyncio
+async def test_handle_response_invalid_types(monkeypatch):
+    handler = create_handler(monkeypatch)
+    msg = DummyMsg(json.dumps({"input_id": 123, "final_response": ["bad"]}))
+    await handler._handle_response_event(msg)
+
+    assert handler.get_all_responses() == {}
+    assert msg.nacked
 
 
 @pytest.mark.asyncio

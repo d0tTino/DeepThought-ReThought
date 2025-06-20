@@ -30,14 +30,13 @@ class LLMStub:
         input_id = "unknown"
         data = None
         try:
-            raw = json.loads(msg.data.decode())
-            if not isinstance(raw, dict):
-                logger.warning("Unexpected MemoryRetrieved payload format: %s", type(raw))
-                data = {}
-            else:
-                data = raw
-            input_id = data.get("input_id", "unknown")
-            retrieved = data.get("retrieved_knowledge", {})
+            data = json.loads(msg.data.decode())
+            if not isinstance(data, dict):
+                raise ValueError(f"Unexpected MemoryRetrieved payload format: {type(data)}")
+            input_id = data.get("input_id")
+            retrieved = data.get("retrieved_knowledge")
+            if not isinstance(input_id, str) or retrieved is None:
+                raise ValueError("Invalid memory payload fields")
             if isinstance(retrieved, dict) and "retrieved_knowledge" in retrieved:
                 knowledge = retrieved.get("retrieved_knowledge", {})
             elif isinstance(retrieved, dict):
@@ -103,6 +102,18 @@ class LLMStub:
                 )
                 # Do not ack/nak on failure; leave to message broker
 
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid MemoryRetrieved payload: {e}", exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                except Exception:
+                    logger.error("Failed to NAK message", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message after error", exc_info=True)
         except Exception as e:
             logger.error(f"Error in LLMStub handler: {e}", exc_info=True)
             # Do not ack/nak on unexpected errors
