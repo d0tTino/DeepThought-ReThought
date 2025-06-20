@@ -104,3 +104,12 @@ def test_read_memory_invalid_json_logs_error(tmp_path, monkeypatch, caplog):
 
     assert data == []
     assert any("Failed to read memory file" in record.getMessage() for record in caplog.records)
+
+
+def test_init_creates_directory(tmp_path, monkeypatch):
+    mem_file = tmp_path / "newdir" / "mem.json"
+    create_memory(monkeypatch, mem_file)
+    assert mem_file.parent.is_dir()
+    assert mem_file.exists()
+    with open(mem_file, "r", encoding="utf-8") as f:
+        assert json.load(f) == []

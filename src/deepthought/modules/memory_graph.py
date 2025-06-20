@@ -23,6 +23,11 @@ class GraphMemory:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._graph_file = graph_file
+
+        dir_path = os.path.dirname(self._graph_file)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+
         if os.path.exists(self._graph_file):
             self._graph = self._read_graph()
         else:

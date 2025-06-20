@@ -51,6 +51,9 @@ class DBManager:
 
     async def connect(self) -> None:
         if self._db is None:
+            dir_path = os.path.dirname(self.db_path)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
             self._db = await aiosqlite.connect(self.db_path)
 
     async def close(self) -> None:
