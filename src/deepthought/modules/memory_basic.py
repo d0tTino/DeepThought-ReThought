@@ -29,6 +29,10 @@ class BasicMemory:
         self._subscriber = Subscriber(nats_client, js_context)
         self._memory_file = memory_file or get_settings().memory_file
 
+        dir_path = os.path.dirname(self._memory_file)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+
         if not os.path.exists(self._memory_file):
             with open(self._memory_file, "w", encoding="utf-8") as f:
                 json.dump([], f)

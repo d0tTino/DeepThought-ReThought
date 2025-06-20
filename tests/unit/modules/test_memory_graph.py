@@ -54,3 +54,13 @@ def test_read_graph_invalid_json(tmp_path, monkeypatch, caplog):
     assert len(mem._graph.nodes) == 0
     error_logs = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert any("Failed to read graph file" in r.getMessage() for r in error_logs)
+
+
+def test_init_creates_directory(tmp_path, monkeypatch):
+    graph_file = tmp_path / "newdir" / "graph.json"
+    mem = create_memory(monkeypatch, graph_file)
+    assert graph_file.parent.is_dir()
+    assert graph_file.exists()
+    assert isinstance(mem._graph, nx.DiGraph)
+    with open(graph_file, "r", encoding="utf-8") as f:
+        assert isinstance(json.load(f), dict)
