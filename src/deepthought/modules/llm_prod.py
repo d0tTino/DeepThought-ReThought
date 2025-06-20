@@ -96,7 +96,10 @@ class ProductionLLM:
             with torch.no_grad():
                 outputs = self._model.generate(**inputs, max_length=inputs["input_ids"].shape[1] + 20)
             generated = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
-            response_text = generated[len(prompt) :].strip()  # noqa: E203
+            if generated.startswith(prompt):
+                response_text = generated[len(prompt) :].strip()  # noqa: E203
+            else:
+                response_text = generated.strip()
 
             payload = ResponseGeneratedPayload(
                 final_response=response_text,

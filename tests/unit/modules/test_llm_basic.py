@@ -168,3 +168,19 @@ async def test_handle_memory_event_facts_not_list(monkeypatch, caplog):
     pub = llm._publisher
     assert not pub.published
     assert any("missing facts" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_no_prompt_prefix(monkeypatch):
+    llm = create_llm(monkeypatch)
+    monkeypatch.setattr(llm._tokenizer, "decode", lambda *_args, **_kwargs: "just text")
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="no_pref")
+    msg = DummyMsg(payload.to_json())
+    await llm._handle_memory_event(msg)
+
+    assert msg.acked
+    pub = llm._publisher
+    assert pub.published
+    subject, sent_payload = pub.published[0]
+    assert subject == EventSubjects.RESPONSE_GENERATED
+    assert sent_payload.final_response == "just text"
