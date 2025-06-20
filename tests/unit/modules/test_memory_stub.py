@@ -45,9 +45,13 @@ class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
         self.acked = False
+        self.nacked = False
 
     async def ack(self):
         self.acked = True
+
+    async def nak(self):
+        self.nacked = True
 
 
 def create_stub(monkeypatch, publisher_cls=DummyPublisher):
@@ -86,4 +90,5 @@ async def test_handle_input_error(monkeypatch):
     msg = DummyMsg(payload.to_json())
     await stub._handle_input_event(msg)
 
+    assert msg.nacked
     assert not msg.acked
