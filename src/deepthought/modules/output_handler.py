@@ -47,11 +47,11 @@ class OutputHandler:
             if len(self._responses) > self._max_responses:
                 self._responses.popitem(last=False)
 
-            # Use callback or print
+            # Use callback or log when no callback provided
             if self._output_callback:
                 self._output_callback(input_id, final_response)
             else:
-                print(f"Output ({input_id}): {final_response}")
+                logger.info(f"Output ({input_id}): {final_response}")
 
             # Acknowledge the received message
             await msg.ack()
