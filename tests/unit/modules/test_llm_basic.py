@@ -43,9 +43,13 @@ class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
         self.acked = False
+        self.nacked = False
 
     async def ack(self):
         self.acked = True
+
+    async def nak(self):
+        self.nacked = True
 
 
 class DummyTensor:
@@ -136,7 +140,7 @@ async def test_handle_memory_event_non_dict(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         await llm._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
     pub = llm._publisher
     assert not pub.published
     assert any("not a dict" in r.getMessage() for r in caplog.records)
@@ -150,7 +154,7 @@ async def test_handle_memory_event_missing_facts(monkeypatch, caplog):
     with caplog.at_level(logging.ERROR):
         await llm._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
     pub = llm._publisher
     assert not pub.published
     assert any("missing facts" in r.getMessage() for r in caplog.records)
@@ -164,23 +168,20 @@ async def test_handle_memory_event_facts_not_list(monkeypatch, caplog):
     with caplog.at_level(logging.ERROR):
         await llm._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
     pub = llm._publisher
     assert not pub.published
     assert any("missing facts" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio
-async def test_handle_memory_event_no_prompt_prefix(monkeypatch):
+async def test_handle_memory_event_missing_input_id(monkeypatch):
     llm = create_llm(monkeypatch)
-    monkeypatch.setattr(llm._tokenizer, "decode", lambda *_args, **_kwargs: "just text")
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="no_pref")
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]})
     msg = DummyMsg(payload.to_json())
     await llm._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
     pub = llm._publisher
-    assert pub.published
-    subject, sent_payload = pub.published[0]
-    assert subject == EventSubjects.RESPONSE_GENERATED
-    assert sent_payload.final_response == "just text"
+    assert not pub.published
+

@@ -39,8 +39,12 @@ class OutputHandler:
         data = None
         try:
             data = json.loads(msg.data.decode())
-            input_id = data.get("input_id", "unknown")
-            final_response = data.get("final_response", "N/A")
+            if not isinstance(data, dict):
+                raise ValueError("ResponseGenerated payload must be a dict")
+            input_id = data.get("input_id")
+            final_response = data.get("final_response")
+            if not isinstance(input_id, str) or not isinstance(final_response, str):
+                raise ValueError("Invalid response payload fields")
             logger.info(f"OutputHandler received response event ID {input_id}")
 
             self._responses[input_id] = final_response  # Store response
@@ -57,20 +61,19 @@ class OutputHandler:
             await msg.ack()
             logger.debug(f"Acked message for {input_id} in OutputHandler")
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in OutputHandler handler: {e}", exc_info=True)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid ResponseGenerated payload: {e}", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
-                except nats.errors.Error:
+                except Exception:
                     logger.error("Failed to NAK message", exc_info=True)
-        except nats.errors.TimeoutError as e:
-            logger.error(f"NATS timeout in OutputHandler handler: {e}", exc_info=True)
-            if hasattr(msg, "nak") and callable(msg.nak):
+            elif hasattr(msg, "ack") and callable(msg.ack):
                 try:
-                    await msg.nak()
-                except nats.errors.Error:
-                    logger.error("Failed to NAK message", exc_info=True)
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message after error", exc_info=True)
+
         except Exception as e:
             logger.error(f"Error in OutputHandler handler: {e}", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):

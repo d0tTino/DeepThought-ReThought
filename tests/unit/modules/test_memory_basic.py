@@ -48,9 +48,13 @@ class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
         self.acked = False
+        self.nacked = False
 
     async def ack(self):
         self.acked = True
+
+    async def nak(self):
+        self.nacked = True
 
 
 def create_memory(monkeypatch, memory_file, publisher_cls=DummyPublisher):
@@ -88,11 +92,34 @@ async def test_handle_input_error(tmp_path, monkeypatch):
     msg = DummyMsg(payload.to_json())
     await mem._handle_input_event(msg)
 
-    assert msg.acked  # Even on error, ack() should be called
+    assert msg.nacked
+    assert not msg.acked
     assert mem._publisher.published == []
     with open(mem_file, "r", encoding="utf-8") as f:
         history = json.load(f)
     assert history[-1]["user_input"] == "boom"
+
+
+@pytest.mark.asyncio
+async def test_handle_input_invalid_payload(tmp_path, monkeypatch):
+    mem_file = tmp_path / "mem.json"
+    mem = create_memory(monkeypatch, mem_file)
+    msg = DummyMsg("not json")
+    await mem._handle_input_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_input_missing_fields(tmp_path, monkeypatch):
+    mem_file = tmp_path / "mem.json"
+    mem = create_memory(monkeypatch, mem_file)
+    msg = DummyMsg(json.dumps({"input_id": "1"}))
+    await mem._handle_input_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked
 
 
 def test_read_memory_invalid_json_logs_error(tmp_path, monkeypatch, caplog):

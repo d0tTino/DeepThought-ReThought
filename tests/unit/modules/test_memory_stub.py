@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -92,3 +93,25 @@ async def test_handle_input_error(monkeypatch):
 
     assert msg.nacked
     assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_input_invalid_payload(monkeypatch):
+    stub = create_stub(monkeypatch)
+    msg = DummyMsg("not json")
+    await stub._handle_input_event(msg)
+
+    assert msg.nacked
+    pub = stub._publisher
+    assert not pub.published
+
+
+@pytest.mark.asyncio
+async def test_handle_input_missing_fields(monkeypatch):
+    stub = create_stub(monkeypatch)
+    msg = DummyMsg(json.dumps({"input_id": "x"}))
+    await stub._handle_input_event(msg)
+
+    assert msg.nacked
+    pub = stub._publisher
+    assert not pub.published

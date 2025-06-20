@@ -47,9 +47,13 @@ class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
         self.acked = False
+        self.nacked = False
 
     async def ack(self):
         self.acked = True
+
+    async def nak(self):
+        self.nacked = True
 
 
 def create_stub(monkeypatch, publisher_cls=DummyPublisher):
@@ -91,7 +95,7 @@ async def test_handle_memory_error(monkeypatch):
     msg = DummyMsg(payload.to_json())
     await stub._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
 
 
 @pytest.mark.asyncio
@@ -102,7 +106,7 @@ async def test_handle_memory_event_non_dict_retrieved(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         await stub._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
     pub = stub._publisher
     assert not pub.published
     assert any("not a dict" in r.getMessage() for r in caplog.records)
@@ -115,7 +119,7 @@ async def test_handle_memory_event_payload_not_dict(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         await stub._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
     pub = stub._publisher
     assert not pub.published
     assert any("Unexpected MemoryRetrieved payload format" in r.getMessage() for r in caplog.records)
@@ -129,7 +133,7 @@ async def test_handle_memory_event_missing_facts(monkeypatch, caplog):
     with caplog.at_level(logging.ERROR):
         await stub._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
     pub = stub._publisher
     assert not pub.published
     assert any("missing facts" in r.getMessage() for r in caplog.records)
@@ -143,7 +147,19 @@ async def test_handle_memory_event_facts_not_list(monkeypatch, caplog):
     with caplog.at_level(logging.ERROR):
         await stub._handle_memory_event(msg)
 
-    assert msg.acked
+    assert msg.nacked
     pub = stub._publisher
     assert not pub.published
     assert any("missing facts" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_missing_input_id(monkeypatch):
+    stub = create_stub(monkeypatch)
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f"]})
+    msg = DummyMsg(payload.to_json())
+    await stub._handle_memory_event(msg)
+
+    assert msg.nacked
+    pub = stub._publisher
+    assert not pub.published

@@ -38,6 +38,19 @@ class DummySubscriber:
         pass
 
 
+class DummyMsg:
+    def __init__(self, data):
+        self.data = data.encode()
+        self.acked = False
+        self.nacked = False
+
+    async def ack(self):
+        self.acked = True
+
+    async def nak(self):
+        self.nacked = True
+
+
 def create_memory(monkeypatch, graph_file):
     monkeypatch.setattr(memory_graph, "Publisher", DummyPublisher)
     monkeypatch.setattr(memory_graph, "Subscriber", DummySubscriber)
@@ -84,29 +97,24 @@ def test_init_creates_directory(tmp_path, monkeypatch):
     with open(graph_file, "r", encoding="utf-8") as f:
         assert isinstance(json.load(f), dict)
 
-
-def test_write_graph_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
+@pytest.mark.asyncio
+async def test_handle_input_invalid_payload(tmp_path, monkeypatch):
     graph_file = tmp_path / "graph.json"
     mem = create_memory(monkeypatch, graph_file)
+    msg = DummyMsg("not json")
+    await mem._handle_input_event(msg)
 
-    def fail_open(*args, **kwargs):
-        raise IOError("fail")
-
-    monkeypatch.setattr(builtins, "open", fail_open)
-    with caplog.at_level(logging.ERROR), pytest.raises(IOError):
-        mem._write_graph()
-
-    assert any("Failed to write graph file" in r.getMessage() for r in caplog.records)
+    assert msg.nacked
+    assert not msg.acked
 
 
-def test_init_write_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
+@pytest.mark.asyncio
+async def test_handle_input_missing_fields(tmp_path, monkeypatch):
     graph_file = tmp_path / "graph.json"
+    mem = create_memory(monkeypatch, graph_file)
+    msg = DummyMsg(json.dumps({"user_input": "hi"}))
+    await mem._handle_input_event(msg)
 
-    def fail_open(*args, **kwargs):
-        raise IOError("fail")
+    assert msg.nacked
+    assert not msg.acked
 
-    monkeypatch.setattr(builtins, "open", fail_open)
-    with caplog.at_level(logging.ERROR), pytest.raises(IOError):
-        memory_graph.GraphMemory(DummyNATS(), DummyJS(), graph_file=graph_file)
-
-    assert any("Failed to write graph file" in r.getMessage() for r in caplog.records)

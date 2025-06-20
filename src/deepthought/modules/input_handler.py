@@ -24,6 +24,9 @@ class InputHandler:
 
     async def process_input(self, user_input: str) -> str:
         """Process input and publish via JetStream."""
+        if not isinstance(user_input, str):
+            raise ValueError("user_input must be a string")
+
         input_id = str(uuid.uuid4())
         # Use timezone-aware UTC timestamp
         timestamp = datetime.now(timezone.utc).isoformat()

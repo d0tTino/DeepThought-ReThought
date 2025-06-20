@@ -66,8 +66,12 @@ class BasicMemory:
         input_id = "unknown"
         try:
             data = json.loads(msg.data.decode())
-            input_id = data.get("input_id", "unknown")
-            user_input = data.get("user_input", "")
+            if not isinstance(data, dict):
+                raise ValueError("InputReceived payload must be a dict")
+            input_id = data.get("input_id")
+            user_input = data.get("user_input")
+            if not isinstance(input_id, str) or not isinstance(user_input, str):
+                raise ValueError("Invalid input payload fields")
             logger.info("BasicMemory received input event ID %s", input_id)
 
             history = self._read_memory()
@@ -86,20 +90,19 @@ class BasicMemory:
             await self._publisher.publish(EventSubjects.MEMORY_RETRIEVED, payload, use_jetstream=True, timeout=10.0)
             logger.info("BasicMemory published memory event ID %s", input_id)
             await msg.ack()
-        except json.JSONDecodeError as e:
-            logger.error("Invalid JSON in BasicMemory handler: %s", e, exc_info=True)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error("Invalid InputReceived payload: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
-                except nats.errors.Error:
+                except Exception:
                     logger.error("Failed to NAK message", exc_info=True)
-        except nats.errors.TimeoutError as e:
-            logger.error("NATS timeout in BasicMemory handler: %s", e, exc_info=True)
-            if hasattr(msg, "nak") and callable(msg.nak):
+            elif hasattr(msg, "ack") and callable(msg.ack):
                 try:
-                    await msg.nak()
-                except nats.errors.Error:
-                    logger.error("Failed to NAK message", exc_info=True)
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message after error", exc_info=True)
+
         except Exception as e:
             logger.error("Error in BasicMemory handler: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
