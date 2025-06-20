@@ -48,6 +48,7 @@ class GraphMemory:
             logger.error("Unexpected error reading graph file %s: %s", self._graph_file, e, exc_info=True)
             return nx.DiGraph()
 
+
     def _write_graph(self) -> None:
         data = nx.readwrite.json_graph.node_link_data(self._graph)
         with open(self._graph_file, "w", encoding="utf-8") as f:
