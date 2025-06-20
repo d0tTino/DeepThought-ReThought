@@ -1,8 +1,8 @@
 # File: src/deepthought/modules/output_handler.py
 import json
 import logging
-from typing import Callable, Dict, Optional
 from collections import OrderedDict
+from typing import Callable, Dict, Optional
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -58,7 +58,16 @@ class OutputHandler:
 
         except Exception as e:
             logger.error(f"Error in OutputHandler handler: {e}", exc_info=True)
-            # Do not ack/nak on failure; leave for broker retry
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                except Exception:
+                    logger.error("Failed to NAK message", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "output_handler_listener") -> bool:
         """

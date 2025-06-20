@@ -28,9 +28,13 @@ class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
         self.acked = False
+        self.nacked = False
 
     async def ack(self):
         self.acked = True
+
+    async def nak(self):
+        self.nacked = True
 
 
 def create_handler(monkeypatch, callback=None, max_responses=100):
@@ -64,6 +68,7 @@ async def test_handle_response_error(monkeypatch):
     await handler._handle_response_event(msg)
 
     assert handler.get_all_responses() == {}
+    assert msg.nacked
     assert not msg.acked
 
 
