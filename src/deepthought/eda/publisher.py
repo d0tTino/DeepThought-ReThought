@@ -2,6 +2,7 @@
 import logging
 from typing import Any, Dict, Optional, Union
 
+import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
@@ -54,6 +55,9 @@ class Publisher:
                 await self._nc.publish(subject, data)
                 logger.debug(f"Published basic NATS message to '{subject}'")
                 return None
+        except nats.errors.TimeoutError as e:
+            logger.error(f"Publish timeout for '{subject}': {e}", exc_info=True)
+            raise e
         except Exception as e:
             logger.error(f"Failed to publish to '{subject}': {e}", exc_info=True)  # Log traceback
             raise e
