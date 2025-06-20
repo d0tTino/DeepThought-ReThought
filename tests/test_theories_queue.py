@@ -171,3 +171,37 @@ async def test_process_deep_reflections_negative(tmp_path, monkeypatch):
             row = await cur.fetchone()
     assert row[0] == "done"
     assert bot.channel.sent_messages == ["After some thought... Your message felt negative."]
+
+
+@pytest.mark.asyncio
+async def test_store_memory_validation(tmp_path):
+    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    await sg.db_manager.connect()
+    await sg.init_db()
+    long_memory = "x" * (sg.MAX_MEMORY_LENGTH + 1)
+    with pytest.raises(ValueError):
+        await sg.store_memory("u1", long_memory)
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_store_theory_validation(tmp_path):
+    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    await sg.db_manager.connect()
+    await sg.init_db()
+    with pytest.raises(ValueError):
+        await sg.store_theory("u1", "theory", 1.5)
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_queue_deep_reflection_validation(tmp_path):
+    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    await sg.db_manager.connect()
+    await sg.init_db()
+    with pytest.raises(ValueError):
+        await sg.queue_deep_reflection("u1", "not a dict", "hi")
+    long_prompt = "x" * (sg.MAX_PROMPT_LENGTH + 1)
+    with pytest.raises(ValueError):
+        await sg.queue_deep_reflection("u1", {"channel_id": 1}, long_prompt)
+    await sg.db_manager.close()

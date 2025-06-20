@@ -41,6 +41,11 @@ idle_response_candidates = [
 # Simple list of phrases considered bullying
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
 
+# Limits used when validating inputs
+MAX_MEMORY_LENGTH = 1000
+MAX_THEORY_LENGTH = 256
+MAX_PROMPT_LENGTH = 2000
+
 
 class DBManager:
     """Lightweight wrapper managing a single aiosqlite connection."""
@@ -154,6 +159,18 @@ class DBManager:
         topic: str = "",
         sentiment_score: float | None = None,
     ) -> None:
+        if not isinstance(memory, str) or not memory.strip():
+            raise ValueError("memory must be a non-empty string")
+        if len(memory) > MAX_MEMORY_LENGTH:
+            raise ValueError("memory exceeds maximum length")
+        if not isinstance(topic, str):
+            raise ValueError("topic must be a string")
+        if sentiment_score is not None:
+            if not isinstance(sentiment_score, (int, float)):
+                raise ValueError("sentiment_score must be numeric")
+            if not -1 <= float(sentiment_score) <= 1:
+                raise ValueError("sentiment_score out of range")
+
         await self.connect()
         assert self._db
         await self._db.execute(
@@ -163,6 +180,15 @@ class DBManager:
         await self._db.commit()
 
     async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
+        if not isinstance(theory, str) or not theory.strip():
+            raise ValueError("theory must be a non-empty string")
+        if len(theory) > MAX_THEORY_LENGTH:
+            raise ValueError("theory exceeds maximum length")
+        if not isinstance(confidence, (int, float)):
+            raise ValueError("confidence must be numeric")
+        if not 0 <= float(confidence) <= 1:
+            raise ValueError("confidence out of range")
+
         await self.connect()
         assert self._db
         await self._db.execute(
@@ -216,11 +242,22 @@ class DBManager:
             return await cur.fetchone()
 
     async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("prompt must be a non-empty string")
+        if len(prompt) > MAX_PROMPT_LENGTH:
+            raise ValueError("prompt exceeds maximum length")
+        if not isinstance(context, dict):
+            raise ValueError("context must be a dictionary")
+        try:
+            context_json = json.dumps(context)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("context is not JSON serializable") from exc
+
         await self.connect()
         assert self._db
         cur = await self._db.execute(
             "INSERT INTO queued_tasks (user_id, context, prompt) VALUES (?, ?, ?)",
-            (str(user_id), json.dumps(context), prompt),
+            (str(user_id), context_json, prompt),
         )
         await self._db.commit()
         return cur.lastrowid
