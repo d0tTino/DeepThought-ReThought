@@ -49,27 +49,32 @@ class DummyMsg:
         self.nacked = True
 
 
-class DummyConnector:
-    def __init__(self, fail=False):
+class DummyDAL:
+    def __init__(self, fail: bool = False):
         self.fail = fail
-        self.executed = []
+        self.merge_entity_calls = []
+        self.merge_edge_calls = []
 
-    def execute(self, query, params=None):
+    def merge_entity(self, name: str):
         if self.fail:
             raise RuntimeError("boom")
-        self.executed.append((query, params))
-        return []
+        self.merge_entity_calls.append(name)
+
+    def merge_next_edge(self, src: str, dst: str):
+        if self.fail:
+            raise RuntimeError("boom")
+        self.merge_edge_calls.append((src, dst))
 
 
-def create_memory(monkeypatch, connector):
+def create_memory(monkeypatch, dal):
     monkeypatch.setattr(memory_kg, "Publisher", DummyPublisher)
     monkeypatch.setattr(memory_kg, "Subscriber", DummySubscriber)
-    return memory_kg.KnowledgeGraphMemory(DummyNATS(), DummyJS(), connector)
+    return memory_kg.KnowledgeGraphMemory(DummyNATS(), DummyJS(), dal)
 
 
 @pytest.mark.asyncio
 async def test_handle_input_creates_nodes_edges(monkeypatch):
-    connector = DummyConnector()
+    connector = DummyDAL()
     mem = create_memory(monkeypatch, connector)
     payload = InputReceivedPayload(user_input="hello world", input_id="7")
     msg = DummyMsg(payload.to_json())
@@ -78,15 +83,13 @@ async def test_handle_input_creates_nodes_edges(monkeypatch):
     assert msg.acked
     pub = mem._publisher
     assert pub.published
-    node_queries = [q for q, _ in connector.executed if "MERGE (:Entity" in q]
-    edge_queries = [q for q, _ in connector.executed if "MERGE (a)-[:NEXT]->(b)" in q]
-    assert len(node_queries) == 2
-    assert len(edge_queries) == 1
+    assert connector.merge_entity_calls == ["hello", "world"]
+    assert connector.merge_edge_calls == [("hello", "world")]
 
 
 @pytest.mark.asyncio
 async def test_handle_input_error(monkeypatch):
-    connector = DummyConnector(fail=True)
+    connector = DummyDAL(fail=True)
     mem = create_memory(monkeypatch, connector)
     payload = InputReceivedPayload(user_input="fail", input_id="8")
     msg = DummyMsg(payload.to_json())
@@ -94,12 +97,13 @@ async def test_handle_input_error(monkeypatch):
 
     assert msg.nacked
     assert not msg.acked
-    assert connector.executed == []
+    assert connector.merge_entity_calls == []
+    assert connector.merge_edge_calls == []
 
 
 @pytest.mark.asyncio
 async def test_handle_input_invalid_payload(monkeypatch):
-    connector = DummyConnector()
+    connector = DummyDAL()
     mem = create_memory(monkeypatch, connector)
     msg = DummyMsg("not json")
     await mem._handle_input_event(msg)
@@ -110,7 +114,7 @@ async def test_handle_input_invalid_payload(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_handle_input_missing_fields(monkeypatch):
-    connector = DummyConnector()
+    connector = DummyDAL()
     mem = create_memory(monkeypatch, connector)
     msg = DummyMsg(json.dumps({"user_input": "hi"}))
     await mem._handle_input_event(msg)
