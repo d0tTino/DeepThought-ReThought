@@ -17,3 +17,14 @@ def prism_calls(monkeypatch):
 
     monkeypatch.setattr(sg, "send_to_prism", fake_send)
     return calls
+
+
+@pytest.fixture
+def input_events(monkeypatch):
+    calls = []
+
+    async def fake_publish(text):
+        calls.append(text)
+
+    monkeypatch.setattr(sg, "publish_input_received", fake_publish)
+    return calls

@@ -10,6 +10,13 @@ import aiohttp
 import aiosqlite
 import discord
 from textblob import TextBlob
+from deepthought.eda.events import EventSubjects, InputReceivedPayload
+from deepthought.eda.publisher import Publisher
+from deepthought.config import get_settings
+import nats
+from nats.aio.client import Client as NATS
+from nats.js.client import JetStreamContext
+import uuid
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -20,6 +27,12 @@ CURRENT_DB_PATH = DB_PATH
 
 # Endpoint for forwarding collected data
 PRISM_ENDPOINT = os.getenv("PRISM_ENDPOINT", "http://localhost:5000/receive_data")
+
+# NATS configuration for publishing events
+NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
+_nats_client: nats.aio.client.Client | None = None
+_js_context: JetStreamContext | None = None
+_input_publisher: Publisher | None = None
 
 # Configuration values
 MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
@@ -358,6 +371,42 @@ async def send_to_prism(data: dict) -> None:
         logger.warning("Failed to send data to Prism: %s", exc)
 
 
+async def _ensure_nats() -> None:
+    """Initialize NATS client and publisher if not already connected."""
+    global _nats_client, _js_context, _input_publisher
+    if _input_publisher is not None:
+        return
+    try:
+        settings = get_settings()
+        _nats_client = await nats.connect(servers=[settings.nats_url])
+        _js_context = _nats_client.jetstream()
+        _input_publisher = Publisher(_nats_client, _js_context)
+    except Exception as exc:  # pragma: no cover - connection issues
+        logger.warning("Failed to connect to NATS: %s", exc)
+        _input_publisher = None
+
+
+async def publish_input_received(text: str) -> None:
+    """Publish an INPUT_RECEIVED event using NATS JetStream."""
+    await _ensure_nats()
+    if _input_publisher is None:
+        return
+    payload = InputReceivedPayload(
+        user_input=text,
+        input_id=str(uuid.uuid4()),
+        timestamp=discord.utils.utcnow().replace(tzinfo=timezone.utc).isoformat(),
+    )
+    try:
+        await _input_publisher.publish(
+            EventSubjects.INPUT_RECEIVED,
+            payload,
+            use_jetstream=True,
+            timeout=5.0,
+        )
+    except Exception as exc:  # pragma: no cover - publish error
+        logger.warning("Failed to publish INPUT_RECEIVED: %s", exc)
+
+
 async def store_theory(subject_id: int, theory: str, confidence: float) -> None:
     return await db_manager.store_theory(subject_id, theory, confidence)
 
@@ -552,6 +601,9 @@ class SocialGraphBot(discord.Client):
         async with message.channel.typing():
             await asyncio.sleep(random.uniform(1, 3))
             await message.channel.send("I'm pondering your message...")
+
+        # Publish event and forward to Prism
+        await publish_input_received(message.content)
 
         await send_to_prism(
             {

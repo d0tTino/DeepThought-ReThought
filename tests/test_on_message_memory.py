@@ -45,7 +45,7 @@ class DummyMessage:
 
 
 @pytest.mark.asyncio
-async def test_on_message_stores_memory(tmp_path, monkeypatch):
+async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.init_db()
@@ -84,7 +84,7 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls):
+async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.init_db()
@@ -108,6 +108,7 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
 
     assert len(prism_calls) == 1
     assert prism_calls[0]["content"] == "send prism"
+    assert input_events == ["send prism"]
     await sg.db_manager.close()
 
 
@@ -126,7 +127,7 @@ async def test_update_sentiment_trend(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch):
+async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_events):
 
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
