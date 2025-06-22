@@ -51,8 +51,12 @@ python -m textblob.download_corpora
 export DISCORD_TOKEN=your_token
 export MONITOR_CHANNEL=1234567890
 export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
+export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
 
 python examples/social_graph_bot.py
 ```
 
 The `examples/social_graph_bot.py` script logs user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`.
+
+The knowledge graph memory uses GraphDAL to persist data in Memgraph. Start Memgraph with `docker run --rm -p 7687:7687 memgraph/memgraph` and see [docs/graphdal.md](graphdal.md) for a full example service.
+

@@ -136,6 +136,24 @@ Ensure the dependency is installed (included in `requirements.txt`).
 If the graph file contains invalid JSON, `GraphMemory` will automatically
 rewrite it with an empty graph so subsequent loads succeed.
 
+### GraphDAL
+
+`KnowledgeGraphMemory` now relies on **GraphDAL**, a thin data access
+layer that persists nodes and edges in a Memgraph instance. Start
+Memgraph with Docker and configure connection details with environment
+variables:
+
+```bash
+docker run --rm -p 7687:7687 memgraph/memgraph
+export MG_HOST=localhost
+export MG_PORT=7687
+export MG_USER=memgraph
+export MG_PASSWORD=memgraph
+```
+
+See [docs/graphdal.md](docs/graphdal.md) for a minimal script that starts
+the memory service and listens for `INPUT_RECEIVED` events.
+
 ## Social Graph Bot Example
 
 
