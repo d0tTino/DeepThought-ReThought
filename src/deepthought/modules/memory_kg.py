@@ -15,7 +15,7 @@ from nats.js.client import JetStreamContext
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
-from ..graph import GraphConnector
+from ..graph import GraphDAL
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 class KnowledgeGraphMemory:
     """Parse user input into a graph stored in Memgraph."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, connector: GraphConnector) -> None:
+    def __init__(self, nats_client: NATS, js_context: JetStreamContext, dal: GraphDAL) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._connector = connector
+        self._dal = dal
 
     def _parse_input(self, text: str) -> Tuple[List[str], List[Tuple[str, str]]]:
         words = [w for w in text.strip().split() if w]
@@ -36,12 +36,9 @@ class KnowledgeGraphMemory:
 
     def _store(self, nodes: List[str], edges: List[Tuple[str, str]]) -> None:
         for name in nodes:
-            self._connector.execute("MERGE (:Entity {name: $name})", {"name": name})
+            self._dal.merge_entity(name)
         for src, dst in edges:
-            self._connector.execute(
-                "MATCH (a:Entity {name: $src}), (b:Entity {name: $dst}) MERGE (a)-[:NEXT]->(b)",
-                {"src": src, "dst": dst},
-            )
+            self._dal.merge_next_edge(src, dst)
 
     async def _handle_input_event(self, msg: Msg) -> None:
         input_id = "unknown"
