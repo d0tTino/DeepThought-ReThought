@@ -32,13 +32,13 @@ class GraphMemory:
 
         if os.path.exists(self._graph_file):
             self._graph = self._read_graph()
-            if isinstance(self._last_read_error, json.JSONDecodeError) and len(self._graph.nodes) == 0:
+            # Ensure corrupted files get rewritten as valid JSON
+            try:
+                self._write_graph()
+            except Exception:
+                # _write_graph already logs the error
+                raise
 
-                try:
-                    self._write_graph()
-                except Exception:
-                    # _write_graph already logs the error
-                    raise
         else:
             self._graph = nx.DiGraph()
             try:
@@ -69,7 +69,6 @@ class GraphMemory:
             self._last_read_error = e
             logger.error("Unexpected error reading graph file %s: %s", self._graph_file, e, exc_info=True)
             return nx.DiGraph()
-
 
     def _write_graph(self) -> None:
         data = nx.readwrite.json_graph.node_link_data(self._graph)
