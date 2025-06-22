@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -115,3 +116,16 @@ async def test_handle_input_missing_fields(monkeypatch):
     assert msg.nacked
     pub = stub._publisher
     assert not pub.published
+
+
+@pytest.mark.asyncio
+async def test_start_listening_no_subscriber(monkeypatch, caplog):
+    stub = create_stub(monkeypatch)
+    stub._subscriber = None
+    with caplog.at_level(logging.ERROR):
+        result = await stub.start_listening()
+
+    assert result is False
+    assert any(
+        "Subscriber not initialized for MemoryStub." in r.getMessage() for r in caplog.records
+    )

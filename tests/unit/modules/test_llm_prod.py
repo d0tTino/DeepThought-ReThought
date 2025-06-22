@@ -182,3 +182,16 @@ async def test_handle_memory_event_missing_input_id(monkeypatch):
     pub = llm._publisher
     assert not pub.published
 
+
+@pytest.mark.asyncio
+async def test_start_listening_no_subscriber(monkeypatch, caplog):
+    llm = create_llm(monkeypatch)
+    llm._subscriber = None
+    with caplog.at_level(logging.ERROR):
+        result = await llm.start_listening()
+
+    assert result is False
+    assert any(
+        "Subscriber not initialized for ProductionLLM." in r.getMessage() for r in caplog.records
+    )
+

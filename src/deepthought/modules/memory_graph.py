@@ -31,6 +31,12 @@ class GraphMemory:
 
         if os.path.exists(self._graph_file):
             self._graph = self._read_graph()
+            if self._graph.number_of_nodes() == 0 and self._graph.number_of_edges() == 0:
+                try:
+                    self._write_graph()
+                except Exception:
+                    # _write_graph already logs the error
+                    raise
         else:
             self._graph = nx.DiGraph()
             try:
@@ -130,7 +136,7 @@ class GraphMemory:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "memory_graph_listener") -> bool:
-        if not self._subscriber:
+        if self._subscriber is None:
             logger.error("Subscriber not initialized for GraphMemory.")
             return False
         try:
