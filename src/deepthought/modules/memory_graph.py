@@ -24,13 +24,21 @@ class GraphMemory:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._graph_file = graph_file
+        self.repaired = False
 
         dir_path = os.path.dirname(self._graph_file)
         if dir_path:
             os.makedirs(dir_path, exist_ok=True)
 
         if os.path.exists(self._graph_file):
-            self._graph = self._read_graph()
+            self._graph, valid = self._read_graph()
+            if not valid:
+                self.repaired = True
+                try:
+                    self._write_graph()
+                except Exception:
+                    # _write_graph already logs the error
+                    raise
         else:
             self._graph = nx.DiGraph()
             try:
@@ -40,17 +48,17 @@ class GraphMemory:
                 raise
         logger.info("GraphMemory initialized with file %s", self._graph_file)
 
-    def _read_graph(self) -> nx.DiGraph:
+    def _read_graph(self) -> tuple[nx.DiGraph, bool]:
         try:
             with open(self._graph_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return nx.readwrite.json_graph.node_link_graph(data)
+            return nx.readwrite.json_graph.node_link_graph(data), True
         except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
             logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
-            return nx.DiGraph()
+            return nx.DiGraph(), False
         except Exception as e:  # fallback
             logger.error("Unexpected error reading graph file %s: %s", self._graph_file, e, exc_info=True)
-            return nx.DiGraph()
+            return nx.DiGraph(), False
 
 
     def _write_graph(self) -> None:
