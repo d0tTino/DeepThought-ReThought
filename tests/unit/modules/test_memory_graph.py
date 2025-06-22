@@ -77,6 +77,9 @@ def test_invalid_json_rewritten_and_readable(tmp_path, monkeypatch, caplog):
     caplog.set_level(logging.ERROR)
     create_memory(monkeypatch, graph_file)
 
+    error_logs = [r for r in caplog.records if "Failed to read graph file" in r.getMessage()]
+    assert len(error_logs) == 1
+
     with open(graph_file, "r", encoding="utf-8") as f:
         data = json.load(f)
     assert data == nx.readwrite.json_graph.node_link_data(nx.DiGraph())
