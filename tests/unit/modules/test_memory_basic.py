@@ -168,3 +168,17 @@ def test_init_write_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
         memory_basic.BasicMemory(DummyNATS(), DummyJS(), memory_file=mem_file)
 
     assert any("Failed to initialize memory file" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_start_listening_no_subscriber(tmp_path, monkeypatch, caplog):
+    mem_file = tmp_path / "mem.json"
+    mem = create_memory(monkeypatch, mem_file)
+    mem._subscriber = None
+    with caplog.at_level(logging.ERROR):
+        result = await mem.start_listening()
+
+    assert result is False
+    assert any(
+        "Subscriber not initialized for BasicMemory." in r.getMessage() for r in caplog.records
+    )

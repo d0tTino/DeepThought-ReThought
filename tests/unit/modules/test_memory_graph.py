@@ -80,6 +80,9 @@ def test_invalid_json_rewritten_and_readable(tmp_path, monkeypatch, caplog):
     first_mtime = graph_file.stat().st_mtime
     assert mem.repaired
 
+    error_logs = [r for r in caplog.records if "Failed to read graph file" in r.getMessage()]
+    assert len(error_logs) == 1
+
     with open(graph_file, "r", encoding="utf-8") as f:
         data = json.load(f)
     assert data == nx.readwrite.json_graph.node_link_data(nx.DiGraph())
@@ -123,4 +126,18 @@ async def test_handle_input_missing_fields(tmp_path, monkeypatch):
 
     assert msg.nacked
     assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_start_listening_no_subscriber(tmp_path, monkeypatch, caplog):
+    graph_file = tmp_path / "graph.json"
+    mem = create_memory(monkeypatch, graph_file)
+    mem._subscriber = None
+    with caplog.at_level(logging.ERROR):
+        result = await mem.start_listening()
+
+    assert result is False
+    assert any(
+        "Subscriber not initialized for GraphMemory." in r.getMessage() for r in caplog.records
+    )
 

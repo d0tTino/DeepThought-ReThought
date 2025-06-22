@@ -26,6 +26,7 @@ class GraphMemory:
         self._graph_file = graph_file
         self.repaired = False
 
+
         dir_path = os.path.dirname(self._graph_file)
         if dir_path:
             os.makedirs(dir_path, exist_ok=True)
@@ -39,6 +40,7 @@ class GraphMemory:
                 except Exception:
                     # _write_graph already logs the error
                     raise
+
         else:
             self._graph = nx.DiGraph()
             try:
@@ -49,17 +51,20 @@ class GraphMemory:
         logger.info("GraphMemory initialized with file %s", self._graph_file)
 
     def _read_graph(self) -> tuple[nx.DiGraph, bool]:
+
         try:
             with open(self._graph_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             return nx.readwrite.json_graph.node_link_graph(data), True
         except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
+            self._last_read_error = e
             logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
             return nx.DiGraph(), False
+
         except Exception as e:  # fallback
+            self._last_read_error = e
             logger.error("Unexpected error reading graph file %s: %s", self._graph_file, e, exc_info=True)
             return nx.DiGraph(), False
-
 
     def _write_graph(self) -> None:
         data = nx.readwrite.json_graph.node_link_data(self._graph)
@@ -138,7 +143,7 @@ class GraphMemory:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "memory_graph_listener") -> bool:
-        if not self._subscriber:
+        if self._subscriber is None:
             logger.error("Subscriber not initialized for GraphMemory.")
             return False
         try:
