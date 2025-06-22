@@ -142,7 +142,7 @@ class ProductionLLM:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "llm_prod_listener") -> bool:
-        if not self._subscriber:
+        if self._subscriber is None:
             logger.error("Subscriber not initialized for ProductionLLM.")
             return False
         try:

@@ -117,7 +117,7 @@ class BasicMemory:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "memory_basic_listener") -> bool:
-        if not self._subscriber:
+        if self._subscriber is None:
             logger.error("Subscriber not initialized for BasicMemory.")
             return False
         try:

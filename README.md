@@ -133,6 +133,8 @@ This step is necessary before running the tests below.
 The `GraphMemory` module uses the lightweight `networkx` library as an
 embedded graph store. No external database service needs to be started.
 Ensure the dependency is installed (included in `requirements.txt`).
+If the graph file contains invalid JSON, `GraphMemory` will automatically
+rewrite it with an empty graph so subsequent loads succeed.
 
 ## Social Graph Bot Example
 
