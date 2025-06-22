@@ -47,7 +47,14 @@ class GraphMemory:
             return nx.readwrite.json_graph.node_link_graph(data)
         except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
             logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
-            return nx.DiGraph()
+            graph = nx.DiGraph()
+            self._graph = graph
+            try:
+                self._write_graph()
+            except Exception:
+                # _write_graph already logs the error
+                pass
+            return graph
         except Exception as e:  # fallback
             logger.error("Unexpected error reading graph file %s: %s", self._graph_file, e, exc_info=True)
             return nx.DiGraph()

@@ -43,12 +43,23 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
     if file_path:
         path = Path(file_path)
         with path.open("r", encoding="utf-8") as f:
+            content = f.read()
+        if not content.strip():
+            raise ValueError("Config file is empty")
+
+        try:
             if path.suffix in {".yaml", ".yml"}:
                 if not yaml:
                     raise RuntimeError("PyYAML required to load YAML config")
-                data = yaml.safe_load(f)
+                data = yaml.safe_load(content)
             else:
-                data = json.load(f)
+                data = json.loads(content)
+        except Exception as e:
+            raise ValueError(f"Invalid config structure: {e}") from e
+
+        if not isinstance(data, dict):
+            raise ValueError("Config data must be a mapping")
+
         return Settings.model_validate(data)
     return Settings()
 
