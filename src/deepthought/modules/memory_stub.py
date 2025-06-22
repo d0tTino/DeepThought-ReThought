@@ -104,7 +104,7 @@ class MemoryStub:
         Returns:
             bool: True if subscription was successful, False otherwise.
         """
-        if not self._subscriber:
+        if self._subscriber is None:
             logger.error("Subscriber not initialized for MemoryStub.")
             return False
 

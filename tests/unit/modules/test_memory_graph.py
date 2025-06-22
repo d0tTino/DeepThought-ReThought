@@ -121,3 +121,17 @@ async def test_handle_input_missing_fields(tmp_path, monkeypatch):
     assert msg.nacked
     assert not msg.acked
 
+
+@pytest.mark.asyncio
+async def test_start_listening_no_subscriber(tmp_path, monkeypatch, caplog):
+    graph_file = tmp_path / "graph.json"
+    mem = create_memory(monkeypatch, graph_file)
+    mem._subscriber = None
+    with caplog.at_level(logging.ERROR):
+        result = await mem.start_listening()
+
+    assert result is False
+    assert any(
+        "Subscriber not initialized for GraphMemory." in r.getMessage() for r in caplog.records
+    )
+

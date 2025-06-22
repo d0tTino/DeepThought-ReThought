@@ -33,6 +33,7 @@ class GraphMemory:
         if os.path.exists(self._graph_file):
             self._graph = self._read_graph()
             if isinstance(self._last_read_error, json.JSONDecodeError) and len(self._graph.nodes) == 0:
+
                 try:
                     self._write_graph()
                 except Exception:
@@ -56,7 +57,14 @@ class GraphMemory:
         except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
             self._last_read_error = e
             logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
-            return nx.DiGraph()
+            graph = nx.DiGraph()
+            self._graph = graph
+            try:
+                self._write_graph()
+            except Exception:
+                # _write_graph already logs the error
+                pass
+            return graph
         except Exception as e:  # fallback
             self._last_read_error = e
             logger.error("Unexpected error reading graph file %s: %s", self._graph_file, e, exc_info=True)
@@ -140,7 +148,7 @@ class GraphMemory:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start_listening(self, durable_name: str = "memory_graph_listener") -> bool:
-        if not self._subscriber:
+        if self._subscriber is None:
             logger.error("Subscriber not initialized for GraphMemory.")
             return False
         try:
