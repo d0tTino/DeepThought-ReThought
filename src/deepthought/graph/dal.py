@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+
 from .connector import GraphConnector
 
 
 class GraphDAL:
     """Data access layer providing high level graph operations."""
+
 
     def __init__(self, connector: GraphConnector) -> None:
         self._connector = connector
