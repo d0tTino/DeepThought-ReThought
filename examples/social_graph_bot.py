@@ -350,7 +350,11 @@ async def send_to_prism(data: dict) -> None:
     try:
         async with aiohttp.ClientSession() as session:
             await session.post(PRISM_ENDPOINT, json=data, timeout=5)
-    except Exception as exc:
+    except aiohttp.ClientError as exc:
+        logger.warning("ClientError sending data to Prism: %s", exc)
+    except asyncio.TimeoutError as exc:
+        logger.warning("TimeoutError sending data to Prism: %s", exc)
+    except Exception as exc:  # pragma: no cover - unexpected errors
         logger.warning("Failed to send data to Prism: %s", exc)
 
 
