@@ -44,7 +44,7 @@ class DummyMessage:
 
 
 @pytest.mark.asyncio
-async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch):
+async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.init_db()
@@ -80,7 +80,7 @@ async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch):
+async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.init_db()
