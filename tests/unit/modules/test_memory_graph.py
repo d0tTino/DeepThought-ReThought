@@ -66,6 +66,7 @@ def test_read_graph_invalid_json(tmp_path, monkeypatch, caplog):
 
     assert isinstance(mem._graph, nx.DiGraph)
     assert len(mem._graph.nodes) == 0
+    assert mem.repaired
     error_logs = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert any("Failed to read graph file" in r.getMessage() for r in error_logs)
 
@@ -75,7 +76,9 @@ def test_invalid_json_rewritten_and_readable(tmp_path, monkeypatch, caplog):
     graph_file.write_text("{ invalid json")
 
     caplog.set_level(logging.ERROR)
-    create_memory(monkeypatch, graph_file)
+    mem = create_memory(monkeypatch, graph_file)
+    first_mtime = graph_file.stat().st_mtime
+    assert mem.repaired
 
     error_logs = [r for r in caplog.records if "Failed to read graph file" in r.getMessage()]
     assert len(error_logs) == 1
@@ -85,8 +88,11 @@ def test_invalid_json_rewritten_and_readable(tmp_path, monkeypatch, caplog):
     assert data == nx.readwrite.json_graph.node_link_data(nx.DiGraph())
 
     caplog.clear()
-    create_memory(monkeypatch, graph_file)
+    mem2 = create_memory(monkeypatch, graph_file)
+    second_mtime = graph_file.stat().st_mtime
 
+    assert not mem2.repaired
+    assert first_mtime == second_mtime
     assert not any(
         "Failed to read graph file" in r.getMessage() for r in caplog.records
     )
