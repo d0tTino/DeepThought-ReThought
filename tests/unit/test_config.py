@@ -1,6 +1,7 @@
 import json
 
 import yaml
+import pytest
 
 from deepthought.config import get_settings, load_settings
 
@@ -65,3 +66,17 @@ def test_get_settings_reload(monkeypatch, tmp_path):
     monkeypatch.setenv("DT_CONFIG_FILE", str(cfg2))
     second = get_settings()
     assert second.nats_url == "nats://second"
+
+
+def test_load_settings_empty_file(tmp_path):
+    cfg = tmp_path / "empty.json"
+    cfg.write_text("")
+    with pytest.raises(ValueError):
+        load_settings(str(cfg))
+
+
+def test_load_settings_invalid_structure(tmp_path):
+    cfg = tmp_path / "bad.yaml"
+    cfg.write_text(yaml.safe_dump([1, 2, 3]))
+    with pytest.raises(ValueError):
+        load_settings(str(cfg))
