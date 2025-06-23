@@ -3,20 +3,21 @@ import json
 import logging
 import os
 import random
+import uuid
 from datetime import timezone
 from typing import List, Tuple
 
 import aiohttp
 import aiosqlite
 import discord
-from textblob import TextBlob
-from deepthought.eda.events import EventSubjects, InputReceivedPayload
-from deepthought.eda.publisher import Publisher
-from deepthought.config import get_settings
 import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
-import uuid
+from textblob import TextBlob
+
+from deepthought.config import get_settings
+from deepthought.eda.events import EventSubjects, InputReceivedPayload
+from deepthought.eda.publisher import Publisher
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -134,6 +135,17 @@ class DBManager:
                 message_count INTEGER DEFAULT 0,
                 PRIMARY KEY(user_id, channel_id)
 
+            )
+            """
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS themes (
+                user_id TEXT,
+                channel_id TEXT,
+                theme TEXT,
+                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(user_id, channel_id)
             )
             """
         )
@@ -317,6 +329,41 @@ class DBManager:
             row = await cur.fetchone()
             return bool(row[0]) if row else False
 
+    async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
+        if not isinstance(theme, str) or not theme.strip():
+            raise ValueError("theme must be a non-empty string")
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO themes (user_id, channel_id, theme)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, channel_id) DO UPDATE SET
+                theme=excluded.theme,
+                updated=CURRENT_TIMESTAMP
+            """,
+            (str(user_id), str(channel_id), theme),
+        )
+        await self._db.commit()
+
+    async def get_theme(self, user_id: int, channel_id: int):
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT theme FROM themes WHERE user_id=? AND channel_id=?",
+            (str(user_id), str(channel_id)),
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+    async def get_all_sentiment_trends(self):
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT user_id, channel_id, sentiment_sum, message_count FROM sentiment_trends"
+        ) as cur:
+            return await cur.fetchall()
+
 
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
@@ -439,6 +486,31 @@ async def is_do_not_mock(user_id: int) -> bool:
     return await db_manager.is_do_not_mock(user_id)
 
 
+async def set_theme(user_id: int, channel_id: int, theme: str) -> None:
+    await db_manager.set_theme(user_id, channel_id, theme)
+
+
+async def get_theme(user_id: int, channel_id: int):
+    """Return the last assigned theme for a user/channel pair."""
+    return await db_manager.get_theme(user_id, channel_id)
+
+
+async def assign_themes() -> None:
+    """Update the theme for each user/channel based on sentiment trends."""
+    rows = await db_manager.get_all_sentiment_trends()
+    for user_id, channel_id, ssum, count in rows:
+        if not count:
+            continue
+        avg = ssum / count
+        if avg > 0.2:
+            theme = "positive"
+        elif avg < -0.2:
+            theme = "negative"
+        else:
+            theme = "neutral"
+        await db_manager.set_theme(user_id, channel_id, theme)
+
+
 def generate_reflection(prompt: str) -> str:
     """Return a simple reflection string based on sentiment analysis."""
     blob = TextBlob(prompt)
@@ -478,6 +550,7 @@ async def process_deep_reflections(bot: discord.Client) -> None:
                     reference=ref,
                 )
             await db_manager.mark_task_done(task_id)
+        await assign_themes()
         await asyncio.sleep(REFLECTION_CHECK_SECONDS)
 
 

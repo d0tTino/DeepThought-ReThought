@@ -205,3 +205,26 @@ async def test_queue_deep_reflection_validation(tmp_path):
     with pytest.raises(ValueError):
         await sg.queue_deep_reflection("u1", {"channel_id": 1}, long_prompt)
     await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_assign_themes(tmp_path, monkeypatch):
+    sg.DB_PATH = str(tmp_path / "db.sqlite")
+    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    await sg.init_db()
+
+    await sg.update_sentiment_trend("u1", "c1", 0.5)
+    await sg.update_sentiment_trend("u1", "c1", 0.5)
+
+    bot = DummyBot()
+
+    async def noop(*_, **__):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(sg, "REFLECTION_CHECK_SECONDS", 0)
+
+    await sg.process_deep_reflections(bot)
+
+    theme = await sg.get_theme("u1", "c1")
+    assert theme == "positive"
