@@ -11,18 +11,18 @@ from nats.js.client import JetStreamContext
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
-from .graph_dal import GraphDAL
+from .file_graph_dal import FileGraphDAL
 
 logger = logging.getLogger(__name__)
 
 
 class MemoryService:
-    """Service that stores user interactions in a graph using GraphDAL."""
+    """Service that stores user interactions in a graph using FileGraphDAL."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, dal: Optional[GraphDAL] = None) -> None:
+    def __init__(self, nats_client: NATS, js_context: JetStreamContext, dal: Optional[FileGraphDAL] = None) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._dal = dal or GraphDAL()
+        self._dal = dal or FileGraphDAL()
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"

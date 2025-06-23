@@ -9,7 +9,7 @@ import networkx as nx
 logger = logging.getLogger(__name__)
 
 
-class GraphDAL:
+class FileGraphDAL:
     """Simple file-backed graph storage using NetworkX."""
 
     def __init__(self, graph_file: str = "graph_memory.json") -> None:
@@ -23,7 +23,7 @@ class GraphDAL:
         else:
             self._graph = nx.DiGraph()
             self._write_graph()
-        logger.info("GraphDAL initialized with file %s", graph_file)
+        logger.info("FileGraphDAL initialized with file %s", graph_file)
 
     def _read_graph(self) -> nx.DiGraph:
         try:
