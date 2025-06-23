@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-
 from .connector import GraphConnector
 
 
 class GraphDAL:
     """Data access layer providing high level graph operations."""
-
 
     def __init__(self, connector: GraphConnector) -> None:
         self._connector = connector
@@ -21,3 +19,29 @@ class GraphDAL:
             "MATCH (a:Entity {name: $src}), (b:Entity {name: $dst}) MERGE (a)-[:NEXT]->(b)",
             {"src": src, "dst": dst},
         )
+
+    def add_entity(self, label: str, props: dict) -> None:
+        """Create a node with ``label`` and ``props`` if it does not exist."""
+        self._connector.execute(
+            f"MERGE (n:{label} $props)",
+            {"props": props},
+        )
+
+    def add_relationship(self, start_id: int, end_id: int, rel_type: str, props: dict) -> None:
+        """Create a relationship of ``rel_type`` with ``props`` between nodes."""
+        self._connector.execute(
+            f"MATCH (a {{id: $start_id}}), (b {{id: $end_id}}) MERGE (a)-[r:{rel_type} $props]->(b)",
+            {"start_id": start_id, "end_id": end_id, "props": props},
+        )
+
+    def get_entity(self, label: str, key: str, value: object) -> dict | None:
+        """Return the first node matching ``label`` where ``key`` equals ``value``."""
+        result = self._connector.execute(
+            f"MATCH (n:{label} {{{key}: $value}}) RETURN n",
+            {"value": value},
+        )
+        return result[0] if result else None
+
+    def query_subgraph(self, query: str, params: dict | None = None) -> list:
+        """Execute ``query`` with ``params`` and return the resulting rows."""
+        return self._connector.execute(query, params or {})
