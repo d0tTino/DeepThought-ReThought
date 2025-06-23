@@ -3,20 +3,21 @@ import json
 import logging
 import os
 import random
+import uuid
 from datetime import timezone
 from typing import List, Tuple
 
 import aiohttp
 import aiosqlite
 import discord
-from textblob import TextBlob
-from deepthought.eda.events import EventSubjects, InputReceivedPayload
-from deepthought.eda.publisher import Publisher
-from deepthought.config import get_settings
 import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
-import uuid
+from textblob import TextBlob
+
+from deepthought.config import get_settings
+from deepthought.eda.events import EventSubjects, InputReceivedPayload
+from deepthought.eda.publisher import Publisher
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -231,6 +232,10 @@ class DBManager:
         channel_id: int,
         sentiment_score: float,
     ) -> None:
+        if not isinstance(sentiment_score, (int, float)):
+            raise ValueError("sentiment_score must be numeric")
+        if not -1 <= float(sentiment_score) <= 1:
+            raise ValueError("sentiment_score out of range")
         await self.connect()
         assert self._db
         await self._db.execute(
