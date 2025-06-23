@@ -11,6 +11,7 @@ class GraphDAL:
     underlying graph database via :class:`GraphConnector`.
     """
 
+
     def __init__(self, connector: GraphConnector) -> None:
         self._connector = connector
 
@@ -27,6 +28,7 @@ class GraphDAL:
 
     def add_entity(self, label: str, props: dict[str, object]) -> None:
         """Create or merge a node with ``label`` and ``props``."""
+
         self._connector.execute(
             f"MERGE (n:{label} $props)",
             {"props": props},
@@ -38,6 +40,7 @@ class GraphDAL:
         """Create or merge a relationship of type ``label`` between two nodes."""
         self._connector.execute(
             f"MATCH (a {{id: $start_id}}), (b {{id: $end_id}}) MERGE (a)-[r:{label} $props]->(b)",
+
             {"start_id": start_id, "end_id": end_id, "props": props},
         )
 
@@ -53,4 +56,5 @@ class GraphDAL:
         self, query: str, params: dict[str, object] | None = None
     ) -> list:
         """Execute an arbitrary Cypher query and return the result rows."""
+
         return self._connector.execute(query, params or {})
