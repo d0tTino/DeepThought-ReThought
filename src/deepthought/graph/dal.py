@@ -11,7 +11,6 @@ class GraphDAL:
     underlying graph database via :class:`GraphConnector`.
     """
 
-
     def __init__(self, connector: GraphConnector) -> None:
         self._connector = connector
 
@@ -26,30 +25,27 @@ class GraphDAL:
             {"src": src, "dst": dst},
         )
 
-    # Methods required by unit tests
+    # New methods expected by unit tests
 
     def add_entity(self, label: str, props: dict) -> None:
         """Create or merge a node with ``label`` and ``props``."""
-        self._connector.execute(f"MERGE (n:{label} $props)", {"props": props})
+        query = f"MERGE (n:{label} $props)"
+        self._connector.execute(query, {"props": props})
 
-    def add_relationship(
-        self, start_id: int, end_id: int, rel: str, props: dict | None = None
-    ) -> None:
-        """Create or merge a relationship of type ``rel`` between two IDs."""
+    def add_relationship(self, start_id: int, end_id: int, rel_type: str, props: dict) -> None:
+        """Create or merge a relationship of ``rel_type`` between two nodes."""
+        query = "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:" f"{rel_type} $props]->(b)"
         self._connector.execute(
-            f"MATCH (a {{id: $start_id}}), (b {{id: $end_id}}) MERGE (a)-[r:{rel} $props]->(b)",
-            {"start_id": start_id, "end_id": end_id, "props": props or {}},
+            query,
+            {"start_id": start_id, "end_id": end_id, "props": props},
         )
 
-    def get_entity(self, label: str, key: str, value: str):
-        """Return the first node of ``label`` where ``key`` equals ``value``."""
-        rows = self._connector.execute(
-            f"MATCH (n:{label} {{{key}: $value}}) RETURN n",
-            {"value": value},
-        )
+    def get_entity(self, label: str, field: str, value):
+        """Return the first node of ``label`` where ``field`` equals ``value``."""
+        query = f"MATCH (n:{label} {{{field}: $value}}) RETURN n"
+        rows = self._connector.execute(query, {"value": value})
         return rows[0] if rows else None
 
-    def query_subgraph(self, query: str, params: dict | None = None):
-        """Execute an arbitrary Cypher query and return the results."""
-        return self._connector.execute(query, params or {})
-
+    def query_subgraph(self, query: str, params: dict):
+        """Execute an arbitrary query and return the resulting rows."""
+        return self._connector.execute(query, params)
