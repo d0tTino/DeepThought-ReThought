@@ -127,6 +127,21 @@ async def test_update_sentiment_trend(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_update_sentiment_trend_validation(tmp_path):
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.init_db()
+
+    with pytest.raises(ValueError):
+        await sg.update_sentiment_trend("u1", "c1", "bad")
+
+    with pytest.raises(ValueError):
+        await sg.update_sentiment_trend("u1", "c1", 1.5)
+
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
 async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_events):
 
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
