@@ -55,7 +55,11 @@ async def test_monitor_channels_idle_prompt(monkeypatch):
     channel = DummyChannel()
     bot = DummyBot(channel)
 
-    monkeypatch.setattr(sg, "idle_response_candidates", ["ping"])  # deterministic prompt
+    async def fake_gen():
+        return "ping"
+
+    monkeypatch.setattr(sg, "generate_idle_response", fake_gen)
+    monkeypatch.setattr(sg, "idle_response_candidates", ["fallback"])  # fallback
 
     async def fake_sleep(*args, **kwargs):
         return None
@@ -67,6 +71,48 @@ async def test_monitor_channels_idle_prompt(monkeypatch):
     await sg.monitor_channels(bot, 1)
 
     assert channel.sent_messages == ["ping"]
+
+
+@pytest.mark.asyncio
+async def test_monitor_channels_generator_failure(monkeypatch):
+    """Fallback to static list when generation fails."""
+    channel = DummyChannel()
+    bot = DummyBot(channel)
+
+    async def bad_gen():
+        return None
+
+    monkeypatch.setattr(sg, "generate_idle_response", bad_gen)
+    monkeypatch.setattr(sg, "idle_response_candidates", ["fallback"])
+
+    async def fake_sleep(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+
+    await sg.monitor_channels(bot, 1)
+
+    assert channel.sent_messages == ["fallback"]
+
+
+@pytest.mark.asyncio
+async def test_generate_idle_response_env(monkeypatch):
+    """``IDLE_GENERATOR_PROMPT`` environment variable is used."""
+    captured = {}
+
+    def fake_generator(prompt: str, **kwargs):
+        captured["prompt"] = prompt
+        return [{"generated_text": "pong"}]
+
+    monkeypatch.setattr(sg, "_get_idle_generator", lambda: fake_generator)
+    monkeypatch.setenv("IDLE_GENERATOR_PROMPT", "custom start")
+
+    text = await sg.generate_idle_response()
+
+    assert text == "pong"
+    assert captured["prompt"] == "custom start"
 
 
 @pytest.mark.asyncio
@@ -104,7 +150,11 @@ async def test_monitor_channels_only_bots(monkeypatch):
     monkeypatch.setattr(sg, "who_is_active", lambda channel, limit=20: f)
 
     monkeypatch.setattr(sg, "BOT_CHAT_ENABLED", True)
-    monkeypatch.setattr(sg, "idle_response_candidates", ["ping"])  # deterministic
+    async def fake_gen():
+        return "ping"
+
+    monkeypatch.setattr(sg, "generate_idle_response", fake_gen)
+    monkeypatch.setattr(sg, "idle_response_candidates", ["fallback"])
 
     async def fake_sleep(*args, **kwargs):
         return None
@@ -137,7 +187,11 @@ async def test_monitor_channels_idle_prompt_old_message(monkeypatch):
 
     channel.history = lambda limit=1: history_gen()
 
-    monkeypatch.setattr(sg, "idle_response_candidates", ["ping"])  # deterministic prompt
+    async def fake_gen():
+        return "ping"
+
+    monkeypatch.setattr(sg, "generate_idle_response", fake_gen)
+    monkeypatch.setattr(sg, "idle_response_candidates", ["fallback"])  # fallback
 
     async def fake_sleep(*args, **kwargs):
         return None

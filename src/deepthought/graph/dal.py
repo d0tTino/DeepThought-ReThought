@@ -4,7 +4,12 @@ from .connector import GraphConnector
 
 
 class GraphDAL:
-    """Data access layer providing high level graph operations."""
+    """Data access layer providing high level graph operations.
+
+    This class exposes convenience helpers for inserting entities and
+    relationships as well as running small read queries against the
+    underlying graph database via :class:`GraphConnector`.
+    """
 
     def __init__(self, connector: GraphConnector) -> None:
         self._connector = connector

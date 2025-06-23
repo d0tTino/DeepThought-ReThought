@@ -3,20 +3,21 @@ import json
 import logging
 import os
 import random
+import uuid
 from datetime import timezone
 from typing import List, Tuple
 
 import aiohttp
 import aiosqlite
 import discord
-from textblob import TextBlob
-from deepthought.eda.events import EventSubjects, InputReceivedPayload
-from deepthought.eda.publisher import Publisher
-from deepthought.config import get_settings
 import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
-import uuid
+from textblob import TextBlob
+
+from deepthought.config import get_settings
+from deepthought.eda.events import EventSubjects, InputReceivedPayload
+from deepthought.eda.publisher import Publisher
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -50,6 +51,44 @@ idle_response_candidates = [
     "I'm still here if anyone wants to chat!",
     "Silence can be golden, but conversation is better.",
 ]
+
+# -----------------------------
+# Idle text generation helpers
+# -----------------------------
+_idle_text_generator = None
+
+
+def _get_idle_generator():
+    """Return a cached HuggingFace text-generation pipeline."""
+    global _idle_text_generator
+    if _idle_text_generator is None:
+        from transformers import pipeline
+
+        model_name = os.getenv("IDLE_MODEL_NAME", "distilgpt2")
+        _idle_text_generator = pipeline("text-generation", model=model_name)
+    return _idle_text_generator
+
+
+async def generate_idle_response(prompt: str | None = None) -> str | None:
+    """Generate a prompt to send when the channel has been idle.
+
+    The seed text can be provided via ``prompt`` or the ``IDLE_GENERATOR_PROMPT``
+    environment variable. ``None`` is returned if generation fails for any
+    reason.
+    """
+    try:
+        gen_prompt = prompt or os.getenv(
+            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
+        )
+        generator = _get_idle_generator()
+        outputs = await asyncio.to_thread(
+            generator, gen_prompt, max_new_tokens=20, num_return_sequences=1
+        )
+        text = outputs[0]["generated_text"].strip()
+        return text
+    except Exception:  # pragma: no cover - optional dependency or runtime error
+        logger.exception("Idle text generation failed")
+        return None
 
 # Simple list of phrases considered bullying
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
@@ -134,6 +173,17 @@ class DBManager:
                 message_count INTEGER DEFAULT 0,
                 PRIMARY KEY(user_id, channel_id)
 
+            )
+            """
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS themes (
+                user_id TEXT,
+                channel_id TEXT,
+                theme TEXT,
+                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(user_id, channel_id)
             )
             """
         )
@@ -231,6 +281,10 @@ class DBManager:
         channel_id: int,
         sentiment_score: float,
     ) -> None:
+        if not isinstance(sentiment_score, (int, float)):
+            raise ValueError("sentiment_score must be numeric")
+        if not -1 <= float(sentiment_score) <= 1:
+            raise ValueError("sentiment_score out of range")
         await self.connect()
         assert self._db
         await self._db.execute(
@@ -316,6 +370,41 @@ class DBManager:
         ) as cur:
             row = await cur.fetchone()
             return bool(row[0]) if row else False
+
+    async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
+        if not isinstance(theme, str) or not theme.strip():
+            raise ValueError("theme must be a non-empty string")
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO themes (user_id, channel_id, theme)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, channel_id) DO UPDATE SET
+                theme=excluded.theme,
+                updated=CURRENT_TIMESTAMP
+            """,
+            (str(user_id), str(channel_id), theme),
+        )
+        await self._db.commit()
+
+    async def get_theme(self, user_id: int, channel_id: int):
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT theme FROM themes WHERE user_id=? AND channel_id=?",
+            (str(user_id), str(channel_id)),
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+    async def get_all_sentiment_trends(self):
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT user_id, channel_id, sentiment_sum, message_count FROM sentiment_trends"
+        ) as cur:
+            return await cur.fetchall()
 
 
 DEFAULT_DB_PATH = DB_PATH
@@ -439,6 +528,31 @@ async def is_do_not_mock(user_id: int) -> bool:
     return await db_manager.is_do_not_mock(user_id)
 
 
+async def set_theme(user_id: int, channel_id: int, theme: str) -> None:
+    await db_manager.set_theme(user_id, channel_id, theme)
+
+
+async def get_theme(user_id: int, channel_id: int):
+    """Return the last assigned theme for a user/channel pair."""
+    return await db_manager.get_theme(user_id, channel_id)
+
+
+async def assign_themes() -> None:
+    """Update the theme for each user/channel based on sentiment trends."""
+    rows = await db_manager.get_all_sentiment_trends()
+    for user_id, channel_id, ssum, count in rows:
+        if not count:
+            continue
+        avg = ssum / count
+        if avg > 0.2:
+            theme = "positive"
+        elif avg < -0.2:
+            theme = "negative"
+        else:
+            theme = "neutral"
+        await db_manager.set_theme(user_id, channel_id, theme)
+
+
 def generate_reflection(prompt: str) -> str:
     """Return a simple reflection string based on sentiment analysis."""
     blob = TextBlob(prompt)
@@ -478,6 +592,7 @@ async def process_deep_reflections(bot: discord.Client) -> None:
                     reference=ref,
                 )
             await db_manager.mark_task_done(task_id)
+        await assign_themes()
         await asyncio.sleep(REFLECTION_CHECK_SECONDS)
 
 
@@ -545,7 +660,9 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                             respond_to = last_message
 
         if send_prompt:
-            prompt = random.choice(idle_response_candidates)
+            prompt = await generate_idle_response()
+            if not prompt:
+                prompt = random.choice(idle_response_candidates)
             async with channel.typing():
                 await asyncio.sleep(random.uniform(3, 10))
                 if respond_to is not None:
