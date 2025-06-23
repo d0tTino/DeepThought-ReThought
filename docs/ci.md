@@ -25,3 +25,27 @@ runs-on: ["self-hosted", "linux"]
 - Ensure the service remains active by periodically checking `./svc.sh status`.
 - Keep the operating system and dependencies up to date.
 - Monitor disk space and clean up old build artifacts.
+
+## Local Test Workflow
+
+To replicate the CI steps locally or on your self-hosted runner:
+
+1. Install the pinned dependencies:
+   ```bash
+   pip install -r requirements-ci.txt
+   ```
+2. Start a NATS server with JetStream enabled:
+   ```bash
+   ./scripts/start_nats.sh
+   ```
+3. Initialize the required JetStream streams:
+   ```bash
+   python setup_jetstream.py
+   ```
+4. Run the tests with the project root on `PYTHONPATH`:
+   ```bash
+   PYTHONPATH=src pytest
+   ```
+
+Tests that require NATS will be skipped automatically if the server isn't
+running, but full coverage requires JetStream to be available.

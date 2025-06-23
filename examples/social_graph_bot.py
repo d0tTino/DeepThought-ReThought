@@ -52,6 +52,44 @@ idle_response_candidates = [
     "Silence can be golden, but conversation is better.",
 ]
 
+# -----------------------------
+# Idle text generation helpers
+# -----------------------------
+_idle_text_generator = None
+
+
+def _get_idle_generator():
+    """Return a cached HuggingFace text-generation pipeline."""
+    global _idle_text_generator
+    if _idle_text_generator is None:
+        from transformers import pipeline
+
+        model_name = os.getenv("IDLE_MODEL_NAME", "distilgpt2")
+        _idle_text_generator = pipeline("text-generation", model=model_name)
+    return _idle_text_generator
+
+
+async def generate_idle_response(prompt: str | None = None) -> str | None:
+    """Generate a prompt to send when the channel has been idle.
+
+    The seed text can be provided via ``prompt`` or the ``IDLE_GENERATOR_PROMPT``
+    environment variable. ``None`` is returned if generation fails for any
+    reason.
+    """
+    try:
+        gen_prompt = prompt or os.getenv(
+            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
+        )
+        generator = _get_idle_generator()
+        outputs = await asyncio.to_thread(
+            generator, gen_prompt, max_new_tokens=20, num_return_sequences=1
+        )
+        text = outputs[0]["generated_text"].strip()
+        return text
+    except Exception:  # pragma: no cover - optional dependency or runtime error
+        logger.exception("Idle text generation failed")
+        return None
+
 # Simple list of phrases considered bullying
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
 
@@ -243,6 +281,10 @@ class DBManager:
         channel_id: int,
         sentiment_score: float,
     ) -> None:
+        if not isinstance(sentiment_score, (int, float)):
+            raise ValueError("sentiment_score must be numeric")
+        if not -1 <= float(sentiment_score) <= 1:
+            raise ValueError("sentiment_score out of range")
         await self.connect()
         assert self._db
         await self._db.execute(
@@ -618,7 +660,9 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                             respond_to = last_message
 
         if send_prompt:
-            prompt = random.choice(idle_response_candidates)
+            prompt = await generate_idle_response()
+            if not prompt:
+                prompt = random.choice(idle_response_candidates)
             async with channel.typing():
                 await asyncio.sleep(random.uniform(3, 10))
                 if respond_to is not None:
