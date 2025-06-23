@@ -44,4 +44,5 @@ class GraphDAL:
 
     def query_subgraph(self, query: str, params: dict | None = None) -> list:
         """Execute ``query`` with ``params`` and return the resulting rows."""
+
         return self._connector.execute(query, params or {})
