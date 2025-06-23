@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-
 from .connector import GraphConnector
 
 
 class GraphDAL:
-    """Data access layer providing high level graph operations."""
+    """Data access layer providing high level graph operations.
+
+    This class exposes convenience helpers for inserting entities and
+    relationships as well as running small read queries against the
+    underlying graph database via :class:`GraphConnector`.
+    """
 
 
     def __init__(self, connector: GraphConnector) -> None:
@@ -41,6 +45,7 @@ class GraphDAL:
         """Retrieve the first entity matching ``prop``."""
         result = self._connector.execute(
             f"MATCH (n:{label} {{{prop}: $value}}) RETURN n",
+
             {"value": value},
         )
         return result[0] if result else None
