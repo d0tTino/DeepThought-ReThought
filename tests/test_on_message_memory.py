@@ -168,6 +168,6 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
     await bot.on_message(message)
 
     trend = await sg.get_sentiment_trend(message.author.id, message.channel.id)
-    expected = sg.TextBlob(message.content).sentiment.polarity
+    expected = sg.analyze_sentiment(message.content)
     assert trend == (expected, 1)
     await sg.db_manager.close()
