@@ -167,10 +167,10 @@ implemented in `examples/prism_server.py`.
 Install the optional dependencies:
 
 ```bash
-pip install discord.py aiohttp aiosqlite textblob
+pip install discord.py aiohttp aiosqlite textblob vaderSentiment
 ```
 
-After installing TextBlob, download its corpora:
+If you choose the TextBlob backend, download its corpora:
 
 ```bash
 python -m textblob.download_corpora
@@ -183,7 +183,11 @@ export DISCORD_TOKEN=your_token
 export MONITOR_CHANNEL=1234567890
 export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
 export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
+export SENTIMENT_BACKEND=vader  # optional, defaults to textblob
 ```
+
+Set `SENTIMENT_BACKEND` to either `textblob` or `vader` to choose the library
+used for sentiment analysis. Any other value falls back to `textblob`.
 
 Run the bot:
 

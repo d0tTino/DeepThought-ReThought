@@ -19,3 +19,4 @@ discord.py
 textblob
 networkx
 pydantic-settings
+vaderSentiment

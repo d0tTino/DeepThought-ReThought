@@ -10,3 +10,4 @@ aiohttp==3.12.3
 discord.py==2.5.2
 textblob==0.17.1
 pre-commit==4.2.0
+vaderSentiment==3.3.2

@@ -29,7 +29,7 @@ The snippet below starts `KnowledgeGraphMemory` which listens for `INPUT_RECEIVE
 python - <<'PY'
 import asyncio, os
 from nats.aio.client import Client as NATS
-from deepthought.graph import GraphConnector
+from deepthought.graph import GraphConnector, GraphDAL
 from deepthought.modules import KnowledgeGraphMemory
 
 async def main():
@@ -42,7 +42,8 @@ async def main():
         username=os.getenv("MG_USER", ""),
         password=os.getenv("MG_PASSWORD", ""),
     )
-    memory = KnowledgeGraphMemory(nc, js, connector)
+    dal = GraphDAL(connector)
+    memory = KnowledgeGraphMemory(nc, js, dal)
     await memory.start_listening()
     await asyncio.Event().wait()
 
@@ -51,3 +52,9 @@ PY
 ```
 
 This service can be used alongside other modules to persist conversations in a graph database.
+
+Alternatively, run the example script directly:
+
+```bash
+python examples/memgraph_memory_service.py
+```
