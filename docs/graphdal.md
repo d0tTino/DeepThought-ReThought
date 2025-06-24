@@ -51,3 +51,9 @@ PY
 ```
 
 This service can be used alongside other modules to persist conversations in a graph database.
+
+Alternatively, run the example script directly:
+
+```bash
+python examples/memgraph_memory_service.py
+```
