@@ -13,7 +13,24 @@ import discord
 import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
-from textblob import TextBlob
+
+SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
+if SENTIMENT_BACKEND == "vader":
+    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+    _sentiment = SentimentIntensityAnalyzer()
+
+    def analyze_sentiment(text: str) -> float:
+        """Return the compound sentiment score using VADER."""
+        return _sentiment.polarity_scores(text)["compound"]
+
+else:
+    from textblob import TextBlob
+
+    def analyze_sentiment(text: str) -> float:
+        """Return the sentiment polarity using TextBlob."""
+        return TextBlob(text).sentiment.polarity
+
 
 from deepthought.config import get_settings
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
@@ -77,18 +94,15 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        gen_prompt = prompt or os.getenv(
-            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
-        )
+        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
         generator = _get_idle_generator()
-        outputs = await asyncio.to_thread(
-            generator, gen_prompt, max_new_tokens=20, num_return_sequences=1
-        )
+        outputs = await asyncio.to_thread(generator, gen_prompt, max_new_tokens=20, num_return_sequences=1)
         text = outputs[0]["generated_text"].strip()
         return text
     except Exception:  # pragma: no cover - optional dependency or runtime error
         logger.exception("Idle text generation failed")
         return None
+
 
 # Simple list of phrases considered bullying
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
@@ -555,8 +569,7 @@ async def assign_themes() -> None:
 
 def generate_reflection(prompt: str) -> str:
     """Return a simple reflection string based on sentiment analysis."""
-    blob = TextBlob(prompt)
-    polarity = blob.sentiment.polarity
+    polarity = analyze_sentiment(prompt)
     if polarity > 0.1:
         mood = "positive"
     elif polarity < -0.1:
@@ -697,7 +710,7 @@ class SocialGraphBot(discord.Client):
         if message.author == self.user:
             return
 
-        sentiment_score = TextBlob(message.content).sentiment.polarity
+        sentiment_score = analyze_sentiment(message.content)
         topic = "message" if abs(sentiment_score) > SENTIMENT_THRESHOLD else ""
         await store_memory(
             message.author.id,
