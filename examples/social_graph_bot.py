@@ -499,7 +499,8 @@ async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
     await _ensure_nats()
     if _input_publisher is None:
-        logger.warning("Dropping INPUT_RECEIVED event because NATS is unavailable")
+        logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
+
         return
     payload = InputReceivedPayload(
         user_input=text,

@@ -175,15 +175,19 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
 
 
 @pytest.mark.asyncio
-async def test_publish_input_received_logs_when_publisher_missing(monkeypatch, caplog):
+async def test_publish_input_received_warns_when_no_publisher(monkeypatch, caplog):
+    """publish_input_received should warn if NATS is unavailable."""
     sg._input_publisher = None
 
-    async def fake_ensure_nats():
+    async def fake_ensure():
         sg._input_publisher = None
 
-    monkeypatch.setattr(sg, "_ensure_nats", fake_ensure_nats)
+    monkeypatch.setattr(sg, "_ensure_nats", fake_ensure)
 
     with caplog.at_level(logging.WARNING):
-        await sg.publish_input_received("hi")
+        await sg.publish_input_received("hello")
 
-    assert any("Dropping INPUT_RECEIVED event" in r.getMessage() for r in caplog.records)
+    assert any(
+        "Dropping INPUT_RECEIVED event because NATS publisher is unavailable" in r.getMessage() for r in caplog.records
+    )
+
