@@ -1,3 +1,4 @@
+import pytest
 from deepthought.graph.dal import GraphDAL
 
 
@@ -32,6 +33,26 @@ def test_add_relationship():
             {"start_id": 1, "end_id": 2, "props": {"since": 2020}},
         )
     ]
+
+
+def test_add_entity_invalid_label():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+
+    with pytest.raises(ValueError):
+        dal.add_entity("Person;MATCH(n)", {"name": "Alice"})
+
+    assert connector.executed == []
+
+
+def test_add_relationship_invalid_type():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+
+    with pytest.raises(ValueError):
+        dal.add_relationship(1, 2, "KNOWS DELETE", {"since": 2020})
+
+    assert connector.executed == []
 
 
 def test_get_entity():

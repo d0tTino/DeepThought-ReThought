@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from .connector import GraphConnector
 
 
@@ -13,6 +15,19 @@ class GraphDAL:
 
     def __init__(self, connector: GraphConnector) -> None:
         self._connector = connector
+        self._safe_label_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+    def _validate_label(self, label: str) -> str:
+        """Return ``label`` if it matches :attr:`_safe_label_re`, else raise."""
+        if not self._safe_label_re.fullmatch(label):
+            raise ValueError(f"Invalid label: {label}")
+        return label
+
+    def _validate_rel_type(self, rel_type: str) -> str:
+        """Return ``rel_type`` if it matches :attr:`_safe_label_re`, else raise."""
+        if not self._safe_label_re.fullmatch(rel_type):
+            raise ValueError(f"Invalid relationship type: {rel_type}")
+        return rel_type
 
     def merge_entity(self, name: str) -> None:
         """Ensure an Entity node exists with the given ``name``."""
@@ -29,12 +44,16 @@ class GraphDAL:
 
     def add_entity(self, label: str, props: dict) -> None:
         """Create or merge a node with ``label`` and ``props``."""
-        query = f"MERGE (n:{label} $props)"
+        safe_label = self._validate_label(label)
+        query = f"MERGE (n:{safe_label} $props)"
         self._connector.execute(query, {"props": props})
 
     def add_relationship(self, start_id: int, end_id: int, rel_type: str, props: dict) -> None:
         """Create or merge a relationship of ``rel_type`` between two nodes."""
-        query = "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:" f"{rel_type} $props]->(b)"
+        safe_type = self._validate_rel_type(rel_type)
+        query = (
+            "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:" f"{safe_type} $props]->(b)"
+        )
         self._connector.execute(
             query,
             {"start_id": start_id, "end_id": end_id, "props": props},
