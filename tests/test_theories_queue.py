@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import aiosqlite
 import pytest
@@ -66,6 +67,41 @@ async def test_queue_deep_reflection(tmp_path):
         async with db.execute("SELECT status FROM queued_tasks WHERE task_id=?", (task_id,)) as cur:
             row = await cur.fetchone()
     assert row[0] == "pending"
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_list_pending_tasks(tmp_path):
+    db_file = tmp_path / "db.sqlite"
+    sg.db_manager = sg.DBManager(str(db_file))
+    await sg.db_manager.connect()
+    await sg.init_db()
+
+    ctx1 = {"channel_id": 1}
+    ctx2 = {"channel_id": 2}
+    task1 = await sg.queue_deep_reflection("u1", ctx1, "hello1")
+    task2 = await sg.queue_deep_reflection("u2", ctx2, "hello2")
+
+    rows = await sg.db_manager.list_pending_tasks()
+    assert (task1, "u1", json.dumps(ctx1), "hello1") in rows
+    assert (task2, "u2", json.dumps(ctx2), "hello2") in rows
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_mark_task_done(tmp_path):
+    db_file = tmp_path / "db.sqlite"
+    sg.db_manager = sg.DBManager(str(db_file))
+    await sg.db_manager.connect()
+    await sg.init_db()
+
+    task_id = await sg.queue_deep_reflection("u1", {"channel_id": 1}, "hello")
+    await sg.db_manager.mark_task_done(task_id)
+
+    async with aiosqlite.connect(str(db_file)) as db:
+        async with db.execute("SELECT status FROM queued_tasks WHERE task_id=?", (task_id,)) as cur:
+            row = await cur.fetchone()
+    assert row[0] == "done"
     await sg.db_manager.close()
 
 
