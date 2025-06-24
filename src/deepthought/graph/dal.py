@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from .connector import GraphConnector
 
 
@@ -13,6 +15,13 @@ class GraphDAL:
 
     def __init__(self, connector: GraphConnector) -> None:
         self._connector = connector
+
+    _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+    @classmethod
+    def _validate_identifier(cls, value: str) -> None:
+        if not cls._IDENT_RE.match(value):
+            raise ValueError(f"Invalid identifier: {value!r}")
 
     def merge_entity(self, name: str) -> None:
         """Ensure an Entity node exists with the given ``name``."""
@@ -29,11 +38,13 @@ class GraphDAL:
 
     def add_entity(self, label: str, props: dict) -> None:
         """Create or merge a node with ``label`` and ``props``."""
+        self._validate_identifier(label)
         query = f"MERGE (n:{label} $props)"
         self._connector.execute(query, {"props": props})
 
     def add_relationship(self, start_id: int, end_id: int, rel_type: str, props: dict) -> None:
         """Create or merge a relationship of ``rel_type`` between two nodes."""
+        self._validate_identifier(rel_type)
         query = "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:" f"{rel_type} $props]->(b)"
         self._connector.execute(
             query,
