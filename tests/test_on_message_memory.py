@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 
 import aiosqlite
@@ -171,3 +172,18 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
     expected = sg.TextBlob(message.content).sentiment.polarity
     assert trend == (expected, 1)
     await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_publish_input_received_logs_when_publisher_missing(monkeypatch, caplog):
+    sg._input_publisher = None
+
+    async def fake_ensure_nats():
+        sg._input_publisher = None
+
+    monkeypatch.setattr(sg, "_ensure_nats", fake_ensure_nats)
+
+    with caplog.at_level(logging.WARNING):
+        await sg.publish_input_received("hi")
+
+    assert any("Dropping INPUT_RECEIVED event" in r.getMessage() for r in caplog.records)
