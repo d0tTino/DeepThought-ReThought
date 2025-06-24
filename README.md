@@ -186,6 +186,9 @@ export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
 export SENTIMENT_BACKEND=vader  # optional, defaults to textblob
 ```
 
+Set `SENTIMENT_BACKEND` to either `textblob` or `vader` to choose the library
+used for sentiment analysis. Any other value falls back to `textblob`.
+
 Run the bot:
 
 ```bash
