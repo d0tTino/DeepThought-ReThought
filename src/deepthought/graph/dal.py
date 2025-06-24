@@ -29,6 +29,13 @@ class GraphDAL:
             raise ValueError(f"Invalid relationship type: {rel_type}")
         return rel_type
 
+    _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+    @classmethod
+    def _validate_identifier(cls, value: str) -> None:
+        if not cls._IDENT_RE.match(value):
+            raise ValueError(f"Invalid identifier: {value!r}")
+
     def merge_entity(self, name: str) -> None:
         """Ensure an Entity node exists with the given ``name``."""
         self._connector.execute("MERGE (:Entity {name: $name})", {"name": name})
@@ -44,16 +51,16 @@ class GraphDAL:
 
     def add_entity(self, label: str, props: dict) -> None:
         """Create or merge a node with ``label`` and ``props``."""
-        safe_label = self._validate_label(label)
-        query = f"MERGE (n:{safe_label} $props)"
+        self._validate_identifier(label)
+        query = f"MERGE (n:{label} $props)"
+
         self._connector.execute(query, {"props": props})
 
     def add_relationship(self, start_id: int, end_id: int, rel_type: str, props: dict) -> None:
         """Create or merge a relationship of ``rel_type`` between two nodes."""
-        safe_type = self._validate_rel_type(rel_type)
-        query = (
-            "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:" f"{safe_type} $props]->(b)"
-        )
+        self._validate_identifier(rel_type)
+        query = "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:" f"{rel_type} $props]->(b)"
+
         self._connector.execute(
             query,
             {"start_id": start_id, "end_id": end_id, "props": props},
