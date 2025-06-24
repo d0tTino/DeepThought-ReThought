@@ -49,3 +49,22 @@ To replicate the CI steps locally or on your self-hosted runner:
 
 Tests that require NATS will be skipped automatically if the server isn't
 running, but full coverage requires JetStream to be available.
+
+## Detecting Code Changes
+
+The CI workflow relies on `scripts/check_code_changes.py` to decide when
+linters and tests should run. The script examines the commit diff and returns
+`true` only when a non-comment code line has changed. Documentation files and
+blank or commented lines are ignored. When the output is `false`, the workflow
+skips the expensive steps.
+
+## Example: codex_setup.sh
+
+To mirror the CI process locally, execute:
+
+```bash
+./scripts/codex_setup.sh
+```
+
+This script installs dependencies, starts a temporary NATS server, initializes
+JetStream, and runs the checks above only when code has actually changed.
