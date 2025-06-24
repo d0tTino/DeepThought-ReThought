@@ -191,7 +191,4 @@ async def test_start_listening_no_subscriber(monkeypatch, caplog):
         result = await llm.start_listening()
 
     assert result is False
-    assert any(
-        "Subscriber not initialized for ProductionLLM." in r.getMessage() for r in caplog.records
-    )
-
+    assert any("Subscriber not initialized for ProductionLLM." in r.getMessage() for r in caplog.records)
