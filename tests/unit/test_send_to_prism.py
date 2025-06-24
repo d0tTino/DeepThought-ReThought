@@ -43,3 +43,15 @@ async def test_send_to_prism_timeout(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         await sg.send_to_prism({"x": 1})
     assert any("TimeoutError" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_send_to_prism_timeout_message(monkeypatch, caplog):
+    """Ensure the timeout warning includes the expected text."""
+    monkeypatch.setattr(sg.aiohttp, "ClientSession", lambda: TimeoutSession())
+    with caplog.at_level(logging.WARNING):
+        await sg.send_to_prism({"x": 1})
+    messages = [rec.getMessage() for rec in caplog.records]
+    assert any(
+        "TimeoutError sending data to Prism" in msg for msg in messages
+    )

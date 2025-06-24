@@ -1,3 +1,5 @@
+import pytest
+
 from deepthought.graph.dal import GraphDAL
 
 
@@ -16,9 +18,7 @@ def test_add_entity():
     dal = GraphDAL(connector)
     dal.add_entity("Person", {"name": "Alice"})
 
-    assert connector.executed == [
-        ("MERGE (n:Person $props)", {"props": {"name": "Alice"}})
-    ]
+    assert connector.executed == [("MERGE (n:Person $props)", {"props": {"name": "Alice"}})]
 
 
 def test_add_relationship():
@@ -34,15 +34,29 @@ def test_add_relationship():
     ]
 
 
+def test_add_entity_invalid_label():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+    with pytest.raises(ValueError):
+        dal.add_entity("Bad Label; MATCH (n)", {"name": "Alice"})
+
+
+
+def test_add_relationship_invalid_type():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+    with pytest.raises(ValueError):
+        dal.add_relationship(1, 2, "KNOWS DELETE *", {"since": 2020})
+
+
+
 def test_get_entity():
     connector = DummyConnector(result=[{"name": "Alice"}])
     dal = GraphDAL(connector)
     result = dal.get_entity("Person", "name", "Alice")
 
     assert result == {"name": "Alice"}
-    assert connector.executed == [
-        ("MATCH (n:Person {name: $value}) RETURN n", {"value": "Alice"})
-    ]
+    assert connector.executed == [("MATCH (n:Person {name: $value}) RETURN n", {"value": "Alice"})]
 
 
 def test_query_subgraph():

@@ -1,5 +1,6 @@
 import json
 import logging
+from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -14,7 +15,7 @@ from ..eda.subscriber import Subscriber
 logger = logging.getLogger(__name__)
 
 
-class BaseLLM:
+class BaseLLM(ABC):
     """Base class providing shared LLM functionality."""
 
     def __init__(
@@ -28,6 +29,14 @@ class BaseLLM:
         self._subscriber = subscriber
         self._tokenizer = tokenizer
         self._model = model
+
+    @abstractmethod
+    async def start_listening(self, durable_name: str = "llm_listener") -> bool:
+        """Begin consuming events."""
+
+    @abstractmethod
+    async def stop_listening(self) -> None:
+        """Stop consuming events."""
 
     def _build_prompt(self, facts: List[str]) -> str:
         """Assemble a prompt from retrieved facts."""

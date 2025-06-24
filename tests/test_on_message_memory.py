@@ -190,3 +190,4 @@ async def test_publish_input_received_warns_when_no_publisher(monkeypatch, caplo
     assert any(
         "Dropping INPUT_RECEIVED event because NATS publisher is unavailable" in r.getMessage() for r in caplog.records
     )
+

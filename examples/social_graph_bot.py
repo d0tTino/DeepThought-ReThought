@@ -96,7 +96,13 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     try:
         gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
         generator = _get_idle_generator()
-        outputs = await asyncio.to_thread(generator, gen_prompt, max_new_tokens=20, num_return_sequences=1)
+        outputs = await asyncio.to_thread(
+            generator,
+            gen_prompt,
+            max_new_tokens=20,
+            num_return_sequences=1,
+        )
+
         text = outputs[0]["generated_text"].strip()
         return text
     except Exception:  # pragma: no cover - optional dependency or runtime error
@@ -494,6 +500,7 @@ async def publish_input_received(text: str) -> None:
     await _ensure_nats()
     if _input_publisher is None:
         logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
+
         return
     payload = InputReceivedPayload(
         user_input=text,
