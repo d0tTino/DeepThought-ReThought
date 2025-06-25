@@ -126,6 +126,4 @@ async def test_start_listening_no_subscriber(monkeypatch, caplog):
         result = await stub.start_listening()
 
     assert result is False
-    assert any(
-        "Subscriber not initialized for MemoryStub." in r.getMessage() for r in caplog.records
-    )
+    assert any("Subscriber not initialized for MemoryStub." in r.getMessage() for r in caplog.records)

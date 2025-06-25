@@ -1,7 +1,7 @@
 import json
 
-import yaml
 import pytest
+import yaml
 
 from deepthought.config import get_settings, load_settings
 
