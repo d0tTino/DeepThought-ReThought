@@ -1,7 +1,7 @@
+import asyncio
 import logging
 
 import aiohttp
-import asyncio
 import pytest
 
 import examples.social_graph_bot as sg
@@ -52,6 +52,4 @@ async def test_send_to_prism_timeout_message(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         await sg.send_to_prism({"x": 1})
     messages = [rec.getMessage() for rec in caplog.records]
-    assert any(
-        "TimeoutError sending data to Prism" in msg for msg in messages
-    )
+    assert any("TimeoutError sending data to Prism" in msg for msg in messages)

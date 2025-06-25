@@ -26,7 +26,6 @@ class GraphMemory:
         self._graph_file = graph_file
         self.repaired = False
 
-
         dir_path = os.path.dirname(self._graph_file)
         if dir_path:
             os.makedirs(dir_path, exist_ok=True)

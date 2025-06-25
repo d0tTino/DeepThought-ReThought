@@ -93,9 +93,8 @@ def test_invalid_json_rewritten_and_readable(tmp_path, monkeypatch, caplog):
 
     assert not mem2.repaired
     assert first_mtime == second_mtime
-    assert not any(
-        "Failed to read graph file" in r.getMessage() for r in caplog.records
-    )
+    assert not any("Failed to read graph file" in r.getMessage() for r in caplog.records)
+
 
 def test_init_creates_directory(tmp_path, monkeypatch):
     graph_file = tmp_path / "newdir" / "graph.json"
@@ -105,6 +104,7 @@ def test_init_creates_directory(tmp_path, monkeypatch):
     assert isinstance(mem._graph, nx.DiGraph)
     with open(graph_file, "r", encoding="utf-8") as f:
         assert isinstance(json.load(f), dict)
+
 
 @pytest.mark.asyncio
 async def test_handle_input_invalid_payload(tmp_path, monkeypatch):
@@ -137,7 +137,4 @@ async def test_start_listening_no_subscriber(tmp_path, monkeypatch, caplog):
         result = await mem.start_listening()
 
     assert result is False
-    assert any(
-        "Subscriber not initialized for GraphMemory." in r.getMessage() for r in caplog.records
-    )
-
+    assert any("Subscriber not initialized for GraphMemory." in r.getMessage() for r in caplog.records)

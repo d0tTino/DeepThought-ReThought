@@ -41,13 +41,11 @@ def test_add_entity_invalid_label():
         dal.add_entity("Bad Label; MATCH (n)", {"name": "Alice"})
 
 
-
 def test_add_relationship_invalid_type():
     connector = DummyConnector()
     dal = GraphDAL(connector)
     with pytest.raises(ValueError):
         dal.add_relationship(1, 2, "KNOWS DELETE *", {"since": 2020})
-
 
 
 def test_get_entity():

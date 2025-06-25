@@ -150,6 +150,7 @@ async def test_monitor_channels_only_bots(monkeypatch):
     monkeypatch.setattr(sg, "who_is_active", lambda channel, limit=20: f)
 
     monkeypatch.setattr(sg, "BOT_CHAT_ENABLED", True)
+
     async def fake_gen():
         return "ping"
 
