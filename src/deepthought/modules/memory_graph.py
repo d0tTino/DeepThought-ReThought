@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 import nats
 import networkx as nx
@@ -25,6 +25,7 @@ class GraphMemory:
         self._subscriber = Subscriber(nats_client, js_context)
         self._graph_file = graph_file
         self.repaired = False
+        self._last_read_error: Optional[Exception] = None
 
         dir_path = os.path.dirname(self._graph_file)
         if dir_path:
@@ -54,6 +55,7 @@ class GraphMemory:
         try:
             with open(self._graph_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            self._last_read_error = None
             return nx.readwrite.json_graph.node_link_graph(data), True
         except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
             self._last_read_error = e
@@ -167,3 +169,8 @@ class GraphMemory:
             logger.info("GraphMemory stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
+
+    @property
+    def last_read_error(self) -> Optional[Exception]:
+        """Return the exception from the last failed graph read, if any."""
+        return self._last_read_error
