@@ -18,12 +18,11 @@ logger = logging.getLogger(__name__)
 class InputHandler:
     """Handles user input and publishes InputReceived events."""
 
-    def __init__(
-        self, nats_client: NATS, js_context: JetStreamContext, memory_service=None
-    ):
+    def __init__(self, nats_client: NATS, js_context: JetStreamContext, hierarchical_service=None):
+
         """Initialize with optional hierarchical memory service."""
         self._publisher = Publisher(nats_client, js_context)
-        self._memory_service = memory_service
+        self._memory_service = hierarchical_service
         logger.info("InputHandler initialized (JetStream enabled).")
 
     async def process_input(self, user_input: str) -> str:

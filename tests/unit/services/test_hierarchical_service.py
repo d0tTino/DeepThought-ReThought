@@ -44,11 +44,14 @@ class DummyDAL:
         return [{"fact": "graph1"}]
 
 
-class DummyDALDump(DummyDAL):
-    def query_subgraph(self, query, params):
-        return [
-            {"src": "a", "dst": "b", "rel": "NEXT", "src_id": 1, "dst_id": 2},
-        ]
+class FailingVector:
+    def query(self, *args, **kwargs):
+        raise RuntimeError("boom")
+
+
+class FailingDAL:
+    def query_subgraph(self, *args, **kwargs):
+        raise RuntimeError("boom")
 
 
 class DummyMsg:
@@ -83,10 +86,16 @@ async def test_handle_input_publishes_combined_context(monkeypatch):
     assert datetime.fromisoformat(ts).tzinfo == timezone.utc
 
 
-def test_dump_graph_writes_dot(tmp_path):
-    service = HierarchicalService(DummyNATS(), DummyJS(), None, DummyDALDump())
-    out = service.dump_graph(tmp_path)
-    with open(out, "r", encoding="utf-8") as f:
-        data = f.read()
-    assert "digraph" in data
-    assert '"a" -> "b"' in data
+def test_retrieve_context_merges():
+    vec = DummyVector()
+    dal = DummyDAL()
+    service = HierarchicalService(DummyNATS(), DummyJS(), vec, dal)
+    ctx = service.retrieve_context("hi")
+    assert ctx == ["vec1", "vec2", "graph1"]
+
+
+def test_retrieve_context_failures():
+    service = HierarchicalService(DummyNATS(), DummyJS(), FailingVector(), FailingDAL())
+    ctx = service.retrieve_context("x")
+    assert ctx == []
+

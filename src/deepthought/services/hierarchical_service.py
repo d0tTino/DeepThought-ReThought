@@ -1,7 +1,8 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, List, Optional
+from typing import Any, List, Sequence
+
 
 import nats
 from nats.aio.client import Client as NATS
@@ -12,8 +13,6 @@ from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
-from ..memory.hierarchical import HierarchicalMemory
-from ..memory.vector_store import VectorStore, create_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,44 @@ class HierarchicalService:
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._memory = HierarchicalMemory(vector_store, graph_dal, top_k)
+        self._vector_store = vector_store
+        self._graph_dal = graph_dal
+        self._top_k = top_k
+
+    def _vector_matches(self, prompt: str) -> List[str]:
+        if self._vector_store is None:
+            return []
+        try:
+            result = self._vector_store.query(query_texts=[prompt], n_results=self._top_k)
+            docs: Sequence | None = None
+            if isinstance(result, dict):
+                docs = result.get("documents")
+            elif isinstance(result, Sequence):
+                docs = result
+            if not docs:
+                return []
+            matches: List[str] = []
+            for doc in docs:
+                if isinstance(doc, list):
+                    for d in doc:
+                        matches.append(str(getattr(d, "page_content", d)))
+                else:
+                    matches.append(str(getattr(doc, "page_content", doc)))
+            return matches
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Vector store query failed: %s", exc, exc_info=True)
+            return []
+
+    def _graph_facts(self) -> List[str]:
+        try:
+            rows = self._graph_dal.query_subgraph(
+                "MATCH (n:Entity) RETURN n.name AS fact LIMIT $limit",
+                {"limit": self._top_k},
+            )
+            return [str(r.get("fact")) for r in rows if r.get("fact")]
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Graph query failed: %s", exc, exc_info=True)
+            return []
 
     @classmethod
     def from_chroma(
@@ -48,8 +84,16 @@ class HierarchicalService:
         return cls(nats_client, js_context, store, graph_dal, top_k)
 
     def retrieve_context(self, prompt: str) -> List[str]:
-        """Return context from vector store and graph."""
-        return self._memory.retrieve_context(prompt)
+        """Return merged vector matches and graph facts."""
+        vector = self._vector_matches(prompt)
+        graph = self._graph_facts()
+        seen = set()
+        merged: List[str] = []
+        for item in vector + graph:
+            if item not in seen:
+                seen.add(item)
+                merged.append(item)
+        return merged
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -65,12 +109,8 @@ class HierarchicalService:
 
             facts = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={
-                    "retrieved_knowledge": {
-                        "facts": facts,
-                        "source": "hierarchical_service",
-                    }
-                },
+                retrieved_knowledge={"retrieved_knowledge": {"facts": facts, "source": "hierarchical_service"}},
+
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )

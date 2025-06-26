@@ -46,7 +46,7 @@ async def test_process_input_success():
     js = DummyJS()
     nc = DummyNATS()
     memory = DummyMemory()
-    handler = InputHandler(nc, js, memory_service=memory)
+    handler = InputHandler(nc, js, hierarchical_service=memory)
     input_id = await handler.process_input("hello")
 
     assert js.published
