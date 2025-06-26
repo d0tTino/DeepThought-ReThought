@@ -7,6 +7,7 @@ from typing import Deque, List, Optional
 
 import nats
 import torch
+from contextlib import contextmanager
 from nats.aio.msg import Msg
 
 from ..config import get_settings
@@ -14,7 +15,22 @@ from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 
+
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _safe_no_grad():
+    """Fallback context manager if torch.no_grad fails."""
+    cm = getattr(torch, "no_grad", None)
+    if cm is None:
+        yield
+        return
+    try:
+        with cm():
+            yield
+    except Exception:  # pragma: no cover - fallback
+        yield
 
 
 class BaseLLM(ABC):
@@ -100,8 +116,11 @@ class BaseLLM(ABC):
 
             prompt = self._build_prompt([str(f) for f in facts])
             inputs = self._tokenizer(prompt, return_tensors="pt")
-            with torch.no_grad():
-                outputs = self._model.generate(**inputs, max_length=inputs["input_ids"].shape[1] + 20)
+            with _safe_no_grad():
+                outputs = self._model.generate(
+                    **inputs,
+                    max_length=inputs["input_ids"].shape[1] + 20,
+                )
             generated = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
             if generated.startswith(prompt):
                 response_text = generated[len(prompt) :].strip()  # noqa: E203

@@ -1,5 +1,6 @@
 import json
 
+
 import pytest
 
 from deepthought.motivate import reward_manager as rm_mod

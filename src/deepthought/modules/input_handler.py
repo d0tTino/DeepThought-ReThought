@@ -19,12 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 class InputHandler:
-    """Handles user input and publishes InputReceived event via JetStream."""
+    """Handles user input and publishes InputReceived events."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, memory=None):
+    def __init__(self, nats_client: NATS, js_context: JetStreamContext, memory_service=None):
         """Initialize with optional hierarchical memory service."""
         self._publisher = Publisher(nats_client, js_context)
-        self._memory = memory
+        self._memory_service = memory_service
         logger.info("InputHandler initialized (JetStream enabled).")
 
     async def process_input(self, user_input: str) -> str:
@@ -46,10 +46,10 @@ class InputHandler:
             )
             logger.info("Published input ID %s (JetStream)", input_id)
 
-            if self._memory is not None:
+            if self._memory_service is not None:
                 context = []
                 try:
-                    context = self._memory.retrieve_context(user_input)
+                    context = self._memory_service.retrieve_context(user_input)
                 except Exception as err:  # pragma: no cover - defensive
                     logger.error("Memory retrieval failed: %s", err, exc_info=True)
 

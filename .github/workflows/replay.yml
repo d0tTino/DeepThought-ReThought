@@ -6,6 +6,7 @@ on:
       - 'tools/**'
       - 'src/**'
       - 'tests/replay_basic.py'
+      - 'tests/traces/**'
       - '.github/workflows/replay.yml'
   workflow_dispatch:
 
@@ -29,3 +30,30 @@ jobs:
       - env:
           PYTHONPATH: src
         run: pytest tests/replay_basic.py
+      - name: Run replay on sample trace
+        env:
+          PYTHONPATH: src
+        run: |
+          python tools/replay.py tests/traces/trial.json tests/traces/golden.json > metrics.txt
+          python - <<'EOF'
+import sys
+metrics = {}
+with open('metrics.txt') as f:
+    for line in f:
+        if ':' in line:
+            k, v = line.split(':', 1)
+            try:
+                metrics[k.strip()] = float(v.strip())
+            except ValueError:
+                pass
+bleu = metrics.get('bleu', 0.0)
+rouge = metrics.get('rouge_l', 0.0)
+threshold = 0.9
+if bleu < threshold or rouge < threshold:
+    print(f'Metrics below threshold: bleu={bleu}, rouge_l={rouge}')
+    sys.exit(1)
+EOF
+      - uses: actions/upload-artifact@v3
+        with:
+          name: replay-metrics
+          path: metrics.txt
