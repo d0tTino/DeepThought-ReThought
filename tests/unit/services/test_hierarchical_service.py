@@ -98,3 +98,4 @@ def test_retrieve_context_failures():
     service = HierarchicalService(DummyNATS(), DummyJS(), FailingVector(), FailingDAL())
     ctx = service.retrieve_context("x")
     assert ctx == []
+
