@@ -106,6 +106,10 @@ def create_llm(monkeypatch):
     monkeypatch.setitem(sys.modules, "transformers", tf)
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
+    import deepthought.modules.llm_base as llm_base
+
+    importlib.reload(llm_base)
+
     import deepthought.modules.llm_basic as llm_basic
 
     importlib.reload(llm_basic)

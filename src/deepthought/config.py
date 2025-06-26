@@ -31,6 +31,9 @@ class RewardThresholds(BaseSettings):
     novelty_threshold: float = 0.3
     social_affinity_threshold: int = 1
     window_size: int = 20
+    novelty_weight: float = 1.0
+    social_weight: float = 1.0
+    buffer_size: int = 50
 
 
 class Settings(BaseSettings):
