@@ -15,6 +15,8 @@ from nats.js.api import DeliverPolicy, DiscardPolicy, RetentionPolicy, StorageTy
 
 from tests.helpers import nats_server_available
 
+pytestmark = pytest.mark.nats
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
