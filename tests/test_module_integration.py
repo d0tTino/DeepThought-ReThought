@@ -146,7 +146,7 @@ async def test_full_module_flow():
         if os.path.exists(memory_file):
             os.remove(memory_file)
         memory_service = DummyMemory()
-        input_handler = InputHandler(nc, js, memory_service=memory_service)
+        input_handler = InputHandler(nc, js, hierarchical_service=memory_service)
         llm_cls = ProductionLLM if os.path.isdir("./results/lora-adapter") else BasicLLM
         try:
             llm_module = llm_cls(nc, js)
@@ -279,7 +279,7 @@ async def test_full_module_flow_graph_memory():
         if os.path.exists(GRAPH_MEMORY_FILE):
             os.remove(GRAPH_MEMORY_FILE)
         memory_service = DummyMemory()
-        input_handler = InputHandler(nc, js, memory_service=memory_service)
+        input_handler = InputHandler(nc, js, hierarchical_service=memory_service)
         memory_module = GraphMemory(nc, js, graph_file=GRAPH_MEMORY_FILE)
         llm_cls = ProductionLLM if os.path.isdir("./results/lora-adapter") else BasicLLM
         try:
