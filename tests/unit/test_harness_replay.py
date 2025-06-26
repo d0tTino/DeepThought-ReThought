@@ -8,8 +8,8 @@ from deepthought.harness.record import TraceEvent
 
 
 class DummyAgent:
-    def __init__(self):
-        self.states = []
+    def __init__(self) -> None:
+        self.states: list[str] = []
 
     async def act(self, state: str) -> str:
         self.states.append(state)
@@ -17,16 +17,22 @@ class DummyAgent:
 
 
 class DummyPublisher:
-    def __init__(self):
-        self.published = []
+    def __init__(self) -> None:
+        self.published: list[tuple[str, str]] = []
 
-    async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
+    async def publish(
+        self,
+        subject: str,
+        payload: str,
+        use_jetstream: bool = True,
+        timeout: float = 10.0,
+    ):
         self.published.append((subject, payload))
         return None
 
 
 @pytest.mark.asyncio
-async def test_replay_uses_timestamp_delta(monkeypatch):
+async def test_replay_uses_timestamp_delta(monkeypatch) -> None:
     events = [
         TraceEvent(
             state="s1",
@@ -48,9 +54,9 @@ async def test_replay_uses_timestamp_delta(monkeypatch):
     agent = DummyAgent()
     publisher = DummyPublisher()
 
-    slept = []
+    slept: list[float] = []
 
-    async def fake_sleep(val):
+    async def fake_sleep(val: float) -> None:
         slept.append(val)
 
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)

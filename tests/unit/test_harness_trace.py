@@ -51,3 +51,35 @@ async def test_handle_input_writes_file(monkeypatch, tmp_path):
     obj = json.loads(line)
     assert obj["event"] == "INPUT_RECEIVED"
     assert obj["payload"] == {"foo": "bar"}
+
+
+@pytest.mark.asyncio
+async def test_handle_response_writes_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(trace, "Subscriber", DummySubscriber)
+    outfile = tmp_path / "trace.jsonl"
+    recorder = trace.TraceRecorder(DummyNATS(), DummyJS(), str(outfile))
+    msg = DummyMsg('{"final_response": "ok"}')
+
+    await recorder._handle_response(msg)
+    assert msg.acked
+    with open(outfile, "r", encoding="utf-8") as f:
+        line = f.readline()
+    obj = json.loads(line)
+    assert obj["event"] == "RESPONSE_GENERATED"
+    assert obj["payload"] == {"final_response": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_start_subscribes_to_subjects(monkeypatch, tmp_path):
+    sub = DummySubscriber()
+
+    def fake_subscriber(*args, **kwargs):
+        return sub
+
+    monkeypatch.setattr(trace, "Subscriber", fake_subscriber)
+    recorder = trace.TraceRecorder(DummyNATS(), DummyJS(), str(tmp_path / "f"))
+    started = await recorder.start(durable_name="d")
+    assert started
+    subjects = [kwargs["subject"] for _, kwargs in sub.calls]
+    assert trace.EventSubjects.INPUT_RECEIVED in subjects
+    assert trace.EventSubjects.RESPONSE_GENERATED in subjects
