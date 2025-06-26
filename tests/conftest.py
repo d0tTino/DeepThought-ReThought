@@ -1,31 +1,17 @@
+# Standard library imports
 import sys
 from pathlib import Path
 import types
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-import types
 import pytest
 
-<<<<<<< tino_swe/clean-up-test_harness_replay.py
-# Provide a lightweight stub of the social_graph_bot module. This allows tests
-# to run without installing optional heavy dependencies used by the full
-# example implementation.
-sg_stub = types.ModuleType("examples.social_graph_bot")
+# Ensure project sources are importable
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-async def _noop(*args, **kwargs):
-    return None
+# ---------------------------------------------------------------------------
+# Lightweight stubs for optional heavy dependencies used in example modules.
+# ---------------------------------------------------------------------------
 
-sg_stub.send_to_prism = _noop
-sg_stub.publish_input_received = _noop
-
-sys.modules.setdefault("examples.social_graph_bot", sg_stub)
-
-# Stub out the optional ``deepthought.motivate`` package to avoid importing
-# heavyweight dependencies like sentence-transformers during test collection.
-motivate_stub = types.ModuleType("deepthought.motivate")
-sys.modules.setdefault("deepthought.motivate", motivate_stub)
-=======
 # Provide a lightweight stub for sentence_transformers if the package is
 # missing so that modules importing RewardManager can be loaded without the
 # heavy optional dependency.
@@ -44,11 +30,18 @@ if "sentence_transformers" not in sys.modules:
     st.SentenceTransformer = DummyModel
     st.util = types.SimpleNamespace(cos_sim=lambda a, b: [[0.0]])
     sys.modules["sentence_transformers"] = st
+
     sys.modules["sentence_transformers.util"] = st.util
->>>>>>> dev
+
+
+# Provide a minimal stub for ``send_to_prism`` and ``publish_input_received`` on
+# the social_graph_bot module so tests can intercept these calls. The stub must
+# be applied after ensuring ``sentence_transformers`` is available so the module
+# imports cleanly.
+async def _noop(*args, **kwargs):
+    return None
 
 import examples.social_graph_bot as sg
-
 
 @pytest.fixture
 def prism_calls(monkeypatch):
