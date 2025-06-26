@@ -58,3 +58,28 @@ Alternatively, run the example script directly:
 ```bash
 python examples/memgraph_memory_service.py
 ```
+
+## Hierarchical Memory Wrapper
+
+`HierarchicalMemory` combines vector search (using a store like Chroma) with
+graph lookups through `GraphDAL`. Instantiate it with a vector store and an
+existing `GraphDAL` instance:
+
+```python
+from deepthought.memory.hierarchical import HierarchicalMemory
+from deepthought.graph import GraphConnector, GraphDAL
+import chromadb
+
+# Initialize vector store and graph connection
+client = chromadb.Client()
+collection = client.create_collection("my_vectors")
+connector = GraphConnector()
+dal = GraphDAL(connector)
+
+memory = HierarchicalMemory(collection, dal)
+context = memory.retrieve_context("Where was I yesterday?")
+print(context)
+```
+
+`retrieve_context()` returns a list of strings merging the top matches from the
+vector store with recent facts from the graph.
