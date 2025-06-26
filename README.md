@@ -128,6 +128,15 @@ python setup_jetstream.py
 
 This step is necessary before running the tests below.
 
+## Recording Event Traces
+
+Use `tools/record.py` to capture `INPUT_RECEIVED` and `RESPONSE_GENERATED` events:
+```bash
+python tools/record.py --output traces.jsonl
+```
+Press Ctrl+C to stop recording. Each line in the file is a JSON object with the event name and payload.
+
+
 ## Graph Memory Backend
 
 The `GraphMemory` module uses the lightweight `networkx` library as an
