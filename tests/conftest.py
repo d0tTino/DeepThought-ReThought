@@ -1,16 +1,23 @@
 import sys
 import types
-import pytest
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import types
+
+import pytest
+
+
 # Provide a lightweight stub of the social_graph_bot module. This allows tests
-# to run without installing optional heavy dependencies used by the full
-# example implementation.
+# to run without installing optional heavy dependencies used by the full example
+# implementation.
 sg_stub = types.ModuleType("examples.social_graph_bot")
+
 
 async def _noop(*args, **kwargs):
     return None
+
 
 sg_stub.send_to_prism = _noop
 sg_stub.publish_input_received = _noop

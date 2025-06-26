@@ -36,3 +36,26 @@ export MG_PASSWORD=memgraph
 ```
 
 With these services running you can start your application and the memory service will connect automatically as long as it receives the proper NATS events.
+
+## Exporting the Graph
+
+After evaluating an interaction trace with `tools/replay.py` you may want to
+inspect the knowledge graph. The `HierarchicalService` exposes a
+`dump_graph(path)` method that writes the current graph in DOT format. Provide a
+directory where the `graph.dot` file should be created:
+
+```python
+from deepthought.graph import GraphConnector, GraphDAL
+from deepthought.services import HierarchicalService
+
+connector = GraphConnector(host="localhost", port=7687)
+dal = GraphDAL(connector)
+service = HierarchicalService(DummyNATS(), DummyJS(), None, dal)
+service.dump_graph("./graph_exports")
+```
+
+You can visualize the resulting DOT file with Graphviz:
+
+```bash
+dot -Tpng graph_exports/graph.dot -o graph.png
+```
