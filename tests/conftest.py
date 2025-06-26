@@ -9,6 +9,7 @@ import pytest
 # Provide a lightweight stub for sentence_transformers if the package is missing
 # so that modules importing RewardManager can be loaded without the heavy
 # optional dependency.
+
 if "sentence_transformers" not in sys.modules:
     st = types.ModuleType("sentence_transformers")
 
