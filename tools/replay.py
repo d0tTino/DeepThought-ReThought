@@ -30,6 +30,7 @@ def _load_trace(path: Path) -> List[TraceEvent]:
                 reward=float(item.get("reward", 0.0)),
                 latency=float(item.get("latency", 0.0)),
                 timestamp=datetime.fromisoformat(item.get("timestamp")),
+                timestamp_delta=float(item.get("timestamp_delta", 0.0)),
             )
         )
     return events
