@@ -46,7 +46,7 @@ async def test_process_input_success():
     js = DummyJS()
     nc = DummyNATS()
     memory = DummyMemory()
-    handler = InputHandler(nc, js, memory_service=memory)
+    handler = InputHandler(nc, js, hierarchical_service=memory)
     input_id = await handler.process_input("hello")
 
     assert js.published
@@ -60,8 +60,13 @@ async def test_process_input_success():
     parsed = datetime.fromisoformat(ts)
     assert parsed.tzinfo == timezone.utc
 
-    # Second publish: MEMORY_RETRIEVED
+    # Second publish: CHAT_RAW
     subject, data = js.published[1]
+    assert subject == EventSubjects.CHAT_RAW
+    assert data.decode() == "hello"
+
+    # Third publish: MEMORY_RETRIEVED
+    subject, data = js.published[2]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     memory_payload = json.loads(data.decode())
     assert memory_payload["input_id"] == input_id
@@ -101,7 +106,10 @@ async def test_process_input_no_memory():
     nc = DummyNATS()
     handler = InputHandler(nc, js)
     input_id = await handler.process_input("hello")
-    assert len(js.published) == 1
+    assert len(js.published) == 2
     subject, _ = js.published[0]
     assert subject == EventSubjects.INPUT_RECEIVED
+    subject, data = js.published[1]
+    assert subject == EventSubjects.CHAT_RAW
+    assert data.decode() == "hello"
     assert input_id

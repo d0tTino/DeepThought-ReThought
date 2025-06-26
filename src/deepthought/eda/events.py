@@ -27,6 +27,9 @@ class EventSubjects:
     # LLM events
     RESPONSE_GENERATED = "dtr.llm.response_generated"
 
+    # Raw chat message events
+    CHAT_RAW = "chat.raw"
+
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
     # e.g., METRICS = "dtr.metrics.reported"

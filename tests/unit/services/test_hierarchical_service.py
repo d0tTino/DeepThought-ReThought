@@ -44,6 +44,16 @@ class DummyDAL:
         return [{"fact": "graph1"}]
 
 
+class FailingVector:
+    def query(self, *args, **kwargs):
+        raise RuntimeError("boom")
+
+
+class FailingDAL:
+    def query_subgraph(self, *args, **kwargs):
+        raise RuntimeError("boom")
+
+
 class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
@@ -74,3 +84,18 @@ async def test_handle_input_publishes_combined_context(monkeypatch):
     assert "vec1" in facts and "graph1" in facts
     ts = sent_payload.timestamp
     assert datetime.fromisoformat(ts).tzinfo == timezone.utc
+
+
+def test_retrieve_context_merges():
+    vec = DummyVector()
+    dal = DummyDAL()
+    service = HierarchicalService(DummyNATS(), DummyJS(), vec, dal)
+    ctx = service.retrieve_context("hi")
+    assert ctx == ["vec1", "vec2", "graph1"]
+
+
+def test_retrieve_context_failures():
+    service = HierarchicalService(DummyNATS(), DummyJS(), FailingVector(), FailingDAL())
+    ctx = service.retrieve_context("x")
+    assert ctx == []
+
