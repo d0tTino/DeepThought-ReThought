@@ -16,6 +16,12 @@ class DummyMemory:
         self.prompt = prompt
         return ["fact1", "fact2"]
 
+    async def start(self):
+        return True
+
+    async def stop(self):
+        pass
+
 
 class DummyNATS:
     def __init__(self):
@@ -40,7 +46,7 @@ async def test_process_input_success():
     js = DummyJS()
     nc = DummyNATS()
     memory = DummyMemory()
-    handler = InputHandler(nc, js, memory=memory)
+    handler = InputHandler(nc, js, memory_service=memory)
     input_id = await handler.process_input("hello")
 
     assert js.published
