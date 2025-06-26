@@ -23,13 +23,22 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 # Import the modules to test
 from src.deepthought.modules import (
     BasicLLM,
-    BasicMemory,
     GraphMemory,
     InputHandler,
     LLMStub,
     OutputHandler,
     ProductionLLM,
 )
+
+
+class DummyMemory:
+    def __init__(self):
+        self.prompt = None
+
+    def retrieve_context(self, prompt: str):
+        self.prompt = prompt
+        return ["fact1", "fact2"]
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -83,16 +92,15 @@ async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
 @pytest.mark.asyncio
 async def test_full_module_flow():
     """
-    Test the full event flow through all stub modules.
+    Test the full event flow using hierarchical memory via InputHandler.
     1. Input -> InputHandler publishes INPUT_RECEIVED
-    2. BasicMemory subscribes to INPUT_RECEIVED, publishes MEMORY_RETRIEVED
+    2. InputHandler fetches context and publishes MEMORY_RETRIEVED
     3. BasicLLM subscribes to MEMORY_RETRIEVED, publishes RESPONSE_GENERATED
     4. OutputHandler subscribes to RESPONSE_GENERATED, handles the final output
     """
     if not nats_server_available(get_nats_url()):
         pytest.skip("NATS server not available")
     nc = None
-    memory_module = None
     llm_module = None
     output_handler = None
 
@@ -137,8 +145,8 @@ async def test_full_module_flow():
         memory_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json").name
         if os.path.exists(memory_file):
             os.remove(memory_file)
-        input_handler = InputHandler(nc, js)
-        memory_module = BasicMemory(nc, js, memory_file=memory_file)
+        memory_service = DummyMemory()
+        input_handler = InputHandler(nc, js, memory=memory_service)
         llm_cls = ProductionLLM if os.path.isdir("./results/lora-adapter") else BasicLLM
         try:
             llm_module = llm_cls(nc, js)
@@ -152,7 +160,6 @@ async def test_full_module_flow():
         # --- Set up subscriptions for the modules ---
         logger.info("Starting listeners...")
         results = await asyncio.gather(
-            memory_module.start_listening(durable_name="test_mem_listener"),
             llm_module.start_listening(durable_name="test_llm_listener"),
             output_handler.start_listening(durable_name="test_out_listener"),
             return_exceptions=True,  # Capture exceptions instead of raising immediately
@@ -194,11 +201,6 @@ async def test_full_module_flow():
         assert test_input_id in responses, f"OutputHandler did not record response for input_id {test_input_id}"
         assert responses[test_input_id] is not None, "Response content is None"
 
-        with open(memory_file, "r", encoding="utf-8") as f:
-            history = json.load(f)
-        assert history, "memory file was not written"
-        assert history[-1]["user_input"] == sample_input
-
         logger.info("Full module flow test completed successfully.")
 
     except Exception as e:
@@ -211,8 +213,6 @@ async def test_full_module_flow():
         # --- Stop stub listeners ---
         logger.info("Stopping listeners...")
         stubs_to_stop = []
-        if memory_module:
-            stubs_to_stop.append(memory_module.stop_listening())
         if llm_module:
             stubs_to_stop.append(llm_module.stop_listening())
         if output_handler:
@@ -278,7 +278,8 @@ async def test_full_module_flow_graph_memory():
         logger.info("Initializing modules (GraphMemory)...")
         if os.path.exists(GRAPH_MEMORY_FILE):
             os.remove(GRAPH_MEMORY_FILE)
-        input_handler = InputHandler(nc, js)
+        memory_service = DummyMemory()
+        input_handler = InputHandler(nc, js, memory=memory_service)
         memory_module = GraphMemory(nc, js, graph_file=GRAPH_MEMORY_FILE)
         llm_cls = ProductionLLM if os.path.isdir("./results/lora-adapter") else BasicLLM
         try:
