@@ -44,6 +44,13 @@ class DummyDAL:
         return [{"fact": "graph1"}]
 
 
+class DummyDALDump(DummyDAL):
+    def query_subgraph(self, query, params):
+        return [
+            {"src": "a", "dst": "b", "rel": "NEXT", "src_id": 1, "dst_id": 2},
+        ]
+
+
 class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
@@ -74,3 +81,12 @@ async def test_handle_input_publishes_combined_context(monkeypatch):
     assert "vec1" in facts and "graph1" in facts
     ts = sent_payload.timestamp
     assert datetime.fromisoformat(ts).tzinfo == timezone.utc
+
+
+def test_dump_graph_writes_dot(tmp_path):
+    service = HierarchicalService(DummyNATS(), DummyJS(), None, DummyDALDump())
+    out = service.dump_graph(tmp_path)
+    with open(out, "r", encoding="utf-8") as f:
+        data = f.read()
+    assert "digraph" in data
+    assert '"a" -> "b"' in data

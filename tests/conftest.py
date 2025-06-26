@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 # Provide a lightweight stub for sentence_transformers if the package is missing.
+
 if "sentence_transformers" not in sys.modules:
     st = types.ModuleType("sentence_transformers")
 
@@ -16,7 +17,6 @@ if "sentence_transformers" not in sys.modules:
 
         def encode(self, text, convert_to_numpy=True):
             import numpy as np
-
             return np.array([len(text)], dtype=float)
 
     st.SentenceTransformer = DummyModel

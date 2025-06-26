@@ -51,7 +51,10 @@ class HierarchicalService:
             facts = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={
-                    "retrieved_knowledge": {"facts": facts, "source": "hierarchical_service"}
+                    "retrieved_knowledge": {
+                        "facts": facts,
+                        "source": "hierarchical_service",
+                    }
                 },
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
@@ -103,13 +106,19 @@ class HierarchicalService:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
+            logger.info(
+                "HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED
+            )
             return True
         except nats.errors.Error as e:
-            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
+            logger.error(
+                "HierarchicalService failed to subscribe: %s", e, exc_info=True
+            )
             return False
         except Exception as e:  # pragma: no cover - network failure
-            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
+            logger.error(
+                "HierarchicalService failed to subscribe: %s", e, exc_info=True
+            )
             return False
 
     async def stop(self) -> None:
@@ -119,3 +128,34 @@ class HierarchicalService:
             logger.info("HierarchicalService stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
+
+    def dump_graph(self, path: str) -> str:
+        """Write the underlying graph to ``path`` in DOT format."""
+        import os
+
+        os.makedirs(path, exist_ok=True)
+        dot_path = os.path.join(path, "graph.dot")
+
+        rows = self._memory._dal.query_subgraph(
+            "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, coalesce(a.name, '') AS src, "
+            "type(r) AS rel, id(b) AS dst_id, coalesce(b.name, '') AS dst",
+            {},
+        )
+
+        seen = set()
+        with open(dot_path, "w", encoding="utf-8") as f:
+            f.write("digraph {\n")
+            for row in rows:
+                src = row.get("src") or f"node{row.get('src_id')}"
+                dst = row.get("dst") or f"node{row.get('dst_id')}"
+                if src not in seen:
+                    f.write(f'    "{src}";\n')
+                    seen.add(src)
+                if dst not in seen:
+                    f.write(f'    "{dst}";\n')
+                    seen.add(dst)
+                rel = row.get("rel", "")
+                f.write(f'    "{src}" -> "{dst}" [label="{rel}"];\n')
+            f.write("}\n")
+        logger.info("Graph dumped to %s", dot_path)
+        return dot_path
