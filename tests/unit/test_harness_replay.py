@@ -1,36 +1,62 @@
-import time
+import asyncio
 from datetime import datetime
 
 import pytest
 
-from deepthought.harness import replay as harness_replay
+from deepthought.harness import replay as replay_mod
 from deepthought.harness.record import TraceEvent
 
 
 class DummyAgent:
     def __init__(self):
-        self.calls = []
+        self.states = []
 
     async def act(self, state: str) -> str:
-        self.calls.append((state, time.monotonic()))
+        self.states.append(state)
         return "ok"
 
 
+class DummyPublisher:
+    def __init__(self):
+        self.published = []
+
+    async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
+        self.published.append((subject, payload))
+        return None
+
+
 @pytest.mark.asyncio
-async def test_replay_order_and_timing():
-    now = datetime.utcnow()
-    trace = [
-        TraceEvent(state="s1", action="a1", reward=0.0, latency=0.05, timestamp=now),
-        TraceEvent(state="s2", action="a2", reward=0.0, latency=0.05, timestamp=now),
-        TraceEvent(state="s3", action="a3", reward=0.0, latency=0.0, timestamp=now),
+async def test_replay_uses_timestamp_delta(monkeypatch):
+    events = [
+        TraceEvent(
+            state="s1",
+            action="a1",
+            reward=0.0,
+            latency=0.0,
+            timestamp=datetime.utcnow(),
+            timestamp_delta=0.0,
+        ),
+        TraceEvent(
+            state="s2",
+            action="a2",
+            reward=0.0,
+            latency=0.0,
+            timestamp=datetime.utcnow(),
+            timestamp_delta=1.0,
+        ),
     ]
     agent = DummyAgent()
-    start = time.monotonic()
-    await harness_replay.replay(trace, agent)
-    states = [c[0] for c in agent.calls]
-    times = [c[1] for c in agent.calls]
+    publisher = DummyPublisher()
 
-    assert states == ["s1", "s2", "s3"]
-    assert times[1] - times[0] >= trace[0].latency
-    assert times[2] - times[1] >= trace[1].latency
-    assert times[0] >= start
+    slept = []
+
+    async def fake_sleep(val):
+        slept.append(val)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    await replay_mod.replay(events, agent, publisher)
+
+    assert slept == [0.0, 1.0]
+    assert agent.states == ["s1", "s2"]
+    assert publisher.published == [("chat.raw", "s1"), ("chat.raw", "s2")]
