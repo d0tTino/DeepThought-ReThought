@@ -2,6 +2,8 @@
 
 This project uses GitHub Actions for its CI workflow. All jobs now run exclusively on a self-hosted runner, ensuring a consistent environment for linting, tests, and deployment tasks. Workflows are limited to the `main` and `develop` branches and old runs are cancelled automatically via GitHub's concurrency feature.
 
+A `docker-compose.yml` file is provided to spin up NATS, Memgraph and Chroma for integration tests.
+
 ## Registering a Self-Hosted Runner
 
 1. Open your repository on GitHub and go to **Settings** > **Actions** > **Runners**.
@@ -34,9 +36,9 @@ To replicate the CI steps locally or on your self-hosted runner:
    ```bash
    pip install -r requirements-ci.txt
    ```
-2. Start a NATS server with JetStream enabled:
+2. Start the integration services using Docker Compose:
    ```bash
-   ./scripts/start_nats.sh
+   docker-compose up -d
    ```
 3. Initialize the required JetStream streams:
    ```bash
@@ -47,8 +49,10 @@ To replicate the CI steps locally or on your self-hosted runner:
    PYTHONPATH=src pytest
    ```
 
-Tests that require NATS will be skipped automatically if the server isn't
-running, but full coverage requires JetStream to be available.
+Tests that depend on external services (NATS, Memgraph and Chroma) will be
+skipped automatically if those services aren't running. When started via the
+Compose file the tests marked ``nats``, ``memgraph`` and ``chroma`` will run
+without additional configuration.
 
 ## Detecting Code Changes
 

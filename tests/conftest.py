@@ -1,31 +1,27 @@
 import sys
-from pathlib import Path
 import types
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import types
 import pytest
 
-<<<<<<< tino_swe/clean-up-test_harness_replay.py
 # Provide a lightweight stub of the social_graph_bot module. This allows tests
 # to run without installing optional heavy dependencies used by the full
 # example implementation.
 sg_stub = types.ModuleType("examples.social_graph_bot")
 
+
 async def _noop(*args, **kwargs):
     return None
+
 
 sg_stub.send_to_prism = _noop
 sg_stub.publish_input_received = _noop
 
 sys.modules.setdefault("examples.social_graph_bot", sg_stub)
 
-# Stub out the optional ``deepthought.motivate`` package to avoid importing
-# heavyweight dependencies like sentence-transformers during test collection.
-motivate_stub = types.ModuleType("deepthought.motivate")
-sys.modules.setdefault("deepthought.motivate", motivate_stub)
-=======
+
 # Provide a lightweight stub for sentence_transformers if the package is
 # missing so that modules importing RewardManager can be loaded without the
 # heavy optional dependency.
@@ -45,7 +41,6 @@ if "sentence_transformers" not in sys.modules:
     st.util = types.SimpleNamespace(cos_sim=lambda a, b: [[0.0]])
     sys.modules["sentence_transformers"] = st
     sys.modules["sentence_transformers.util"] = st.util
->>>>>>> dev
 
 import examples.social_graph_bot as sg
 

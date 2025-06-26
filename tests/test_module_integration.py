@@ -17,6 +17,8 @@ from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfi
 
 from tests.helpers import nats_server_available
 
+pytestmark = pytest.mark.nats
+
 # Add the src directory to the path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 

@@ -27,3 +27,25 @@ def nats_server_available(url: Optional[str] = None) -> bool:
             return True
     except Exception:
         return False
+
+
+def memgraph_available(host: str | None = None, port: int | None = None) -> bool:
+    """Return ``True`` if a Memgraph server is reachable."""
+    host = host or os.getenv("MG_HOST", "localhost")
+    port = int(port or os.getenv("MG_PORT", 7687))
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except Exception:
+        return False
+
+
+def chroma_available(host: str | None = None, port: int | None = None) -> bool:
+    """Return ``True`` if a Chroma service is reachable."""
+    host = host or os.getenv("CHROMA_HOST", "localhost")
+    port = int(port or os.getenv("CHROMA_PORT", 8000))
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except Exception:
+        return False

@@ -7,6 +7,8 @@ import pytest
 
 from tests.helpers import nats_server_available
 
+pytestmark = pytest.mark.nats
+
 # Basic logging for the test
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
