@@ -16,20 +16,43 @@ from nats.js.client import JetStreamContext
 
 SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
 if SENTIMENT_BACKEND == "vader":
-    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+    try:
+        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-    _sentiment = SentimentIntensityAnalyzer()
+        _sentiment = SentimentIntensityAnalyzer()
 
-    def analyze_sentiment(text: str) -> float:
-        """Return the compound sentiment score using VADER."""
-        return _sentiment.polarity_scores(text)["compound"]
+        def analyze_sentiment(text: str) -> float:
+            """Return the compound sentiment score using VADER."""
+            return _sentiment.polarity_scores(text)["compound"]
+
+    except Exception:  # pragma: no cover - optional dependency
+        logging.getLogger(__name__).warning(
+            "VADER sentiment unavailable; falling back to TextBlob"
+        )
+        try:
+            from textblob import TextBlob
+
+            def analyze_sentiment(text: str) -> float:
+                return TextBlob(text).sentiment.polarity
+
+        except Exception:
+
+            def analyze_sentiment(text: str) -> float:  # pragma: no cover
+                return 0.0
 
 else:
-    from textblob import TextBlob
+    try:
+        from textblob import TextBlob
 
-    def analyze_sentiment(text: str) -> float:
-        """Return the sentiment polarity using TextBlob."""
-        return TextBlob(text).sentiment.polarity
+        def analyze_sentiment(text: str) -> float:
+            """Return the sentiment polarity using TextBlob."""
+            return TextBlob(text).sentiment.polarity
+
+    except Exception:  # pragma: no cover - optional dependency
+        logging.getLogger(__name__).warning("TextBlob sentiment unavailable")
+
+        def analyze_sentiment(text: str) -> float:
+            return 0.0
 
 
 from deepthought.config import get_settings
@@ -37,7 +60,9 @@ from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.eda.publisher import Publisher
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
 CURRENT_DB_PATH = DB_PATH
@@ -60,7 +85,11 @@ SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
 
 # Optional bot-to-bot chatter configuration
 # Accepts values like "true", "1", or "yes" (case-insensitive)
-BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {"true", "1", "yes"}
+BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
+    "true",
+    "1",
+    "yes",
+}
 
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
@@ -94,7 +123,9 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
+        gen_prompt = prompt or os.getenv(
+            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
+        )
         generator = _get_idle_generator()
         outputs = await asyncio.to_thread(
             generator,
@@ -262,7 +293,9 @@ class DBManager:
         )
         await self._db.commit()
 
-    async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
+    async def store_theory(
+        self, subject_id: int, theory: str, confidence: float
+    ) -> None:
         if not isinstance(theory, str) or not theory.strip():
             raise ValueError("theory must be a non-empty string")
         if len(theory) > MAX_THEORY_LENGTH:
@@ -328,7 +361,9 @@ class DBManager:
         ) as cur:
             return await cur.fetchone()
 
-    async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
+    async def queue_deep_reflection(
+        self, user_id: int, context: dict, prompt: str
+    ) -> int:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
         if len(prompt) > MAX_PROMPT_LENGTH:
@@ -438,7 +473,11 @@ async def init_db(db_path: str | None = None) -> None:
     target_path = (
         db_path
         if db_path is not None
-        else (DB_PATH if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH else db_manager.db_path)
+        else (
+            DB_PATH
+            if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH
+            else db_manager.db_path
+        )
     )
 
     if db_manager.db_path != target_path:
@@ -464,7 +503,9 @@ async def store_memory(
     topic: str = "",
     sentiment_score: float | None = None,
 ) -> None:
-    await db_manager.store_memory(user_id, memory, topic=topic, sentiment_score=sentiment_score)
+    await db_manager.store_memory(
+        user_id, memory, topic=topic, sentiment_score=sentiment_score
+    )
 
 
 async def send_to_prism(data: dict) -> None:
@@ -499,7 +540,9 @@ async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
     await _ensure_nats()
     if _input_publisher is None:
-        logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
+        logger.warning(
+            "Dropping INPUT_RECEIVED event because NATS publisher is unavailable"
+        )
 
         return
     payload = InputReceivedPayload(
@@ -644,7 +687,9 @@ async def last_human_message_age(channel: discord.TextChannel, limit: int = 50):
     """Return minutes since the most recent human message or ``None`` if none."""
     async for msg in channel.history(limit=limit):
         if not msg.author.bot:
-            return (discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+            return (
+                discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)
+            ).total_seconds() / 60
     return None
 
 
@@ -667,7 +712,8 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
             send_prompt = True
         else:
             idle_minutes = (
-                discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)
+                discord.utils.utcnow()
+                - last_message.created_at.replace(tzinfo=timezone.utc)
             ).total_seconds() / 60
             if idle_minutes >= IDLE_TIMEOUT_MINUTES:
                 send_prompt = True
@@ -726,7 +772,9 @@ class SocialGraphBot(discord.Client):
             topic=topic,
             sentiment_score=sentiment_score,
         )
-        await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
+        await update_sentiment_trend(
+            message.author.id, message.channel.id, sentiment_score
+        )
 
         bots, _ = await who_is_active(message.channel)
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:

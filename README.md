@@ -147,6 +147,16 @@ python tools/record.py --output traces.jsonl
 ```
 Press Ctrl+C to stop recording. Each line in the file is a JSON object with the event name and payload.
 
+## Replaying Event Traces
+
+Use `tools/replay.py` to send a recorded trace back through NATS and compare it against a golden reference:
+
+```bash
+python tools/replay.py trial.jsonl golden.jsonl --nats nats://localhost:4222
+```
+
+Pass `--nats ""` to disable publishing. The script prints BLEU and ROUGE-L metrics.
+
 
 ## Graph Memory Backend
 

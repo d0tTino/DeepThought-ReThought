@@ -10,7 +10,12 @@ from typing import Deque, Optional
 import aiohttp
 import numpy as np
 from nats.aio.msg import Msg
-from sentence_transformers import SentenceTransformer, util
+
+try:
+    from sentence_transformers import SentenceTransformer, util
+except Exception:  # pragma: no cover - optional heavy dependency
+    SentenceTransformer = None  # type: ignore
+    util = None  # type: ignore
 
 from ..config import get_settings
 from ..eda.subscriber import Subscriber
@@ -37,7 +42,11 @@ class RewardManager:
         self._social_threshold = settings.social_affinity_threshold
         self._window: Deque[np.ndarray] = deque(maxlen=settings.window_size)
 
-        self._model = SentenceTransformer("all-MiniLM-L6-v2")
+        if SentenceTransformer is not None:
+            self._model = SentenceTransformer("all-MiniLM-L6-v2")
+        else:  # pragma: no cover - optional dependency missing
+            logger.warning("SentenceTransformer not available; novelty score will be 0")
+            self._model = None
 
     async def start_listening(self, durable_name: str = "reward_listener") -> bool:
         """Begin consuming ``chat.bot`` messages."""
@@ -78,7 +87,9 @@ class RewardManager:
 
         novelty = self._score_novelty(response)
         social = await self._score_social(channel_id, message_id)
-        reward = float(novelty >= self._novelty_threshold) + float(social >= self._social_threshold)
+        reward = float(novelty >= self._novelty_threshold) + float(
+            social >= self._social_threshold
+        )
 
         try:
             await self._ledger.publish(prompt, response, reward)
@@ -88,6 +99,9 @@ class RewardManager:
 
     def _score_novelty(self, text: str) -> float:
         """Return novelty score based on cosine distance to previous messages."""
+        if self._model is None or util is None:
+            return 0.0
+
         emb = self._model.encode(text, convert_to_numpy=True)
         if not self._window:
             self._window.append(emb)
@@ -97,7 +111,9 @@ class RewardManager:
         self._window.append(emb)
         return 1.0 - float(max_sim)
 
-    async def _score_social(self, channel_id: Optional[int], message_id: Optional[int]) -> int:
+    async def _score_social(
+        self, channel_id: Optional[int], message_id: Optional[int]
+    ) -> int:
         """Return the total reaction count for the Discord message."""
         if channel_id is None or message_id is None:
             return 0
