@@ -46,3 +46,14 @@ def test_actual_code_change(tmp_path):
     subprocess.run(["git", "add", "code.py"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-m", "code"], cwd=repo, check=True)
     assert _run_script(repo) == "true"
+
+
+def test_mixed_docs_and_code_change(tmp_path):
+    repo = tmp_path / "repo_mixed"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "README.md").write_text("docs\n")
+    (repo / "code.py").write_text("print('hi there')\n")
+    subprocess.run(["git", "add", "README.md", "code.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "docs and code"], cwd=repo, check=True)
+    assert _run_script(repo) == "true"
