@@ -16,20 +16,25 @@ from deepthought.metrics import (actions_per_second, average_latency, bleu,
 
 
 def _load_trace(path: Path) -> List[TraceEvent]:
+    events: List[TraceEvent] = []
     with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    events = []
-    for item in data:
-        events.append(
-            TraceEvent(
-                state=item.get("state", ""),
-                action=item.get("action", ""),
-                reward=float(item.get("reward", 0.0)),
-                latency=float(item.get("latency", 0.0)),
-                timestamp=datetime.fromisoformat(item.get("timestamp")),
-                timestamp_delta=float(item.get("timestamp_delta", 0.0)),
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            item = json.loads(line)
+            if "payload" in item:
+                item = item["payload"]
+            events.append(
+                TraceEvent(
+                    state=item.get("state", ""),
+                    action=item.get("action", ""),
+                    reward=float(item.get("reward", 0.0)),
+                    latency=float(item.get("latency", 0.0)),
+                    timestamp=datetime.fromisoformat(item.get("timestamp")),
+                    timestamp_delta=float(item.get("timestamp_delta", 0.0)),
+                )
             )
-        )
     return events
 
 

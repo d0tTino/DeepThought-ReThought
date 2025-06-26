@@ -8,6 +8,7 @@ import types
 
 import pytest
 
+
 # Provide a lightweight stub of the social_graph_bot module. This allows tests
 # to run without installing optional heavy dependencies used by the full example
 # implementation.
@@ -31,6 +32,7 @@ sys.modules.setdefault("deepthought.motivate", motivate_stub)
 # Provide a lightweight stub for sentence_transformers if the package is
 # missing so that modules importing RewardManager can be loaded without the
 # heavy optional dependency.
+
 if "sentence_transformers" not in sys.modules:
     st = types.ModuleType("sentence_transformers")
 
@@ -40,7 +42,6 @@ if "sentence_transformers" not in sys.modules:
 
         def encode(self, text, convert_to_numpy=True):
             import numpy as np
-
             return np.array([len(text)], dtype=float)
 
     st.SentenceTransformer = DummyModel

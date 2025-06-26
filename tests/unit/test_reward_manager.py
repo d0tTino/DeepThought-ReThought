@@ -1,6 +1,5 @@
 import json
 
-
 import pytest
 
 from deepthought.motivate import reward_manager as rm_mod
@@ -51,7 +50,9 @@ class DummyMsg:
 @pytest.mark.asyncio
 async def test_start_listening_subscribes():
     sub = DummySubscriber()
-    mgr = rm_mod.RewardManager(sub, DummyLedger(), DummyPublisher(), "tok", model=DummyModel())
+    mgr = rm_mod.RewardManager(
+        sub, DummyLedger(), DummyPublisher(), "tok", model=DummyModel()
+    )
     result = await mgr.start_listening()
     assert result is True
     assert sub.calls
@@ -80,3 +81,67 @@ async def test_handle_chat_event_publishes(monkeypatch):
     assert ledger.events[0][2] == pytest.approx(2.0)
     assert pub.published[0][0] == "agent.reward"
     assert pub.published[0][1]["reward"] == pytest.approx(2.0)
+
+
+@pytest.mark.asyncio
+async def test_score_social_returns_zero_on_exception(monkeypatch):
+    """_score_social should return 0 when the HTTP request fails."""
+    mgr = rm_mod.RewardManager(
+        DummySubscriber(), DummyLedger(), DummyPublisher(), "tok", model=DummyModel()
+    )
+
+    class DummySession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def get(self, *args, **kwargs):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(rm_mod.aiohttp, "ClientSession", lambda: DummySession())
+
+    result = await mgr._score_social(1, 2)
+    assert result == 0
+
+
+@pytest.mark.asyncio
+async def test_score_social_returns_zero_on_500(monkeypatch):
+    """_score_social should return 0 when the HTTP status is not 200."""
+    mgr = rm_mod.RewardManager(
+        DummySubscriber(), DummyLedger(), DummyPublisher(), "tok", model=DummyModel()
+    )
+
+    class DummyResp:
+        def __init__(self, status):
+            self.status = status
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def json(self):
+            return {}
+
+    class DummySession:
+        def __init__(self, resp):
+            self.resp = resp
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def get(self, *args, **kwargs):
+            return self.resp
+
+    monkeypatch.setattr(
+        rm_mod.aiohttp, "ClientSession", lambda: DummySession(DummyResp(500))
+    )
+
+    result = await mgr._score_social(1, 2)
+    assert result == 0
