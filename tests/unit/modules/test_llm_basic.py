@@ -103,11 +103,30 @@ def create_llm(monkeypatch):
         return _NoGrad()
 
     torch_mod.no_grad = no_grad
+
+    class SymBool:
+        pass
+
+    torch_mod.SymBool = SymBool
+
+    autograd_mod = types.ModuleType("autograd")
+    grad_mode_mod = types.ModuleType("grad_mode")
+
+    def set_grad_enabled(_val: bool) -> None:  # noqa: D401 - simple placeholder
+        """Dummy setter."""
+        return None
+
+    grad_mode_mod.set_grad_enabled = set_grad_enabled
+    autograd_mod.grad_mode = grad_mode_mod
+    torch_mod.autograd = autograd_mod
+
     monkeypatch.setitem(sys.modules, "transformers", tf)
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
+    import deepthought.modules.llm_base as llm_base
     import deepthought.modules.llm_basic as llm_basic
 
+    importlib.reload(llm_base)
     importlib.reload(llm_basic)
     monkeypatch.setattr(llm_basic, "Publisher", DummyPublisher)
     monkeypatch.setattr(llm_basic, "Subscriber", DummySubscriber)
