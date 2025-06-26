@@ -25,6 +25,14 @@ class DatabaseSettings(BaseSettings):
     name: str = "deepthought"
 
 
+class RewardThresholds(BaseSettings):
+    """Thresholds for scoring social and novelty rewards."""
+
+    novelty_threshold: float = 0.3
+    social_affinity_threshold: int = 1
+    window_size: int = 20
+
+
 class Settings(BaseSettings):
     """Application wide settings."""
 
@@ -33,6 +41,7 @@ class Settings(BaseSettings):
     db: DatabaseSettings = DatabaseSettings()
     model_path: str = "distilgpt2"
     memory_file: str = "memory.json"
+    reward: RewardThresholds = RewardThresholds()
 
     model_config = SettingsConfigDict(env_prefix="DT_", env_nested_delimiter="__")
 
