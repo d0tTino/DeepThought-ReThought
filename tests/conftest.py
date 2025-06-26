@@ -1,9 +1,30 @@
 import sys
 from pathlib import Path
+import types
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import pytest
+
+# Provide a lightweight stub for sentence_transformers if the package is
+# missing so that modules importing RewardManager can be loaded without the
+# heavy optional dependency.
+if "sentence_transformers" not in sys.modules:
+    st = types.ModuleType("sentence_transformers")
+
+    class DummyModel:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def encode(self, text, convert_to_numpy=True):
+            import numpy as np
+
+            return np.array([len(text)], dtype=float)
+
+    st.SentenceTransformer = DummyModel
+    st.util = types.SimpleNamespace(cos_sim=lambda a, b: [[0.0]])
+    sys.modules["sentence_transformers"] = st
+    sys.modules["sentence_transformers.util"] = st.util
 
 import examples.social_graph_bot as sg
 
