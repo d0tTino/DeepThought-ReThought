@@ -82,3 +82,17 @@ The script installs dependencies, spins up a temporary NATS server, initializes
 JetStream, and then executes the linting and test steps only when
 `check_code_changes.py` reports that code has changed. The NATS container is
 removed automatically when the run completes.
+
+## Launching the Metrics Dashboard
+
+The dashboard script aggregates metrics files from replay runs or training sessions and visualizes BLEU, ROUGE-L and latency trends.
+
+1. Install the optional dependency:
+   ```bash
+   pip install matplotlib
+   ```
+2. Run the dashboard pointing to one or more metrics files or a directory containing them:
+   ```bash
+   python tools/dashboard.py path/to/metrics --show
+   ```
+   The plot is also saved as `dashboard.png` in the current directory.
