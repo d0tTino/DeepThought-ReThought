@@ -148,6 +148,12 @@ class LLMStub:
                 use_jetstream=True,
                 durable=durable_name,
             )
+            await self._subscriber.subscribe(
+                subject="agent.reward",
+                handler=self._handle_reward_event,
+                use_jetstream=True,
+                durable=f"{durable_name}_reward",
+            )
             logger.info(f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}.")
             return True
         except nats.errors.Error as e:

@@ -1,14 +1,16 @@
 import json
 import logging
 from abc import ABC, abstractmethod
+from collections import deque
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Deque, List, Optional
 
 import nats
 import torch
 from contextlib import contextmanager
 from nats.aio.msg import Msg
 
+from ..config import get_settings
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -40,11 +42,14 @@ class BaseLLM(ABC):
         subscriber: Optional[Subscriber],
         tokenizer,
         model,
+        reward_buffer_size: Optional[int] = None,
     ) -> None:
         self._publisher = publisher
         self._subscriber = subscriber
         self._tokenizer = tokenizer
         self._model = model
+        buffer_size = reward_buffer_size or get_settings().reward.buffer_size
+        self._recent_rewards: Deque[float] = deque(maxlen=buffer_size)
 
     @abstractmethod
     async def start_listening(self, durable_name: str = "llm_listener") -> bool:
@@ -55,8 +60,13 @@ class BaseLLM(ABC):
         """Stop consuming events."""
 
     def _build_prompt(self, facts: List[str]) -> str:
-        """Assemble a prompt from retrieved facts."""
-        return "\n".join(facts) + "\nResponse:" if facts else "Response:"
+        """Assemble a prompt from retrieved facts and recent rewards."""
+        reward_part = ""
+        if self._recent_rewards:
+            avg = sum(self._recent_rewards) / len(self._recent_rewards)
+            reward_part = f"[avg_reward: {avg:.2f}]\n"
+        base = "\n".join(facts) + "\nResponse:" if facts else "Response:"
+        return reward_part + base
 
     async def _handle_memory_event(self, msg: Msg) -> None:
         """Common handler for MEMORY_RETRIEVED events."""
@@ -162,3 +172,20 @@ class BaseLLM(ABC):
                     await msg.ack()
                 except nats.errors.Error:
                     logger.error("Failed to ack message after error", exc_info=True)
+
+    async def _handle_reward_event(self, msg: Msg) -> None:
+        """Store rewards published on ``agent.reward``."""
+        try:
+            data = json.loads(msg.data.decode())
+            if not isinstance(data, dict) or "reward" not in data:
+                raise ValueError("payload must contain reward field")
+            reward = float(data["reward"])
+            self._recent_rewards.append(reward)
+        except Exception as exc:  # pragma: no cover - invalid payload
+            logger.error("Invalid agent.reward payload: %s", exc)
+        finally:
+            if hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:  # pragma: no cover - ack issues
+                    logger.error("Failed to ack reward message", exc_info=True)

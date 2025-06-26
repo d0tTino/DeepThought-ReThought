@@ -13,6 +13,7 @@ from nats.aio.msg import Msg
 from sentence_transformers import SentenceTransformer, util
 
 from ..config import get_settings
+from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from .ledger import Ledger
 
@@ -26,18 +27,23 @@ class RewardManager:
         self,
         subscriber: Subscriber,
         ledger: Ledger,
+        publisher: Publisher,
         discord_token: str,
+        model: SentenceTransformer | None = None,
     ) -> None:
         self._subscriber = subscriber
         self._ledger = ledger
+        self._publisher = publisher
         self._token = discord_token
 
         settings = get_settings().reward
         self._novelty_threshold = settings.novelty_threshold
         self._social_threshold = settings.social_affinity_threshold
+        self._novelty_weight = settings.novelty_weight
+        self._social_weight = settings.social_weight
         self._window: Deque[np.ndarray] = deque(maxlen=settings.window_size)
 
-        self._model = SentenceTransformer("all-MiniLM-L6-v2")
+        self._model = model or SentenceTransformer("all-MiniLM-L6-v2")
 
     async def start_listening(self, durable_name: str = "reward_listener") -> bool:
         """Begin consuming ``chat.bot`` messages."""
@@ -78,10 +84,14 @@ class RewardManager:
 
         novelty = self._score_novelty(response)
         social = await self._score_social(channel_id, message_id)
-        reward = float(novelty >= self._novelty_threshold) + float(social >= self._social_threshold)
+        reward = (
+            float(novelty >= self._novelty_threshold) * self._novelty_weight
+            + float(social >= self._social_threshold) * self._social_weight  # noqa: W503
+        )
 
         try:
             await self._ledger.publish(prompt, response, reward)
+            await self._publisher.publish("agent.reward", {"reward": reward}, use_jetstream=True)
             await msg.ack()
         except Exception as exc:  # pragma: no cover - publish failure
             logger.error("Failed to publish reward: %s", exc, exc_info=True)
