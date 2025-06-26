@@ -1,7 +1,8 @@
-"""Replay recorded traces for evaluation."""
+"""Utilities for replaying previously recorded agent traces."""
 
 import asyncio
 from typing import Iterable, Optional, Protocol
+
 
 from ..eda.publisher import Publisher
 from .record import TraceEvent
@@ -20,3 +21,4 @@ async def replay(trace: Iterable[TraceEvent], agent: Agent, publisher: Optional[
         if publisher is not None:
             await publisher.publish("chat.raw", event.state)
         _ = await agent.act(event.state)
+

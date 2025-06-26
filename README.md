@@ -22,9 +22,10 @@ Key planned/in-progress components include:
 
 1.  **Core EDA Framework:** (Functional) Publishers, Subscribers, and Event definitions using NATS.
 2.  **Optimized Language Model:** (In Progress) Utilizing small, open-source LLMs (< 3B parameters, e.g., Llama 3.2 3B Instruct) fine-tuned using Parameter-Efficient Fine-Tuning (PEFT) techniques like QLoRA and further optimized with post-training quantization (e.g., AWQ). The `train_script.py` is provided for LLM fine-tuning. Running this script requires a suitable environment with a GPU and necessary CUDA libraries. It can be used to replicate the fine-tuning process described in `LLM_Fine_Tuning_Report.md`.
-3.  **Knowledge Graph Memory:** `GraphMemory` currently uses the lightweight `networkx` library as an embedded graph store. See [`src/deepthought/modules/memory_graph.py`](src/deepthought/modules/memory_graph.py) for implementation details.
-4.  **Adaptive Code Generation:** (Future Goal) Exploring techniques like template engines or JIT compilation (e.g., using AsmJit) for dynamic code optimization.
-5.  **Neuromorphic Processing:** (Long-Term Research) Investigating brain-inspired computing principles via simulation (e.g., using Nengo).
+3.  **Hierarchical Memory Service:** combines `BasicMemory`, a planned Chroma-backed vector memory, and `KnowledgeGraphMemory` using Memgraph. These layers are orchestrated by the `MemoryService` to produce aggregated `MEMORY_RETRIEVED` events. See [docs/hierarchical_memory_service.md](docs/hierarchical_memory_service.md).
+4.  **Reward Manager:** publishes user feedback as `RewardEvent` messages via JetStream, enabling future reinforcement or preference-based training. See [docs/reward_manager.md](docs/reward_manager.md).
+5.  **Adaptive Code Generation:** (Future Goal) Exploring techniques like template engines or JIT compilation (e.g., using AsmJit) for dynamic code optimization.
+6.  **Neuromorphic Processing:** (Long-Term Research) Investigating brain-inspired computing principles via simulation (e.g., using Nengo).
 
 ## Current Status
 
@@ -80,8 +81,18 @@ Users would typically incorporate these scripts into their Unity projects and us
         ```bash
         python setup_jetstream.py
         ```
-5.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
-6.  **CI-style setup:** A helper script mirrors the project\'s continuous integration workflow.
+5.  **Start Additional Services:**
+    *   Launch Chroma for vector memory:
+        ```bash
+        docker run --rm -p 8000:8000 chromadb/chroma
+        ```
+    *   Launch Memgraph for knowledge graph storage:
+        ```bash
+        docker run --rm -p 7687:7687 memgraph/memgraph
+        ```
+    Set the GraphDAL environment variables as shown in [docs/hierarchical_memory_service.md](docs/hierarchical_memory_service.md).
+6.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
+7.  **CI-style setup:** A helper script mirrors the project\'s continuous integration workflow.
     It installs dependencies, starts a temporary NATS server, initializes JetStream, and runs
     linters and tests only when code changes are detected:
     ```bash
@@ -127,6 +138,15 @@ python setup_jetstream.py
 ```
 
 This step is necessary before running the tests below.
+
+## Recording Event Traces
+
+Use `tools/record.py` to capture `INPUT_RECEIVED` and `RESPONSE_GENERATED` events:
+```bash
+python tools/record.py --output traces.jsonl
+```
+Press Ctrl+C to stop recording. Each line in the file is a JSON object with the event name and payload.
+
 
 ## Graph Memory Backend
 
