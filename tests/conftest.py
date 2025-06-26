@@ -1,12 +1,20 @@
+# Standard library imports
 import sys
 import types
 from pathlib import Path
 
 import pytest
 
+# Ensure project sources are importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-# Provide a lightweight stub for sentence_transformers if the package is missing.
+# ---------------------------------------------------------------------------
+# Lightweight stubs for optional heavy dependencies used in example modules.
+# ---------------------------------------------------------------------------
+
+# Provide a lightweight stub for sentence_transformers if the package is
+# missing so that modules importing RewardManager can be loaded without the
+# heavy optional dependency.
 
 if "sentence_transformers" not in sys.modules:
     st = types.ModuleType("sentence_transformers")
@@ -22,10 +30,18 @@ if "sentence_transformers" not in sys.modules:
     st.SentenceTransformer = DummyModel
     st.util = types.SimpleNamespace(cos_sim=lambda a, b: [[0.0]])
     sys.modules["sentence_transformers"] = st
+
     sys.modules["sentence_transformers.util"] = st.util
 
-import examples.social_graph_bot as sg
 
+# Provide a minimal stub for ``send_to_prism`` and ``publish_input_received`` on
+# the social_graph_bot module so tests can intercept these calls. The stub must
+# be applied after ensuring ``sentence_transformers`` is available so the module
+# imports cleanly.
+async def _noop(*args, **kwargs):
+    return None
+
+import examples.social_graph_bot as sg
 
 @pytest.fixture
 def prism_calls(monkeypatch):

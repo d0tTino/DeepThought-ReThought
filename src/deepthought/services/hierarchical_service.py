@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, List
+from typing import Any, List, Optional
 
 import nats
 from nats.aio.client import Client as NATS
@@ -13,6 +13,7 @@ from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
 from ..memory.hierarchical import HierarchicalMemory
+from ..memory.vector_store import VectorStore, create_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,20 @@ class HierarchicalService:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._memory = HierarchicalMemory(vector_store, graph_dal, top_k)
+
+    @classmethod
+    def from_chroma(
+        cls,
+        nats_client: NATS,
+        js_context: JetStreamContext,
+        graph_dal: GraphDAL,
+        collection_name: str = "deepthought",
+        persist_directory: Optional[str] = None,
+        top_k: int = 3,
+    ) -> "HierarchicalService":
+        """Instantiate with a new :class:`VectorStore` using Chroma."""
+        store = create_vector_store(collection_name, persist_directory)
+        return cls(nats_client, js_context, store, graph_dal, top_k)
 
     def retrieve_context(self, prompt: str) -> List[str]:
         """Return context from vector store and graph."""
