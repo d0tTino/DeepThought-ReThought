@@ -121,3 +121,23 @@ async def test_handle_input_missing_fields(monkeypatch):
 
     assert msg.nacked
     assert not msg.acked
+
+
+def test_parse_input(monkeypatch):
+    dal = DummyDAL()
+    mem = create_memory(monkeypatch, dal)
+    nodes, edges = mem._parse_input("a b a c")
+
+    assert nodes == ["a", "b", "c"]
+    assert edges == [("a", "b"), ("b", "a"), ("a", "c")]
+
+
+def test_store(monkeypatch):
+    dal = DummyDAL()
+    mem = create_memory(monkeypatch, dal)
+    nodes = ["x", "y"]
+    edges = [("x", "y"), ("y", "x")]
+    mem._store(nodes, edges)
+
+    assert dal.merge_entity_calls == nodes
+    assert dal.merge_edge_calls == edges

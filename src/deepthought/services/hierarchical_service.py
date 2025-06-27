@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, List, Sequence
+from typing import Any, List, Sequence, Optional
 
 
 import nats
@@ -13,6 +13,7 @@ from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
+from ..memory import create_vector_store
 
 logger = logging.getLogger(__name__)
 
