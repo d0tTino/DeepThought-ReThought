@@ -75,7 +75,7 @@ async def test_nats_connection_fixture(nats_connection):
 
 # The test function using an ephemeral consumer
 @pytest.mark.asyncio
-async def test_full_flow_direct_subscribe(nats_connection):
+async def test_full_flow_direct_subscribe(nats_connection, monkeypatch):
     """
     Test the full EDA flow using JetStream publish and a direct ephemeral subscribe.
     1. Publish a task request.
@@ -89,6 +89,11 @@ async def test_full_flow_direct_subscribe(nats_connection):
         if not nc.is_connected:
             pytest.fail("NATS connection is not connected")
         logger.info("NATS connection from fixture is connected.")
+
+        # Patch asyncio.sleep to speed up the test
+        original_sleep = asyncio.sleep
+
+        monkeypatch.setattr(asyncio, "sleep", lambda *_, **__: original_sleep(0))
 
         # --- Existing Test Logic START ---
         logger.info("Starting test_full_flow_direct_subscribe...")
