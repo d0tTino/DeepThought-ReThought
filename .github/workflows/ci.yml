@@ -52,8 +52,38 @@ jobs:
           python scripts/check_code_changes.py | tee result.txt
           echo "changed=$(cat result.txt)" >> "$GITHUB_OUTPUT"
 
-  lint_and_test:
+  lint_and_unit_tests:
     needs: detect_changes
+    if: needs.detect_changes.outputs.code_changed == 'true'
+    runs-on: ["self-hosted", "linux"]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements-ci.txt
+      - run: pip install -e . --no-deps
+      - name: Run pre-commit
+        if: matrix.python-version == '3.11'
+        run: pre-commit run --all-files
+      - env:
+          PYTHONPATH: src
+        run: pytest --cov=src --cov-report=xml -m "not nats"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: coverage.xml
+
+  integration_tests:
+    needs: lint_and_unit_tests
     if: needs.detect_changes.outputs.code_changed == 'true'
     runs-on: ["self-hosted", "linux"]
     strategy:
@@ -75,18 +105,11 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements-ci.txt
       - run: pip install -e . --no-deps
-      - name: Run pre-commit
-        if: matrix.python-version == '3.11'
-        run: pre-commit run --all-files
       - name: Setup JetStream
         run: python setup_jetstream.py
       - env:
           PYTHONPATH: src
-        run: pytest --cov=src --cov-report=xml
-      - uses: actions/upload-artifact@v3
-        with:
-          name: coverage
-          path: coverage.xml
+        run: pytest -m "nats"
       - name: Cleanup NATS container
         if: always()
         run: docker rm -f dtr_nats
