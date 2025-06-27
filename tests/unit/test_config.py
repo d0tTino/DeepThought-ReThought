@@ -120,3 +120,14 @@ def test_load_settings_invalid_structure(tmp_path):
     cfg.write_text(yaml.safe_dump([1, 2, 3]))
     with pytest.raises(ValueError):
         load_settings(str(cfg))
+
+
+def test_load_settings_missing_yaml_module(monkeypatch, tmp_path):
+    """load_settings should raise when PyYAML is unavailable and a YAML file is passed."""
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text("nats_url: nats://nope:4222\n")
+
+    monkeypatch.setattr("deepthought.config.yaml", None)
+
+    with pytest.raises(RuntimeError):
+        load_settings(str(cfg))
