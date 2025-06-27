@@ -1,8 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, List, Sequence
-
+from typing import Any, List, Optional, Sequence
 
 import nats
 from nats.aio.client import Client as NATS
@@ -13,6 +12,7 @@ from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
+from ..memory import create_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,9 @@ class HierarchicalService:
         if self._vector_store is None:
             return []
         try:
-            result = self._vector_store.query(query_texts=[prompt], n_results=self._top_k)
+            result = self._vector_store.query(
+                query_texts=[prompt], n_results=self._top_k
+            )
             docs: Sequence | None = None
             if isinstance(result, dict):
                 docs = result.get("documents")
@@ -109,8 +111,12 @@ class HierarchicalService:
 
             facts = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={"retrieved_knowledge": {"facts": facts, "source": "hierarchical_service"}},
-
+                retrieved_knowledge={
+                    "retrieved_knowledge": {
+                        "facts": facts,
+                        "source": "hierarchical_service",
+                    }
+                },
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )

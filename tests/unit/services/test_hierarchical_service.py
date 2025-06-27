@@ -99,3 +99,28 @@ def test_retrieve_context_failures():
     ctx = service.retrieve_context("x")
     assert ctx == []
 
+
+class DummyGraphDAL:
+    def query_subgraph(self, query, params):
+        return [
+            {"src_id": 1, "src": "A", "rel": "KNOWS", "dst_id": 2, "dst": "B"},
+            {"src_id": 2, "src": "B", "rel": "LIKES", "dst_id": 3, "dst": "C"},
+        ]
+
+
+class DummyMemory:
+    def __init__(self, dal):
+        self._dal = dal
+
+
+def test_dump_graph(tmp_path):
+    dal = DummyGraphDAL()
+    service = HierarchicalService(DummyNATS(), DummyJS(), None, dal)
+    service._memory = DummyMemory(dal)
+
+    dot_file = service.dump_graph(str(tmp_path))
+
+    assert dot_file == str(tmp_path / "graph.dot")
+    contents = (tmp_path / "graph.dot").read_text()
+    assert '"A" -> "B" [label="KNOWS"]' in contents
+    assert '"B" -> "C" [label="LIKES"]' in contents
