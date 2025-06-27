@@ -1,7 +1,8 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, List, Sequence, Optional
+from typing import Any, List, Optional, Sequence
+
 
 import nats
 from nats.aio.client import Client as NATS
@@ -111,12 +112,8 @@ class HierarchicalService:
 
             facts = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={
-                    "retrieved_knowledge": {
-                        "facts": facts,
-                        "source": "hierarchical_service",
-                    }
-                },
+                retrieved_knowledge={"retrieved_knowledge": {"facts": facts, "source": "hierarchical_service"}},
+
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
@@ -167,19 +164,13 @@ class HierarchicalService:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info(
-                "HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED
-            )
+            logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
             return True
         except nats.errors.Error as e:
-            logger.error(
-                "HierarchicalService failed to subscribe: %s", e, exc_info=True
-            )
+            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
         except Exception as e:  # pragma: no cover - network failure
-            logger.error(
-                "HierarchicalService failed to subscribe: %s", e, exc_info=True
-            )
+            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
 
     async def stop(self) -> None:
