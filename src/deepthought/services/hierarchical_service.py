@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Sequence, Optional
 
 import nats
 from nats.aio.client import Client as NATS
