@@ -14,7 +14,6 @@ from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
 from ..memory.vector_store import create_vector_store
 
-
 logger = logging.getLogger(__name__)
 
 
