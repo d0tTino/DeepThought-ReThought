@@ -14,6 +14,7 @@ from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
 from ..memory.vector_store import create_vector_store
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +39,9 @@ class HierarchicalService:
         if self._vector_store is None:
             return []
         try:
-            result = self._vector_store.query(query_texts=[prompt], n_results=self._top_k)
+            result = self._vector_store.query(
+                query_texts=[prompt], n_results=self._top_k
+            )
             docs: Sequence | None = None
             if isinstance(result, dict):
                 docs = result.get("documents")

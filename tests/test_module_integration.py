@@ -92,7 +92,7 @@ async def ensure_stream_exists(js: JetStreamContext, stream_name: str) -> bool:
 
 # The integration test function
 @pytest.mark.asyncio
-async def test_full_module_flow():
+async def test_full_module_flow(monkeypatch):
     """
     Test the full event flow using hierarchical memory via InputHandler.
     1. Input -> InputHandler publishes INPUT_RECEIVED
@@ -114,6 +114,14 @@ async def test_full_module_flow():
         if not nc.is_connected:
             pytest.fail("NATS connection failed")
         logger.info("NATS connection successful.")
+
+        # Patch asyncio.sleep to speed up the test
+        original_sleep = asyncio.sleep
+
+        async def fast_sleep(*args, **kwargs):
+            await original_sleep(0)
+
+        monkeypatch.setattr(asyncio, "sleep", fast_sleep)
 
         # --- Get JetStream context ---
         logger.info("Getting JetStream context...")
@@ -246,7 +254,7 @@ async def test_full_module_flow():
 
 
 @pytest.mark.asyncio
-async def test_full_module_flow_graph_memory():
+async def test_full_module_flow_graph_memory(monkeypatch):
     """Same as test_full_module_flow but using GraphMemory module."""
     if not nats_server_available(get_nats_url()):
         pytest.skip("NATS server not available")
@@ -264,6 +272,14 @@ async def test_full_module_flow_graph_memory():
         js = nc.jetstream(timeout=30.0)
         if not js:
             pytest.fail("Failed to get JetStream context.")
+
+        # Patch asyncio.sleep to speed up the test
+        original_sleep = asyncio.sleep
+
+        async def fast_sleep(*args, **kwargs):
+            await original_sleep(0)
+
+        monkeypatch.setattr(asyncio, "sleep", fast_sleep)
 
         if not await ensure_stream_exists(js, STREAM_NAME):
             pytest.fail(f"Failed to ensure stream '{STREAM_NAME}' exists.")

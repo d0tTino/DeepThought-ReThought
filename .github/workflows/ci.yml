@@ -56,6 +56,18 @@ jobs:
     needs: detect_changes
     if: needs.detect_changes.outputs.code_changed == 'true'
     runs-on: ["self-hosted", "linux"]
+    services:
+      nats:
+        image: nats:latest
+        ports:
+          - 4222:4222
+          - 8222:8222
+        options: >-
+          --health-cmd "curl -f http://localhost:8222/healthz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        command: ["-js"]
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +89,7 @@ jobs:
       - env:
           PYTHONPATH: src
         run: pytest --cov=src --cov-report=xml -m "not nats"
+
       - uses: actions/upload-artifact@v3
         with:
           name: coverage
