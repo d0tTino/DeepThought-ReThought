@@ -66,6 +66,8 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
                 data = yaml.safe_load(content)
             else:
                 data = json.loads(content)
+        except RuntimeError:
+            raise
         except Exception as e:
             raise ValueError(f"Invalid config structure: {e}") from e
 
