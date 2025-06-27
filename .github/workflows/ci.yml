@@ -56,6 +56,18 @@ jobs:
     needs: detect_changes
     if: needs.detect_changes.outputs.code_changed == 'true'
     runs-on: ["self-hosted", "linux"]
+    services:
+      nats:
+        image: nats:latest
+        ports:
+          - 4222:4222
+          - 8222:8222
+        options: >-
+          --health-cmd "curl -f http://localhost:8222/healthz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        command: ["-js"]
     strategy:
       fail-fast: false
       matrix:
@@ -64,10 +76,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Start NATS container
-        run: |
-          docker run -d --name dtr_nats \
-            -p 4222:4222 -p 8222:8222 nats:latest -js
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
@@ -87,6 +95,3 @@ jobs:
         with:
           name: coverage
           path: coverage.xml
-      - name: Cleanup NATS container
-        if: always()
-        run: docker rm -f dtr_nats
