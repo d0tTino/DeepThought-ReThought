@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import nats
 from nats.aio.client import Client as NATS
@@ -25,20 +25,20 @@ class HierarchicalService:
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
-        memory: TieredMemory,
+        memory: Optional[TieredMemory],
+        graph_dal: Optional[GraphDAL] = None,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._memory = memory
-        self._graph_dal = memory._dal
+        if memory is not None:
+            self._graph_dal = memory._dal
+        elif graph_dal is not None:
+            self._graph_dal = graph_dal
+        else:
+            raise ValueError("graph_dal is required if memory is None")
 
-    def _vector_matches(self, prompt: str) -> List[str]:
-        """Delegate to :class:`TieredMemory` for vector search."""
-        return self._memory._vector_matches(prompt)
 
-    def _graph_facts(self) -> List[str]:
-        """Delegate to :class:`TieredMemory` for graph lookups."""
-        return self._memory._graph_facts(self._memory._top_k)
 
     @classmethod
     def from_chroma(
@@ -72,7 +72,7 @@ class HierarchicalService:
                 raise ValueError("Invalid input payload fields")
             logger.info("HierarchicalService received input event ID %s", input_id)
 
-            facts = self.retrieve_context(user_input)
+            facts: Sequence[str] = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={
                     "retrieved_knowledge": {
