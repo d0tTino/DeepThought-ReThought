@@ -1,6 +1,13 @@
 """Memory utilities."""
 
 from .hierarchical import HierarchicalMemory
-from .vector_store import VectorStore, create_vector_store, SimpleEmbeddingFunction
+from .tiered import TieredMemory
+from .vector_store import SimpleEmbeddingFunction, VectorStore, create_vector_store
 
-__all__ = ["HierarchicalMemory", "VectorStore", "create_vector_store", "SimpleEmbeddingFunction"]
+__all__ = [
+    "HierarchicalMemory",
+    "VectorStore",
+    "create_vector_store",
+    "SimpleEmbeddingFunction",
+    "TieredMemory",
+]
