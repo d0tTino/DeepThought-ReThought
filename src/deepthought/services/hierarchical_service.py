@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import nats
 from nats.aio.client import Client as NATS
@@ -29,9 +29,10 @@ class HierarchicalService:
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._vector_store = vector_store
-        self._graph_dal = graph_dal
-        self._top_k = top_k
+        self._memory = memory
+        self._vector_store = memory._store
+        self._graph_dal = memory._dal
+        self._top_k = memory._top_k
 
     def _vector_matches(self, prompt: str) -> List[str]:
         if self._vector_store is None:
@@ -187,6 +188,9 @@ class HierarchicalService:
 
         os.makedirs(path, exist_ok=True)
         dot_path = os.path.join(path, "graph.dot")
+
+        if self._graph_dal is None:
+            raise RuntimeError("GraphDAL is not configured")
 
         rows = self._graph_dal.query_subgraph(
             (
