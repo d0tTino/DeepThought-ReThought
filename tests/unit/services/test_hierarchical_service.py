@@ -108,16 +108,9 @@ class DummyGraphDAL:
         ]
 
 
-class DummyMemory:
-    def __init__(self, dal):
-        self._dal = dal
-
-
 def test_dump_graph(tmp_path):
     dal = DummyGraphDAL()
     service = HierarchicalService(DummyNATS(), DummyJS(), None, dal)
-    service._memory = DummyMemory(dal)
-
     dot_file = service.dump_graph(str(tmp_path))
 
     assert dot_file == str(tmp_path / "graph.dot")

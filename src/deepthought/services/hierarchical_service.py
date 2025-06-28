@@ -38,9 +38,7 @@ class HierarchicalService:
         if self._vector_store is None:
             return []
         try:
-            result = self._vector_store.query(
-                query_texts=[prompt], n_results=self._top_k
-            )
+            result = self._vector_store.query(query_texts=[prompt], n_results=self._top_k)
             docs: Sequence | None = None
             if isinstance(result, dict):
                 docs = result.get("documents")
@@ -191,9 +189,12 @@ class HierarchicalService:
         os.makedirs(path, exist_ok=True)
         dot_path = os.path.join(path, "graph.dot")
 
-        rows = self._memory._dal.query_subgraph(
-            "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, coalesce(a.name, '') AS src, "
-            "type(r) AS rel, id(b) AS dst_id, coalesce(b.name, '') AS dst",
+        rows = self._graph_dal.query_subgraph(
+            (
+                "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, "
+                "coalesce(a.name, '') AS src, type(r) AS rel, "
+                "id(b) AS dst_id, coalesce(b.name, '') AS dst"
+            ),
             {},
         )
 
