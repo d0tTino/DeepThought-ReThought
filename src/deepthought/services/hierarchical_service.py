@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, List, Optional, Sequence
+from typing import List, Optional
 
 import nats
 from nats.aio.client import Client as NATS
@@ -12,6 +12,7 @@ from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
+from ..memory.tiered import TieredMemory
 from ..memory.vector_store import create_vector_store
 
 logger = logging.getLogger(__name__)
@@ -24,52 +25,11 @@ class HierarchicalService:
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
-        vector_store: Any,
-        graph_dal: GraphDAL,
-        top_k: int = 3,
+        memory: TieredMemory,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._vector_store = vector_store
-        self._graph_dal = graph_dal
-        self._top_k = top_k
-
-    def _vector_matches(self, prompt: str) -> List[str]:
-        if self._vector_store is None:
-            return []
-        try:
-            result = self._vector_store.query(
-                query_texts=[prompt], n_results=self._top_k
-            )
-            docs: Sequence | None = None
-            if isinstance(result, dict):
-                docs = result.get("documents")
-            elif isinstance(result, Sequence):
-                docs = result
-            if not docs:
-                return []
-            matches: List[str] = []
-            for doc in docs:
-                if isinstance(doc, list):
-                    for d in doc:
-                        matches.append(str(getattr(d, "page_content", d)))
-                else:
-                    matches.append(str(getattr(doc, "page_content", doc)))
-            return matches
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.error("Vector store query failed: %s", exc, exc_info=True)
-            return []
-
-    def _graph_facts(self) -> List[str]:
-        try:
-            rows = self._graph_dal.query_subgraph(
-                "MATCH (n:Entity) RETURN n.name AS fact LIMIT $limit",
-                {"limit": self._top_k},
-            )
-            return [str(r.get("fact")) for r in rows if r.get("fact")]
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.error("Graph query failed: %s", exc, exc_info=True)
-            return []
+        self._memory = memory
 
     @classmethod
     def from_chroma(
@@ -79,23 +39,17 @@ class HierarchicalService:
         graph_dal: GraphDAL,
         collection_name: str = "deepthought",
         persist_directory: Optional[str] = None,
+        capacity: int = 100,
         top_k: int = 3,
     ) -> "HierarchicalService":
-        """Instantiate with a new :class:`VectorStore` using Chroma."""
+        """Instantiate with a new :class:`TieredMemory` using Chroma."""
         store = create_vector_store(collection_name, persist_directory)
-        return cls(nats_client, js_context, store, graph_dal, top_k)
+        memory = TieredMemory(store, graph_dal, capacity=capacity, top_k=top_k)
+        return cls(nats_client, js_context, memory)
 
     def retrieve_context(self, prompt: str) -> List[str]:
-        """Return merged vector matches and graph facts."""
-        vector = self._vector_matches(prompt)
-        graph = self._graph_facts()
-        seen = set()
-        merged: List[str] = []
-        for item in vector + graph:
-            if item not in seen:
-                seen.add(item)
-                merged.append(item)
-        return merged
+        """Return retrieved facts using :class:`TieredMemory`."""
+        return self._memory.retrieve_context(prompt)
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -167,13 +121,19 @@ class HierarchicalService:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
+            logger.info(
+                "HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED
+            )
             return True
         except nats.errors.Error as e:
-            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
+            logger.error(
+                "HierarchicalService failed to subscribe: %s", e, exc_info=True
+            )
             return False
         except Exception as e:  # pragma: no cover - network failure
-            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
+            logger.error(
+                "HierarchicalService failed to subscribe: %s", e, exc_info=True
+            )
             return False
 
     async def stop(self) -> None:

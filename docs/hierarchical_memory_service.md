@@ -59,3 +59,8 @@ You can visualize the resulting DOT file with Graphviz:
 ```bash
 dot -Tpng graph_exports/graph.dot -o graph.png
 ```
+
+## Migration to TieredMemory
+
+The `HierarchicalService` now relies on the `TieredMemory` layer for context retrieval. Create a `TieredMemory` instance and pass it to the service or use `HierarchicalService.from_chroma()` which constructs one automatically.
+
