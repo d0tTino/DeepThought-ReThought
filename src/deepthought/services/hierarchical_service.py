@@ -39,6 +39,7 @@ class HierarchicalService:
             raise ValueError("graph_dal is required if memory is None")
 
 
+
     @classmethod
     def from_chroma(
         cls,

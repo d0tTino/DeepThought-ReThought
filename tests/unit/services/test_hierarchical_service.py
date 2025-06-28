@@ -121,7 +121,8 @@ class DummyGraphDAL:
 
 def test_dump_graph(tmp_path):
     dal = DummyGraphDAL()
-    service = HierarchicalService(DummyNATS(), DummyJS(), None, dal)
+    memory = TieredMemory(DummyVector(), dal)
+    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
 
     dot_file = service.dump_graph(str(tmp_path))
 
