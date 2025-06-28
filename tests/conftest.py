@@ -20,7 +20,14 @@ async def _noop(*args, **kwargs):
 
 sg_stub.send_to_prism = _noop
 sg_stub.publish_input_received = _noop
-sys.modules.setdefault("examples.social_graph_bot", sg_stub)
+
+try:  # Attempt to load the real example module
+    import importlib
+    sg = importlib.import_module("examples.social_graph_bot")
+    sg.send_to_prism = _noop
+except Exception:  # pragma: no cover - fallback when dependencies are missing
+    sg = sg_stub
+sys.modules["examples.social_graph_bot"] = sg
 
 
 # Provide a lightweight stub for sentence_transformers if the package is
@@ -49,10 +56,6 @@ if "sentence_transformers" not in sys.modules:
 # the social_graph_bot module so tests can intercept these calls. The stub must
 # be applied after ensuring ``sentence_transformers`` is available so the module
 # imports cleanly.
-async def _noop(*args, **kwargs):
-    return None
-
-import examples.social_graph_bot as sg
 
 @pytest.fixture
 def prism_calls(monkeypatch):

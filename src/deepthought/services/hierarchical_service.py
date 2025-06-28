@@ -25,7 +25,8 @@ class HierarchicalService:
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
-        memory: TieredMemory,
+        memory: Optional[TieredMemory],
+        graph_dal: Optional[GraphDAL] = None,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
@@ -69,6 +70,7 @@ class HierarchicalService:
             logger.error("Graph query failed: %s", exc, exc_info=True)
             return []
 
+
     @classmethod
     def from_chroma(
         cls,
@@ -101,7 +103,7 @@ class HierarchicalService:
                 raise ValueError("Invalid input payload fields")
             logger.info("HierarchicalService received input event ID %s", input_id)
 
-            facts = self.retrieve_context(user_input)
+            facts: Sequence[str] = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={
                     "retrieved_knowledge": {
@@ -184,6 +186,7 @@ class HierarchicalService:
         dot_path = os.path.join(path, "graph.dot")
 
         rows = self._memory._dal.query_subgraph(
+
             (
                 "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, "
                 "coalesce(a.name, '') AS src, type(r) AS rel, "
