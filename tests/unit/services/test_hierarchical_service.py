@@ -1,10 +1,18 @@
+import sys
+import types
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+sys.modules.setdefault("deepthought.harness", types.ModuleType("harness"))
+sys.modules.setdefault("deepthought.learn", types.ModuleType("learn"))
+sys.modules.setdefault("deepthought.modules", types.ModuleType("modules"))
+sys.modules.setdefault("deepthought.motivate", types.ModuleType("motivate"))
+
 import pytest
 
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
+from deepthought.memory.tiered import TieredMemory
 from deepthought.services.hierarchical_service import HierarchicalService
 
 
@@ -67,7 +75,8 @@ class DummyMsg:
 async def test_handle_input_publishes_combined_context(monkeypatch):
     vec = DummyVector()
     dal = DummyDAL()
-    service = HierarchicalService(DummyNATS(), DummyJS(), vec, dal)
+    memory = TieredMemory(vec, dal, top_k=3)
+    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
 
@@ -89,13 +98,15 @@ async def test_handle_input_publishes_combined_context(monkeypatch):
 def test_retrieve_context_merges():
     vec = DummyVector()
     dal = DummyDAL()
-    service = HierarchicalService(DummyNATS(), DummyJS(), vec, dal)
+    memory = TieredMemory(vec, dal, top_k=3)
+    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     ctx = service.retrieve_context("hi")
     assert ctx == ["vec1", "vec2", "graph1"]
 
 
 def test_retrieve_context_failures():
-    service = HierarchicalService(DummyNATS(), DummyJS(), FailingVector(), FailingDAL())
+    memory = TieredMemory(FailingVector(), FailingDAL(), top_k=3)
+    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     ctx = service.retrieve_context("x")
     assert ctx == []
 
@@ -111,6 +122,7 @@ class DummyGraphDAL:
 def test_dump_graph(tmp_path):
     dal = DummyGraphDAL()
     service = HierarchicalService(DummyNATS(), DummyJS(), None, dal)
+
     dot_file = service.dump_graph(str(tmp_path))
 
     assert dot_file == str(tmp_path / "graph.dot")

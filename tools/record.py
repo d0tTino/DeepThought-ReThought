@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Record DeepThought events to a JSONL file."""
+"""Record DeepThought events to a JSONL file.
+
+This script now also captures raw Discord messages published on ``chat.raw``.
+"""
 
 import argparse
 import asyncio
@@ -12,12 +15,21 @@ from deepthought.harness.trace import TraceRecorder
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Record events from NATS")
-    parser.add_argument("--output", "-o", default="trace.jsonl", help="Output JSONL file")
-    parser.add_argument("--nats", "-n", default="nats://localhost:4222", help="NATS server URL")
-    parser.add_argument("--durable", "-d", default="trace_recorder", help="Durable consumer name prefix")
+    parser.add_argument(
+        "--output", "-o", default="trace.jsonl", help="Output JSONL file"
+    )
+    parser.add_argument(
+        "--nats", "-n", default="nats://localhost:4222", help="NATS server URL"
+    )
+    parser.add_argument(
+        "--durable", "-d", default="trace_recorder", help="Durable consumer name prefix"
+    )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
     nc = NATS()
     await nc.connect(servers=[args.nats])
