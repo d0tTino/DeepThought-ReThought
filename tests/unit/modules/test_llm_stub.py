@@ -163,3 +163,23 @@ async def test_handle_memory_event_missing_input_id(monkeypatch):
     assert msg.nacked
     pub = stub._publisher
     assert not pub.published
+
+
+@pytest.mark.asyncio
+async def test_handle_reward_event_appends_and_acks(monkeypatch):
+    stub = create_stub(monkeypatch)
+    msg = DummyMsg(json.dumps({"reward": 1.5}))
+    await stub._handle_reward_event(msg)
+
+    assert list(stub._recent_rewards) == [1.5]
+    assert msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_reward_event_invalid_payload(monkeypatch):
+    stub = create_stub(monkeypatch)
+    msg = DummyMsg("not-json")
+    await stub._handle_reward_event(msg)
+
+    assert list(stub._recent_rewards) == []
+    assert msg.acked

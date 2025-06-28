@@ -2,12 +2,16 @@
 import asyncio
 import json
 import logging
+from collections import deque
 from datetime import datetime, timezone
+from typing import Deque
 
 import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
+
+from ..config import get_settings
 
 # Assuming eda modules are in parent dir relative to modules dir
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
@@ -24,6 +28,8 @@ class LLMStub:
         """Initialize with shared NATS client and JetStream context."""
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
+        buffer_size = get_settings().reward.buffer_size
+        self._recent_rewards: Deque[float] = deque(maxlen=buffer_size)
         logger.info("LLMStub initialized (JetStream enabled).")
 
     async def _handle_memory_event(self, msg: Msg) -> None:
@@ -125,6 +131,23 @@ class LLMStub:
         except Exception as e:
             logger.error(f"Error in LLMStub handler: {e}", exc_info=True)
             # Do not ack/nak on unexpected errors
+
+    async def _handle_reward_event(self, msg: Msg) -> None:
+        """Store rewards published on ``agent.reward``."""
+        try:
+            data = json.loads(msg.data.decode())
+            if not isinstance(data, dict) or "reward" not in data:
+                raise ValueError("payload must contain reward field")
+            reward = float(data["reward"])
+            self._recent_rewards.append(reward)
+        except Exception as exc:  # pragma: no cover - invalid payload
+            logger.error("Invalid agent.reward payload: %s", exc)
+        finally:
+            if hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:  # pragma: no cover - ack issues
+                    logger.error("Failed to ack reward message", exc_info=True)
 
     async def start_listening(self, durable_name: str = "llm_stub_listener") -> bool:
         """

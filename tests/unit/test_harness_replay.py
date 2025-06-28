@@ -65,6 +65,19 @@ async def test_replay_uses_timestamp_delta(monkeypatch):
     assert publisher.published == [("chat.raw", "s1"), ("chat.raw", "s2")]
 
 
+def test_load_trace_missing_file(tmp_path):
+    path = tmp_path / "missing.jsonl"
+    with pytest.raises(FileNotFoundError):
+        tools_replay._load_trace(path)
+
+
+def test_load_trace_invalid_json(tmp_path):
+    path = tmp_path / "bad.jsonl"
+    path.write_text("not-json")
+    with pytest.raises(json.JSONDecodeError):
+        tools_replay._load_trace(path)
+
+
 @pytest.mark.asyncio
 async def test_trace_recorder_output_replays(monkeypatch, tmp_path):
     class DummyNATS:
