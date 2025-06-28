@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import nats
 from nats.aio.client import Client as NATS
@@ -29,15 +29,16 @@ class HierarchicalService:
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._vector_store = vector_store
-        self._graph_dal = graph_dal
-        self._top_k = top_k
+        self._memory = memory
+        self._graph_dal = memory._dal
+        self._vector_store = getattr(memory, "_store", None)
+        self._top_k = memory._top_k
 
     def _vector_matches(self, prompt: str) -> List[str]:
-        if self._vector_store is None:
+        if getattr(self._memory, "_store", None) is None:
             return []
         try:
-            result = self._vector_store.query(query_texts=[prompt], n_results=self._top_k)
+            result = self._memory._store.query(query_texts=[prompt], n_results=self._memory._top_k)
             docs: Sequence | None = None
             if isinstance(result, dict):
                 docs = result.get("documents")
@@ -59,9 +60,9 @@ class HierarchicalService:
 
     def _graph_facts(self) -> List[str]:
         try:
-            rows = self._graph_dal.query_subgraph(
+            rows = self._memory._dal.query_subgraph(
                 "MATCH (n:Entity) RETURN n.name AS fact LIMIT $limit",
-                {"limit": self._top_k},
+                {"limit": self._memory._top_k},
             )
             return [str(r.get("fact")) for r in rows if r.get("fact")]
         except Exception as exc:  # pragma: no cover - defensive
@@ -158,19 +159,13 @@ class HierarchicalService:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info(
-                "HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED
-            )
+            logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
             return True
         except nats.errors.Error as e:
-            logger.error(
-                "HierarchicalService failed to subscribe: %s", e, exc_info=True
-            )
+            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
         except Exception as e:  # pragma: no cover - network failure
-            logger.error(
-                "HierarchicalService failed to subscribe: %s", e, exc_info=True
-            )
+            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
 
     async def stop(self) -> None:
@@ -188,7 +183,7 @@ class HierarchicalService:
         os.makedirs(path, exist_ok=True)
         dot_path = os.path.join(path, "graph.dot")
 
-        rows = self._graph_dal.query_subgraph(
+        rows = self._memory._dal.query_subgraph(
             (
                 "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, "
                 "coalesce(a.name, '') AS src, type(r) AS rel, "
