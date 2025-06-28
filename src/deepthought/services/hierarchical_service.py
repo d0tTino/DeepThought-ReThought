@@ -31,12 +31,9 @@ class HierarchicalService:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._memory = memory
-        if memory is not None:
-            self._graph_dal = memory._dal
-        elif graph_dal is not None:
-            self._graph_dal = graph_dal
-        else:
-            raise ValueError("graph_dal is required if memory is None")
+        self._vector_store = memory._store
+        self._graph_dal = memory._dal
+        self._top_k = memory._top_k
 
 
 
@@ -159,6 +156,9 @@ class HierarchicalService:
 
         os.makedirs(path, exist_ok=True)
         dot_path = os.path.join(path, "graph.dot")
+
+        if self._graph_dal is None:
+            raise RuntimeError("GraphDAL is not configured")
 
         rows = self._graph_dal.query_subgraph(
             (
