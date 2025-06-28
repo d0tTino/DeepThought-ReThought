@@ -51,3 +51,19 @@ async def test_handle_input_writes_file(monkeypatch, tmp_path):
     obj = json.loads(line)
     assert obj["event"] == "INPUT_RECEIVED"
     assert obj["payload"] == {"foo": "bar"}
+
+
+@pytest.mark.asyncio
+async def test_handle_chat_raw(monkeypatch, tmp_path):
+    monkeypatch.setattr(trace, "Subscriber", DummySubscriber)
+    outfile = tmp_path / "trace.jsonl"
+    recorder = trace.TraceRecorder(DummyNATS(), DummyJS(), str(outfile))
+    msg = DummyMsg("hello")
+
+    await recorder._handle_chat_raw(msg)
+    assert msg.acked
+    with open(outfile, "r", encoding="utf-8") as f:
+        line = f.readline()
+    obj = json.loads(line)
+    assert obj["event"] == "CHAT_RAW"
+    assert obj["payload"] == "hello"

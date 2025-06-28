@@ -100,3 +100,17 @@ The dashboard script aggregates metrics files from replay runs or training sessi
    python tools/dashboard.py path/to/metrics --show
    ```
    The plot is also saved as `dashboard.png` in the current directory.
+
+## Replaying Discord Logs
+
+`tools/discord_replay.py` replays traces recorded with `tools/record.py` by
+publishing each `chat.raw` message back to NATS and waiting for the bot's reply.
+The collected responses are written to a new trace file and summary metrics are
+saved as JSON.
+
+Example using the sample traces in `tests/traces/`:
+
+```bash
+PYTHONPATH=src python tools/discord_replay.py tests/traces/trial.json \
+    --output reply.jsonl --metrics metrics.json
+```
