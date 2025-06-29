@@ -14,6 +14,7 @@ import pytest
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.memory.tiered import TieredMemory
 from deepthought.services.hierarchical_service import HierarchicalService
+from deepthought.search import OfflineSearch
 
 
 class DummyNATS:
@@ -136,3 +137,16 @@ def test_dump_graph(tmp_path):
     contents = (tmp_path / "graph.dot").read_text()
     assert '"A" -> "B" [label="KNOWS"]' in contents
     assert '"B" -> "C" [label="LIKES"]' in contents
+
+
+def test_retrieve_context_with_search(tmp_path):
+    vec = DummyVector()
+    dal = DummyDAL()
+    memory = TieredMemory(vec, dal, top_k=3)
+    search = OfflineSearch.create_index(
+        str(tmp_path / "index.db"),
+        [("t1", "search result 1"), ("t2", "search result 2")],
+    )
+    service = HierarchicalService(DummyNATS(), DummyJS(), memory, search=search)
+    ctx = service.retrieve_context("result")
+    assert "search result 1" in ctx and "search result 2" in ctx
