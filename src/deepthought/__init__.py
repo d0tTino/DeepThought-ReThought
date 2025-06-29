@@ -1,5 +1,9 @@
 """DeepThought package initialization."""
 
+from __future__ import annotations
+
+import importlib
+
 __version__ = "0.1.0"
 
 # Re-export modules subpackage for convenient access
@@ -18,3 +22,4 @@ try:  # pragma: no cover - optional dependency may be missing
 except Exception:  # pragma: no cover - optional dependency may be missing
     motivate = None  # type: ignore
 from . import persona  # noqa: F401
+
