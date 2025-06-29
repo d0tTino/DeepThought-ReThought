@@ -1,11 +1,11 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
-import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
+from nats.errors import Error as NatsError
 from nats.js.client import JetStreamContext
 
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
@@ -25,7 +25,10 @@ class HierarchicalService:
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
-        memory: TieredMemory,
+        memory: TieredMemory | None,
+        graph_dal: GraphDAL | None = None,
+        top_k: int = 3,
+
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
@@ -38,6 +41,7 @@ class HierarchicalService:
     def _graph_facts(self) -> List[str]:
         """Return graph facts using the underlying memory store."""
         return self._memory._graph_facts(self._memory._top_k)
+
 
     @classmethod
     def from_chroma(
@@ -71,7 +75,7 @@ class HierarchicalService:
                 raise ValueError("Invalid input payload fields")
             logger.info("HierarchicalService received input event ID %s", input_id)
 
-            facts = self.retrieve_context(user_input)
+            facts: Sequence[str] = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={
                     "retrieved_knowledge": {
@@ -109,12 +113,12 @@ class HierarchicalService:
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
-                except nats.errors.Error:
+                except NatsError:
                     logger.error("Failed to NAK message", exc_info=True)
             elif hasattr(msg, "ack") and callable(msg.ack):
                 try:
                     await msg.ack()
-                except nats.errors.Error:
+                except NatsError:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start(self, durable_name: str = "hierarchical_service_listener") -> bool:
@@ -129,19 +133,14 @@ class HierarchicalService:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info(
-                "HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED
-            )
+            logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
             return True
-        except nats.errors.Error as e:
-            logger.error(
-                "HierarchicalService failed to subscribe: %s", e, exc_info=True
-            )
+        except NatsError as e:
+
+            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
         except Exception as e:  # pragma: no cover - network failure
-            logger.error(
-                "HierarchicalService failed to subscribe: %s", e, exc_info=True
-            )
+            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
 
     async def stop(self) -> None:
@@ -160,6 +159,7 @@ class HierarchicalService:
         dot_path = os.path.join(path, "graph.dot")
 
         rows = self._memory._dal.query_subgraph(
+
             (
                 "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, "
                 "coalesce(a.name, '') AS src, type(r) AS rel, "
