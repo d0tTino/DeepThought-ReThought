@@ -738,15 +738,9 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
 
         respond_to = None
         send_prompt = False
-        if (
-            last_message
-            and last_message.author.bot
-            and prev_message
-            and not prev_message.author.bot
-        ):
+        if last_message and last_message.author.bot and prev_message and not prev_message.author.bot:
             age = (
-                discord.utils.utcnow()
-                - prev_message.created_at.replace(tzinfo=timezone.utc)
+                discord.utils.utcnow() - prev_message.created_at.replace(tzinfo=timezone.utc)
             ).total_seconds() / 60
             if age < PLAYFUL_REPLY_TIMEOUT_MINUTES:
                 await asyncio.sleep(60)
@@ -756,8 +750,7 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
             send_prompt = True
         else:
             idle_minutes = (
-                discord.utils.utcnow()
-                - last_message.created_at.replace(tzinfo=timezone.utc)
+                discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)
             ).total_seconds() / 60
             if idle_minutes >= IDLE_TIMEOUT_MINUTES:
                 send_prompt = True
@@ -830,9 +823,10 @@ class SocialGraphBot(discord.Client):
 
         async with message.channel.typing():
             await asyncio.sleep(random.uniform(1, 3))
-            async for recent in message.channel.history(limit=1):
-                if recent.id != message.id and recent.author.bot:
-                    return
+            if hasattr(message.channel, "history"):
+                async for recent in message.channel.history(limit=1):
+                    if recent.id != message.id and getattr(recent.author, "bot", False):
+                        return
             await message.channel.send("I'm pondering your message...")
 
         # Publish event and forward to Prism
@@ -875,6 +869,20 @@ class SocialGraphBot(discord.Client):
 
         if hasattr(self, "process_commands"):
             await self.process_commands(message)
+
+    async def close(self) -> None:
+        """Close DB and NATS connections."""
+        await super().close()
+        await db_manager.close()
+        global _nats_client, _js_context, _input_publisher
+        if _nats_client is not None and not getattr(_nats_client, "is_closed", False):
+            try:
+                await _nats_client.close()
+            except Exception:  # pragma: no cover - closing failure
+                pass
+        _nats_client = None
+        _js_context = None
+        _input_publisher = None
 
 
 def run(token: str, monitor_channel_id: int) -> None:

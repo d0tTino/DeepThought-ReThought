@@ -1,12 +1,28 @@
 """DeepThought package initialization."""
 
+from __future__ import annotations
+
+import importlib
+
 __version__ = "0.1.0"
 
-# Re-export modules subpackage for convenient access
-from . import affinity  # noqa: F401
-from . import goal_scheduler  # noqa: F401
-from . import harness  # noqa: F401
-from . import learn  # noqa: F401
-from . import modules  # noqa: F401
-from . import motivate  # noqa: F401
-from . import persona  # noqa: F401
+# Lazily expose common subpackages without importing heavy dependencies on
+# module import.  ``__getattr__`` performs the actual import when an attribute is
+# accessed.  This keeps startup lightweight for tests that only need a subset of
+# the package.
+
+__all__ = [
+    "affinity",
+    "goal_scheduler",
+    "harness",
+    "learn",
+    "modules",
+    "motivate",
+    "persona",
+]
+
+
+def __getattr__(name: str) -> object:
+    if name in __all__:
+        return importlib.import_module(f".{name}", __name__)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
