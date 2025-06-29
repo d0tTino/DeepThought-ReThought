@@ -3,9 +3,9 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
-import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
+from nats.errors import Error as NatsError
 from nats.js.client import JetStreamContext
 
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
@@ -25,15 +25,23 @@ class HierarchicalService:
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
-        memory: Optional[TieredMemory],
-        graph_dal: Optional[GraphDAL] = None,
+        memory: TieredMemory | None,
+        graph_dal: GraphDAL | None = None,
+        top_k: int = 3,
+
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._memory = memory
-        self._graph_dal = memory._dal
-        self._vector_store = getattr(memory, "_store", None)
-        self._top_k = memory._top_k
+        if memory is not None:
+            self._vector_store = memory._store
+            self._graph_dal = memory._dal
+            self._top_k = memory._top_k
+        else:
+            self._vector_store = None
+            self._graph_dal = graph_dal
+            self._top_k = top_k
+
 
     def _vector_matches(self, prompt: str) -> List[str]:
         if getattr(self._memory, "_store", None) is None:
@@ -141,12 +149,12 @@ class HierarchicalService:
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
-                except nats.errors.Error:
+                except NatsError:
                     logger.error("Failed to NAK message", exc_info=True)
             elif hasattr(msg, "ack") and callable(msg.ack):
                 try:
                     await msg.ack()
-                except nats.errors.Error:
+                except NatsError:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start(self, durable_name: str = "hierarchical_service_listener") -> bool:
@@ -163,7 +171,8 @@ class HierarchicalService:
             )
             logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
             return True
-        except nats.errors.Error as e:
+        except NatsError as e:
+
             logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
         except Exception as e:  # pragma: no cover - network failure
