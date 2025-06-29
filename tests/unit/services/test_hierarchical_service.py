@@ -119,10 +119,14 @@ class DummyGraphDAL:
         ]
 
 
+class DummyMemory:
+    def __init__(self, dal):
+        self._dal = dal
+
+
 def test_dump_graph(tmp_path):
     dal = DummyGraphDAL()
-    vec = DummyVector()
-    memory = TieredMemory(vec, dal, top_k=3)
+    memory = DummyMemory(dal)
 
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
 
