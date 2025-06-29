@@ -225,3 +225,93 @@ async def test_monitor_channels_no_channel(monkeypatch, caplog):
         await sg.monitor_channels(bot, 123)
 
     assert any("does not exist" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_monitor_channels_other_bot_response(monkeypatch):
+    """Skip prompt when another bot quickly replies to a user."""
+    channel = DummyChannel()
+    bot = DummyBot(channel)
+
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from discord.utils import utcnow
+
+    class DummyMessage:
+        def __init__(self, created_at, is_bot):
+            self.created_at = created_at
+            self.author = SimpleNamespace(bot=is_bot)
+
+    messages = [
+        DummyMessage(utcnow() - timedelta(minutes=0.5), True),
+        DummyMessage(utcnow() - timedelta(minutes=0.55), False),
+    ]
+
+    def history_gen(limit=1):
+        async def _gen():
+            for msg in messages[:limit]:
+                yield msg
+
+        return _gen()
+
+    channel.history = history_gen
+
+    async def fake_sleep(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+    monkeypatch.setattr(sg, "generate_idle_response", lambda: "ping")
+
+    await sg.monitor_channels(bot, 1)
+
+    assert channel.sent_messages == []
+
+
+@pytest.mark.asyncio
+async def test_monitor_channels_playful_waits_for_humans(monkeypatch):
+    """Playful bot replies require long human absence."""
+    channel = DummyChannel()
+    bot = DummyBot(channel)
+
+    from types import SimpleNamespace
+
+    f = asyncio.Future()
+    f.set_result(({1}, set()))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel, limit=20: f)
+    monkeypatch.setattr(sg, "BOT_CHAT_ENABLED", True)
+    monkeypatch.setattr(sg, "PLAYFUL_REPLY_TIMEOUT_MINUTES", 5)
+
+    async def age_func(channel):
+        return 1
+
+    monkeypatch.setattr(sg, "last_human_message_age", age_func)
+
+    class DummyMessage:
+        def __init__(self, is_bot=True):
+            from discord.utils import utcnow
+
+            self.created_at = utcnow()
+            self.author = SimpleNamespace(bot=is_bot)
+
+    def history_gen(limit=1):
+        async def _gen():
+            yield DummyMessage()
+
+        return _gen()
+
+    channel.history = history_gen
+
+    async def fake_sleep(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+    monkeypatch.setattr(sg, "generate_idle_response", lambda: "ping")
+
+    await sg.monitor_channels(bot, 1)
+
+    assert channel.sent_messages == []
