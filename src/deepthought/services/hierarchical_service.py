@@ -28,6 +28,7 @@ class HierarchicalService:
         memory: TieredMemory | None,
         graph_dal: GraphDAL | None = None,
         top_k: int = 3,
+
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
@@ -41,11 +42,12 @@ class HierarchicalService:
             self._graph_dal = graph_dal
             self._top_k = top_k
 
+
     def _vector_matches(self, prompt: str) -> List[str]:
-        if self._vector_store is None:
+        if getattr(self._memory, "_store", None) is None:
             return []
         try:
-            result = self._vector_store.query(query_texts=[prompt], n_results=self._top_k)
+            result = self._memory._store.query(query_texts=[prompt], n_results=self._memory._top_k)
             docs: Sequence | None = None
             if isinstance(result, dict):
                 docs = result.get("documents")
@@ -67,14 +69,15 @@ class HierarchicalService:
 
     def _graph_facts(self) -> List[str]:
         try:
-            rows = self._graph_dal.query_subgraph(
+            rows = self._memory._dal.query_subgraph(
                 "MATCH (n:Entity) RETURN n.name AS fact LIMIT $limit",
-                {"limit": self._top_k},
+                {"limit": self._memory._top_k},
             )
             return [str(r.get("fact")) for r in rows if r.get("fact")]
         except Exception as exc:  # pragma: no cover - defensive
             logger.error("Graph query failed: %s", exc, exc_info=True)
             return []
+
 
     @classmethod
     def from_chroma(
@@ -108,7 +111,7 @@ class HierarchicalService:
                 raise ValueError("Invalid input payload fields")
             logger.info("HierarchicalService received input event ID %s", input_id)
 
-            facts = self.retrieve_context(user_input)
+            facts: Sequence[str] = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={
                     "retrieved_knowledge": {
@@ -169,6 +172,7 @@ class HierarchicalService:
             logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
             return True
         except NatsError as e:
+
             logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
         except Exception as e:  # pragma: no cover - network failure
@@ -190,7 +194,8 @@ class HierarchicalService:
         os.makedirs(path, exist_ok=True)
         dot_path = os.path.join(path, "graph.dot")
 
-        rows = self._graph_dal.query_subgraph(
+        rows = self._memory._dal.query_subgraph(
+
             (
                 "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, "
                 "coalesce(a.name, '') AS src, type(r) AS rel, "
