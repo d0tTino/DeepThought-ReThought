@@ -6,23 +6,20 @@ import importlib
 
 __version__ = "0.1.0"
 
-# Lazily expose common subpackages without importing heavy dependencies on
-# module import.  ``__getattr__`` performs the actual import when an attribute is
-# accessed.  This keeps startup lightweight for tests that only need a subset of
-# the package.
+# Re-export modules subpackage for convenient access
+from . import affinity  # noqa: F401
+from . import goal_scheduler  # noqa: F401
+from . import harness  # noqa: F401
+from . import learn  # noqa: F401
+# modules depends on optional external packages (e.g. nats). Import it lazily
+try:  # pragma: no cover - optional dependency may be missing
+    from . import modules  # type: ignore  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    modules = None  # type: ignore
+# motivate requires NATS, which may not be installed in test environments
+try:  # pragma: no cover - optional dependency may be missing
+    from . import motivate  # type: ignore  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    motivate = None  # type: ignore
+from . import persona  # noqa: F401
 
-__all__ = [
-    "affinity",
-    "goal_scheduler",
-    "harness",
-    "learn",
-    "modules",
-    "motivate",
-    "persona",
-]
-
-
-def __getattr__(name: str) -> object:
-    if name in __all__:
-        return importlib.import_module(f".{name}", __name__)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
