@@ -30,6 +30,9 @@ class EventSubjects:
     # Raw chat message events
     CHAT_RAW = "chat.raw"
 
+    # Scheduler events
+    REMINDER_TRIGGERED = "dtr.scheduler.reminder_triggered"
+
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
     # e.g., METRICS = "dtr.metrics.reported"
@@ -81,3 +84,12 @@ class ResponseGeneratedPayload(EventPayload):
     input_id: Optional[str] = None
     timestamp: Optional[str] = None
     confidence: Optional[float] = None
+
+
+@dataclass
+class ReminderTriggeredPayload(EventPayload):
+    """Payload for scheduled reminder events."""
+
+    message: str
+    reminder_id: Optional[str] = None
+    timestamp: Optional[str] = None
