@@ -215,6 +215,14 @@ class DBManager:
             )
             """
         )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS affinity (
+                user_id TEXT PRIMARY KEY,
+                score INTEGER DEFAULT 0
+            )
+            """
+        )
         await self._db.commit()
 
     async def log_interaction(self, user_id: int, target_id: int) -> None:
@@ -223,6 +231,14 @@ class DBManager:
         await self._db.execute(
             "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
             (str(user_id), str(target_id)),
+        )
+        await self._db.execute(
+            """
+            INSERT INTO affinity (user_id, score)
+            VALUES (?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET score=affinity.score + 1
+            """,
+            (str(user_id),),
         )
         await self._db.commit()
 
@@ -391,6 +407,29 @@ class DBManager:
             row = await cur.fetchone()
             return bool(row[0]) if row else False
 
+    async def adjust_affinity(self, user_id: int, delta: int) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO affinity (user_id, score)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET score=affinity.score + ?
+            """,
+            (str(user_id), delta, delta),
+        )
+        await self._db.commit()
+
+    async def get_affinity(self, user_id: int) -> int:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT score FROM affinity WHERE user_id=?",
+            (str(user_id),),
+        ) as cur:
+            row = await cur.fetchone()
+            return int(row[0]) if row else 0
+
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
         if not isinstance(theme, str) or not theme.strip():
             raise ValueError("theme must be a non-empty string")
@@ -548,6 +587,14 @@ async def set_do_not_mock(user_id: int, flag: bool = True) -> None:
 
 async def is_do_not_mock(user_id: int) -> bool:
     return await db_manager.is_do_not_mock(user_id)
+
+
+async def adjust_affinity(user_id: int, delta: int) -> None:
+    await db_manager.adjust_affinity(user_id, delta)
+
+
+async def get_affinity(user_id: int) -> int:
+    return await db_manager.get_affinity(user_id)
 
 
 async def set_theme(user_id: int, channel_id: int, theme: str) -> None:
