@@ -884,11 +884,7 @@ def run(token: str, monitor_channel_id: int) -> None:
 
 
 if __name__ == "__main__":
-    import os
+    from deepthought.config import load_bot_env
 
-    token = os.getenv("DISCORD_TOKEN")
-    channel_id = int(os.getenv("MONITOR_CHANNEL", "0"))
-    if not token or channel_id == 0:
-        print("Please set DISCORD_TOKEN and MONITOR_CHANNEL environment variables.")
-    else:
-        run(token, channel_id)
+    env = load_bot_env()
+    run(env.DISCORD_TOKEN, env.MONITOR_CHANNEL)

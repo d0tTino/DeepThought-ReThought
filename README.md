@@ -118,6 +118,12 @@ Specify the NATS server address with the `NATS_URL` environment variable. If not
 export NATS_URL=nats://my-nats:4222
 ```
 
+### Required environment variables
+
+* `DISCORD_TOKEN` - Discord bot token
+* `MONITOR_CHANNEL` - Channel ID the bot should monitor
+* `NATS_URL` - Address of the NATS server
+
 ## Running a Local NATS Server
 
 If you don't already have a NATS server running locally, you can start one easily.
@@ -205,6 +211,10 @@ export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
 export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
 export SENTIMENT_BACKEND=vader  # optional, defaults to textblob
 ```
+
+`DISCORD_TOKEN` and `MONITOR_CHANNEL` are required. `NATS_URL` must also be set
+to a valid NATS server address if the default `nats://localhost:4222` is not
+appropriate. All other variables are optional.
 
 Set `SENTIMENT_BACKEND` to either `textblob` or `vader` to choose the library
 used for sentiment analysis. Any other value falls back to `textblob`.
