@@ -1,7 +1,9 @@
 """Lightweight wrapper around chromadb collections."""
+
 from __future__ import annotations
 
 import hashlib
+import uuid
 from typing import Iterable, List, Optional, Sequence
 
 try:  # pragma: no cover - optional dependency
@@ -15,9 +17,9 @@ except Exception:  # pragma: no cover - chromadb not installed
 class SimpleEmbeddingFunction(EmbeddingFunction):
     """Deterministic embedding function using SHA1 hashes."""
 
-    def __call__(self, texts: List[str]) -> List[List[float]]:
+    def __call__(self, input: List[str]) -> List[List[float]]:  # type: ignore[override]
         vectors: List[List[float]] = []
-        for text in texts:
+        for text in input:
             digest = hashlib.sha1(text.encode("utf-8")).digest()[:8]
             vectors.append([b / 255 for b in digest])
         return vectors
@@ -54,11 +56,20 @@ class VectorStore:
         ids: Optional[Sequence[str]] = None,
         metadatas: Optional[Sequence[dict]] = None,
     ) -> None:
-        ids = list(ids) if ids is not None else [str(i) for i in range(len(texts))]
-        self._collection.add(documents=list(texts), ids=ids, metadatas=list(metadatas) if metadatas else None)
+        if ids is None:
+            ids = [str(uuid.uuid4()) for _ in range(len(texts))]
+        else:
+            ids = list(ids)
+        self._collection.add(
+            documents=list(texts),
+            ids=ids,
+            metadatas=list(metadatas) if metadatas else None,
+        )
 
     def query(self, query_texts: Sequence[str], n_results: int = 3):
-        return self._collection.query(query_texts=list(query_texts), n_results=n_results)
+        return self._collection.query(
+            query_texts=list(query_texts), n_results=n_results
+        )
 
 
 def create_vector_store(
