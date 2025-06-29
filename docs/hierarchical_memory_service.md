@@ -66,3 +66,26 @@ dot -Tpng graph_exports/graph.dot -o graph.png
 
 The `HierarchicalService` now relies on the `TieredMemory` layer for context retrieval. Create a `TieredMemory` instance and pass it to the service or use `HierarchicalService.from_chroma()` which constructs one automatically.
 
+## Offline Search
+
+You can optionally attach a lightweight document index (e.g. a local Wikipedia dump).
+Create a SQLite FTS index and point the service at the database file:
+
+```python
+from deepthought.search import OfflineSearch
+
+search = OfflineSearch.create_index(
+    "wiki.db",
+    [("Title1", "Article text..."), ("Title2", "More text...")],
+)
+service = HierarchicalService(DummyNATS(), DummyJS(), memory, search=search)
+```
+
+Set ``DT_SEARCH_DB`` in your configuration file to load the index automatically.
+
+Example ``config.yaml``:
+
+```yaml
+search_db: wiki.db
+```
+

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     db: DatabaseSettings = DatabaseSettings()
     model_path: str = "distilgpt2"
     memory_file: str = "memory.json"
+    search_db: str | None = None
     reward: RewardThresholds = RewardThresholds()
 
     model_config = SettingsConfigDict(env_prefix="DT_", env_nested_delimiter="__")
