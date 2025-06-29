@@ -81,6 +81,7 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if args.dump_dir:
         from deepthought.graph import GraphConnector, GraphDAL
+        from deepthought.memory import TieredMemory
         from deepthought.services import HierarchicalService
 
         connector = GraphConnector(
@@ -90,7 +91,8 @@ def main(argv: Optional[List[str]] = None) -> None:
             password=os.getenv("MG_PASSWORD", ""),
         )
         dal = GraphDAL(connector)
-        service = HierarchicalService(_DummyNATS(), _DummyJS(), None, dal)
+        memory = TieredMemory.from_chroma(dal)
+        service = HierarchicalService(_DummyNATS(), _DummyJS(), memory)
         service.dump_graph(str(args.dump_dir))
 
 

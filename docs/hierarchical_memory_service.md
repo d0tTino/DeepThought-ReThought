@@ -46,11 +46,13 @@ directory where the `graph.dot` file should be created:
 
 ```python
 from deepthought.graph import GraphConnector, GraphDAL
+from deepthought.memory import TieredMemory
 from deepthought.services import HierarchicalService
 
 connector = GraphConnector(host="localhost", port=7687)
 dal = GraphDAL(connector)
-service = HierarchicalService(DummyNATS(), DummyJS(), None, dal)
+memory = TieredMemory.from_chroma(dal)
+service = HierarchicalService(DummyNATS(), DummyJS(), memory)
 service.dump_graph("./graph_exports")
 ```
 

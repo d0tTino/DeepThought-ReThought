@@ -1,6 +1,6 @@
+import json
 import sys
 import types
-import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -119,9 +119,15 @@ class DummyGraphDAL:
         ]
 
 
+class DummyMemory:
+    def __init__(self, dal):
+        self._dal = dal
+
+
 def test_dump_graph(tmp_path):
     dal = DummyGraphDAL()
-    service = HierarchicalService(DummyNATS(), DummyJS(), None, dal)
+    memory = DummyMemory(dal)
+    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
 
     dot_file = service.dump_graph(str(tmp_path))
 
