@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
@@ -8,6 +9,7 @@ from nats.aio.msg import Msg
 from nats.errors import Error as NatsError
 from nats.js.client import JetStreamContext
 
+from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -30,11 +32,18 @@ class HierarchicalService:
         search: OfflineSearch | None = None,
         graph_dal: GraphDAL | None = None,
         top_k: int = 3,
-
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._memory = memory
+        if search is None:
+            settings = get_settings()
+            db_path = settings.search_db
+            if db_path:
+                if not os.path.exists(db_path):
+                    search = OfflineSearch.create_index(db_path, [])
+                else:
+                    search = OfflineSearch(db_path)
         self._search = search
         self._top_k = top_k
 
@@ -45,7 +54,6 @@ class HierarchicalService:
     def _graph_facts(self) -> List[str]:
         """Return graph facts using the underlying memory store."""
         return self._memory._graph_facts(self._memory._top_k)
-
 
     @classmethod
     def from_chroma(
@@ -62,8 +70,15 @@ class HierarchicalService:
         """Instantiate with a new :class:`TieredMemory` using Chroma."""
         store = create_vector_store(collection_name, persist_directory)
         memory = TieredMemory(store, graph_dal, capacity=capacity, top_k=top_k)
-        search = OfflineSearch(search_db) if search_db else None
-        return cls(nats_client, js_context, memory, search=search)
+        db_path = search_db or get_settings().search_db
+        if db_path:
+            if not os.path.exists(db_path):
+                search = OfflineSearch.create_index(db_path, [])
+            else:
+                search = OfflineSearch(db_path)
+        else:
+            search = None
+        return cls(nats_client, js_context, memory, search=search, top_k=top_k)
 
     def retrieve_context(self, prompt: str) -> List[str]:
         """Return retrieved facts using :class:`TieredMemory` and optional search."""
@@ -176,7 +191,6 @@ class HierarchicalService:
         dot_path = os.path.join(path, "graph.dot")
 
         rows = self._memory._dal.query_subgraph(
-
             (
                 "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, "
                 "coalesce(a.name, '') AS src, type(r) AS rel, "
