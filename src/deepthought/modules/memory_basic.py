@@ -80,9 +80,8 @@ class BasicMemory:
 
             last_entries = history[-3:]
             facts = [entry["user_input"] for entry in last_entries]
-            memory_data = {"facts": facts, "source": "basic_memory"}
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={"retrieved_knowledge": memory_data},
+                retrieved_knowledge={"facts": facts, "source": "basic_memory"},
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )

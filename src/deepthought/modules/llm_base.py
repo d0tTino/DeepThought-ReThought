@@ -76,26 +76,9 @@ class BaseLLM(ABC):
             if not isinstance(data, dict):
                 raise ValueError("MemoryRetrieved payload must be a dict")
             input_id = data.get("input_id")
-            retrieved = data.get("retrieved_knowledge")
-            if not isinstance(input_id, str) or retrieved is None:
+            knowledge = data.get("retrieved_knowledge")
+            if not isinstance(input_id, str) or not isinstance(knowledge, dict):
                 raise ValueError("Invalid memory payload fields")
-            if isinstance(retrieved, dict) and "retrieved_knowledge" in retrieved:
-                knowledge = retrieved.get("retrieved_knowledge", {})
-            elif isinstance(retrieved, dict):
-                knowledge = retrieved
-            else:
-                logger.error("retrieved_knowledge is not a dict for input_id %s", input_id)
-                if hasattr(msg, "nak") and callable(msg.nak):
-                    try:
-                        await msg.nak()
-                    except Exception:
-                        logger.error("Failed to NAK message", exc_info=True)
-                elif hasattr(msg, "ack") and callable(msg.ack):
-                    try:
-                        await msg.ack()
-                    except Exception:
-                        logger.error("Failed to ack message after error", exc_info=True)
-                return
 
             facts = knowledge.get("facts")
             if not isinstance(facts, list):
