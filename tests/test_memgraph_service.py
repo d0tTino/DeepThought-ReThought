@@ -4,17 +4,14 @@ import pytest
 
 from tests.helpers import memgraph_available
 
-try:
-    from pymemgraph import Memgraph
-except Exception:  # pragma: no cover - optional dependency
-    Memgraph = None
+# Skip this test when ``pymemgraph`` is not installed
+pymemgraph = pytest.importorskip("pymemgraph")
+Memgraph = pymemgraph.Memgraph
 
 pytestmark = pytest.mark.memgraph
 
 
 def test_memgraph_running():
-    if Memgraph is None:
-        pytest.skip("pymemgraph not installed")
     if not memgraph_available():
         pytest.skip("Memgraph not available")
     mg = Memgraph(

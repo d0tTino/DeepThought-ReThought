@@ -1,3 +1,6 @@
+import pytest
+
+pytest.importorskip("deepthought.motivate")
 from deepthought.motivate.caption import summarise_message
 from deepthought.motivate.scorer import score_caption
 
