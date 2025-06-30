@@ -47,7 +47,8 @@ class DummyMessage:
         self.author = DummyAuthor(author_id)
         self.channel = DummyChannel()
         self.id = message_id
-        self.created_at = utcnow()
+        # Avoid triggering time-based theories by using a fixed hour
+        self.created_at = utcnow().replace(hour=1)
         self.mentions = []
 
 
@@ -64,7 +65,7 @@ async def test_on_message_persona_changes_with_affinity(tmp_path, monkeypatch, i
         return None
 
     f = asyncio.Future()
-    f.set_result((set(), set()))
+    f.set_result((set(), set(), {}))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
     monkeypatch.setattr(sg, "store_theory", noop)
