@@ -28,12 +28,15 @@ class LLMStub:
         nats_client: NATS,
         js_context: JetStreamContext,
         reward_buffer_size: Optional[int] = None,
+        persona_manager=None,
     ):
         """Initialize with shared NATS client and JetStream context."""
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         buffer_size = reward_buffer_size or get_settings().reward.buffer_size
         self._recent_rewards: Deque[float] = deque(maxlen=buffer_size)
+        self._persona_manager = persona_manager
+        self._persona_descriptions = get_settings().persona_descriptions
         logger.info("LLMStub initialized (JetStream enabled).")
 
     async def _handle_memory_event(self, msg: Msg) -> None:
@@ -43,9 +46,7 @@ class LLMStub:
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
-                raise ValueError(
-                    f"Unexpected MemoryRetrieved payload format: {type(data)}"
-                )
+                raise ValueError(f"Unexpected MemoryRetrieved payload format: {type(data)}")
             input_id = data.get("input_id")
             retrieved = data.get("retrieved_knowledge")
             if not isinstance(input_id, str) or retrieved is None:
@@ -55,9 +56,7 @@ class LLMStub:
             elif isinstance(retrieved, dict):
                 knowledge = retrieved
             else:
-                logger.error(
-                    "retrieved_knowledge is not a dict for input_id %s", input_id
-                )
+                logger.error("retrieved_knowledge is not a dict for input_id %s", input_id)
                 if hasattr(msg, "nak") and callable(msg.nak):
                     try:
                         await msg.nak()
@@ -72,9 +71,7 @@ class LLMStub:
 
             facts = knowledge.get("facts")
             if not isinstance(facts, list):
-                logger.error(
-                    "retrieved_knowledge missing facts list for input_id %s", input_id
-                )
+                logger.error("retrieved_knowledge missing facts list for input_id %s", input_id)
                 if hasattr(msg, "nak") and callable(msg.nak):
                     try:
                         await msg.nak()
@@ -92,8 +89,17 @@ class LLMStub:
             await asyncio.sleep(0.5)  # Simulate work
 
             facts_str = ", ".join(map(str, facts))
+            persona_desc = ""
+            if self._persona_manager is not None:
+                try:
+                    persona_desc = await self._persona_manager.get_description(int(input_id))
+                except Exception:
+                    logger.error("Persona selection failed", exc_info=True)
             # Use timezone-aware UTC timestamps
-            response = f"Based on: {facts_str}, this is a stub response. [TS: {datetime.now(timezone.utc).isoformat()}]"
+            intro = persona_desc + "\n" if persona_desc else ""
+            response = (
+                f"{intro}Based on: {facts_str}, this is a stub response. [TS: {datetime.now(timezone.utc).isoformat()}]"
+            )
             payload = ResponseGeneratedPayload(
                 final_response=response,
                 input_id=input_id,
@@ -101,9 +107,7 @@ class LLMStub:
                 confidence=0.95,
             )
 
-            logger.info(
-                f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}"
-            )
+            logger.info(f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}")
             try:
                 await self._publisher.publish(
                     EventSubjects.RESPONSE_GENERATED,
@@ -111,9 +115,7 @@ class LLMStub:
                     use_jetstream=True,
                     timeout=10.0,
                 )
-                logger.debug(
-                    f"LLMStub: Successfully published RESPONSE_GENERATED for {input_id}"
-                )
+                logger.debug(f"LLMStub: Successfully published RESPONSE_GENERATED for {input_id}")
                 await msg.ack()
                 logger.debug(f"LLMStub: Acked message for {input_id} in LLMStub")
             except nats.errors.TimeoutError as e:
@@ -191,9 +193,7 @@ class LLMStub:
                 use_jetstream=True,
                 durable=f"{durable_name}_reward",
             )
-            logger.info(
-                f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}."
-            )
+            logger.info(f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}.")
             return True
         except nats.errors.Error as e:
             logger.error(f"LLMStub failed to subscribe: {e}", exc_info=True)

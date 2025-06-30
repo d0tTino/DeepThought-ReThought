@@ -23,6 +23,7 @@ class BasicLLM(BaseLLM):
         nats_client: Optional[NATS] = None,
         js_context: Optional[JetStreamContext] = None,
         model_name: Optional[str] = None,
+        persona_manager=None,
     ) -> None:
         model_name = model_name or get_settings().model_path
         if nats_client is not None and js_context is not None:
@@ -33,7 +34,7 @@ class BasicLLM(BaseLLM):
             subscriber = None
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = AutoModelForCausalLM.from_pretrained(model_name)
-        super().__init__(publisher, subscriber, tokenizer, model)
+        super().__init__(publisher, subscriber, tokenizer, model, persona_manager=persona_manager)
         logger.info("BasicLLM initialized with model %s", model_name)
 
     async def start_listening(self, durable_name: str = "llm_basic_listener") -> bool:
