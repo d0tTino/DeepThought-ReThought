@@ -1,7 +1,7 @@
 import aiosqlite
 import pytest
 
-import examples.social_graph_bot as sg
+import deepthought.social_graph as sg
 
 
 @pytest.mark.asyncio
@@ -11,7 +11,9 @@ async def test_user_flags_table_and_functions(tmp_path):
     await sg.init_db()
 
     async with aiosqlite.connect(str(tmp_path / "sg.db")) as db:
-        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_flags'") as cur:
+        async with db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='user_flags'"
+        ) as cur:
             row = await cur.fetchone()
     assert row is not None, "user_flags table should exist"
 

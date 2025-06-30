@@ -4,7 +4,8 @@ import json
 import aiosqlite
 import pytest
 
-import examples.social_graph_bot as sg
+import deepthought.social_graph as sg
+from deepthought.social_graph import SocialGraphService
 
 
 @pytest.mark.asyncio
@@ -15,7 +16,9 @@ async def test_store_theory(tmp_path):
     await sg.init_db()
     await sg.store_theory("u1", "insomniac", 0.5)
     async with aiosqlite.connect(str(db_file)) as db:
-        async with db.execute("SELECT theory FROM theories WHERE subject_id=?", ("u1",)) as cur:
+        async with db.execute(
+            "SELECT theory FROM theories WHERE subject_id=?", ("u1",)
+        ) as cur:
             row = await cur.fetchone()
     assert row[0] == "insomniac"
     await sg.db_manager.close()
@@ -64,7 +67,9 @@ async def test_queue_deep_reflection(tmp_path):
     await sg.init_db()
     task_id = await sg.queue_deep_reflection("u2", {"channel_id": 1}, "hello")
     async with aiosqlite.connect(str(db_file)) as db:
-        async with db.execute("SELECT status FROM queued_tasks WHERE task_id=?", (task_id,)) as cur:
+        async with db.execute(
+            "SELECT status FROM queued_tasks WHERE task_id=?", (task_id,)
+        ) as cur:
             row = await cur.fetchone()
     assert row[0] == "pending"
     await sg.db_manager.close()
@@ -99,7 +104,9 @@ async def test_mark_task_done(tmp_path):
     await sg.db_manager.mark_task_done(task_id)
 
     async with aiosqlite.connect(str(db_file)) as db:
-        async with db.execute("SELECT status FROM queued_tasks WHERE task_id=?", (task_id,)) as cur:
+        async with db.execute(
+            "SELECT status FROM queued_tasks WHERE task_id=?", (task_id,)
+        ) as cur:
             row = await cur.fetchone()
     assert row[0] == "done"
     await sg.db_manager.close()
@@ -120,14 +127,16 @@ def test_evaluate_triggers():
 
 
 def test_generate_reflection_positive_negative():
-    pos = sg.generate_reflection("I love this!")
-    neg = sg.generate_reflection("I hate this!")
+    service = SocialGraphService(sg.db_manager)
+    pos = service.generate_reflection("I love this!")
+    neg = service.generate_reflection("I hate this!")
     assert pos == "Your message felt positive."
     assert neg == "Your message felt negative."
 
 
 def test_generate_reflection_neutral():
-    neutral = sg.generate_reflection("Meh")
+    service = SocialGraphService(sg.db_manager)
+    neutral = service.generate_reflection("Meh")
     assert neutral == "Your message felt neutral."
 
 
@@ -167,7 +176,9 @@ async def test_process_deep_reflections_posts(tmp_path, monkeypatch):
 
     bot = DummyBot()
 
-    await sg.queue_deep_reflection("u1", {"channel_id": 1, "message_id": 1}, "I love bots")
+    await sg.queue_deep_reflection(
+        "u1", {"channel_id": 1, "message_id": 1}, "I love bots"
+    )
 
     async def noop(*_, **__):
         return None
@@ -175,13 +186,16 @@ async def test_process_deep_reflections_posts(tmp_path, monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", noop)
     monkeypatch.setattr(sg, "REFLECTION_CHECK_SECONDS", 0)
 
-    await sg.process_deep_reflections(bot)
+    service = SocialGraphService(sg.db_manager)
+    await service.process_deep_reflections(bot)
 
     async with aiosqlite.connect(sg.DB_PATH) as db:
         async with db.execute("SELECT status FROM queued_tasks WHERE task_id=1") as cur:
             row = await cur.fetchone()
     assert row[0] == "done"
-    assert bot.channel.sent_messages == ["After some thought... Your message felt positive."]
+    assert bot.channel.sent_messages == [
+        "After some thought... Your message felt positive."
+    ]
 
 
 @pytest.mark.asyncio
@@ -192,7 +206,9 @@ async def test_process_deep_reflections_negative(tmp_path, monkeypatch):
 
     bot = DummyBot()
 
-    await sg.queue_deep_reflection("u1", {"channel_id": 1, "message_id": 1}, "I hate bots")
+    await sg.queue_deep_reflection(
+        "u1", {"channel_id": 1, "message_id": 1}, "I hate bots"
+    )
 
     async def noop(*_, **__):
         return None
@@ -200,13 +216,16 @@ async def test_process_deep_reflections_negative(tmp_path, monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", noop)
     monkeypatch.setattr(sg, "REFLECTION_CHECK_SECONDS", 0)
 
-    await sg.process_deep_reflections(bot)
+    service = SocialGraphService(sg.db_manager)
+    await service.process_deep_reflections(bot)
 
     async with aiosqlite.connect(sg.DB_PATH) as db:
         async with db.execute("SELECT status FROM queued_tasks WHERE task_id=1") as cur:
             row = await cur.fetchone()
     assert row[0] == "done"
-    assert bot.channel.sent_messages == ["After some thought... Your message felt negative."]
+    assert bot.channel.sent_messages == [
+        "After some thought... Your message felt negative."
+    ]
 
 
 @pytest.mark.asyncio
@@ -260,7 +279,8 @@ async def test_assign_themes(tmp_path, monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", noop)
     monkeypatch.setattr(sg, "REFLECTION_CHECK_SECONDS", 0)
 
-    await sg.process_deep_reflections(bot)
+    service = SocialGraphService(sg.db_manager)
+    await service.process_deep_reflections(bot)
 
     theme = await sg.get_theme("u1", "c1")
     assert theme == "positive"

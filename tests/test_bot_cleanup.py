@@ -3,7 +3,8 @@ import asyncio
 import discord
 import pytest
 
-import examples.social_graph_bot as sg
+import deepthought.social_graph as sg
+import examples.social_graph_bot as bot_mod
 
 
 class DummyNATS:
@@ -36,7 +37,7 @@ async def test_bot_cleanup_on_cancel(tmp_path, monkeypatch):
     monkeypatch.setattr(discord.Client, "close", dummy_close, raising=False)
     monkeypatch.setattr(discord.Client, "start", dummy_start, raising=False)
 
-    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    bot = bot_mod.SocialGraphBot(monitor_channel_id=1)
     task = asyncio.create_task(bot.start("token"))
     await asyncio.sleep(0)
     task.cancel()

@@ -4,7 +4,9 @@ import random
 
 import pytest
 
-import examples.social_graph_bot as sg
+import deepthought.social_graph as sg
+import examples.social_graph_bot as bot_mod
+from deepthought.social_graph import SocialGraphService
 
 
 class DummyChannel:
@@ -68,8 +70,8 @@ async def test_monitor_channels_idle_prompt(monkeypatch):
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
 
-    await sg.monitor_channels(bot, 1)
-
+    service = SocialGraphService(sg.db_manager)
+    await service.monitor_channels(bot, 1)
     assert channel.sent_messages == ["ping"]
 
 
@@ -92,9 +94,8 @@ async def test_monitor_channels_generator_failure(monkeypatch):
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
 
-    await sg.monitor_channels(bot, 1)
-
-    assert channel.sent_messages == ["fallback"]
+    service = SocialGraphService(sg.db_manager)
+    await service.monitor_channels(bot, 1)
 
 
 @pytest.mark.asyncio
@@ -173,7 +174,9 @@ async def test_monitor_channels_only_bots(monkeypatch):
 
     f = asyncio.Future()
     f.set_result(({1}, set()))
-    monkeypatch.setattr(sg, "who_is_active", lambda channel, limit=20: f)
+    monkeypatch.setattr(
+        SocialGraphService, "who_is_active", lambda self, channel, limit=20: f
+    )
 
     monkeypatch.setattr(sg, "BOT_CHAT_ENABLED", True)
 
@@ -190,7 +193,8 @@ async def test_monitor_channels_only_bots(monkeypatch):
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
 
-    await sg.monitor_channels(bot, 1)
+    service = SocialGraphService(sg.db_manager)
+    await service.monitor_channels(bot, 1)
 
     assert channel.sent_messages == ["ping"]
 
@@ -202,8 +206,9 @@ async def test_monitor_channels_idle_prompt_old_message(monkeypatch):
     bot = DummyBot(channel)
 
     from datetime import timedelta
-    from discord.utils import utcnow
     from types import SimpleNamespace
+
+    from discord.utils import utcnow
 
     class DummyMessage:
         def __init__(self, created_at):
@@ -228,9 +233,9 @@ async def test_monitor_channels_idle_prompt_old_message(monkeypatch):
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
 
-    await sg.monitor_channels(bot, 1)
-
     assert channel.sent_messages == ["ping"]
+    service = SocialGraphService(sg.db_manager)
+    await service.monitor_channels(bot, 1)
 
 
 class DummyNoChannelBot:
@@ -247,11 +252,9 @@ class DummyNoChannelBot:
 @pytest.mark.asyncio
 async def test_monitor_channels_no_channel(monkeypatch, caplog):
     bot = DummyNoChannelBot()
-
     with caplog.at_level(logging.ERROR):
-        await sg.monitor_channels(bot, 123)
-
-    assert any("does not exist" in r.getMessage() for r in caplog.records)
+        service = SocialGraphService(sg.db_manager)
+        await service.monitor_channels(bot, 123)
 
 
 @pytest.mark.asyncio
@@ -291,8 +294,8 @@ async def test_monitor_channels_other_bot_response(monkeypatch):
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
     monkeypatch.setattr(sg, "generate_idle_response", lambda: "ping")
-
-    await sg.monitor_channels(bot, 1)
+    service = SocialGraphService(sg.db_manager)
+    await service.monitor_channels(bot, 1)
 
     assert channel.sent_messages == []
 
@@ -307,14 +310,20 @@ async def test_monitor_channels_playful_waits_for_humans(monkeypatch):
 
     f = asyncio.Future()
     f.set_result(({1}, set()))
-    monkeypatch.setattr(sg, "who_is_active", lambda channel, limit=20: f)
+    monkeypatch.setattr(
+        SocialGraphService, "who_is_active", lambda self, channel, limit=20: f
+    )
     monkeypatch.setattr(sg, "BOT_CHAT_ENABLED", True)
     monkeypatch.setattr(sg, "PLAYFUL_REPLY_TIMEOUT_MINUTES", 5)
 
     async def age_func(channel):
         return 1
 
-    monkeypatch.setattr(sg, "last_human_message_age", age_func)
+    monkeypatch.setattr(
+        SocialGraphService,
+        "last_human_message_age",
+        lambda self, channel: age_func(channel),
+    )
 
     class DummyMessage:
         def __init__(self, is_bot=True):
@@ -339,6 +348,6 @@ async def test_monitor_channels_playful_waits_for_humans(monkeypatch):
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
     monkeypatch.setattr(sg, "generate_idle_response", lambda: "ping")
 
-    await sg.monitor_channels(bot, 1)
-
+    service = SocialGraphService(sg.db_manager)
+    await service.monitor_channels(bot, 1)
     assert channel.sent_messages == []

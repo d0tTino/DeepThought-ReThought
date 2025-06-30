@@ -1,6 +1,7 @@
 import pytest
 
-import examples.social_graph_bot as sg
+import deepthought.social_graph as sg
+import examples.social_graph_bot as bot_mod
 from deepthought.services import PersonaManager
 
 

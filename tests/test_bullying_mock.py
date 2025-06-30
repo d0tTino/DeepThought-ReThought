@@ -3,7 +3,9 @@ import random
 
 import pytest
 
-import examples.social_graph_bot as sg
+import deepthought.social_graph as sg
+import examples.social_graph_bot as bot_mod
+from deepthought.social_graph import SocialGraphService
 
 
 class DummyAuthor:
@@ -61,7 +63,7 @@ async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch, input_events):
 
     f = asyncio.Future()
     f.set_result((set(), set()))
-    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(SocialGraphService, "who_is_active", lambda self, channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
@@ -75,7 +77,7 @@ async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch, input_events):
 
     monkeypatch.setattr(sg, "is_do_not_mock", allow_mock)
 
-    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    bot = bot_mod.SocialGraphBot(monitor_channel_id=1)
     assert bot.intents.members
     assert bot.intents.presences
 
@@ -97,7 +99,7 @@ async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch, input_events):
 
     f = asyncio.Future()
     f.set_result((set(), set()))
-    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(SocialGraphService, "who_is_active", lambda self, channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
@@ -111,7 +113,7 @@ async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch, input_events):
 
     monkeypatch.setattr(sg, "is_do_not_mock", prevent_mock)
 
-    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    bot = bot_mod.SocialGraphBot(monitor_channel_id=1)
     assert bot.intents.members
     assert bot.intents.presences
 

@@ -5,7 +5,9 @@ import random
 import aiosqlite
 import pytest
 
-import examples.social_graph_bot as sg
+import deepthought.social_graph as sg
+import examples.social_graph_bot as bot_mod
+from deepthought.social_graph import SocialGraphService
 
 
 class DummyAuthor:
@@ -64,12 +66,12 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
     f = asyncio.Future()
     f.set_result((set(), set()))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
-    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(SocialGraphService, "who_is_active", lambda self, channel: f)
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
 
-    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    bot = bot_mod.SocialGraphBot(monitor_channel_id=1)
     assert bot.intents.members
     assert bot.intents.presences
 
@@ -92,7 +94,9 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
 
 
 @pytest.mark.asyncio
-async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls, input_events):
+async def test_on_message_calls_send_to_prism(
+    tmp_path, monkeypatch, prism_calls, input_events
+):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.init_db()
@@ -103,11 +107,11 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
     f = asyncio.Future()
     f.set_result((set(), set()))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
-    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(SocialGraphService, "who_is_active", lambda self, channel: f)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
 
-    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    bot = bot_mod.SocialGraphBot(monitor_channel_id=1)
     assert bot.intents.members
     assert bot.intents.presences
 
@@ -161,14 +165,14 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
 
     f = asyncio.Future()
     f.set_result((set(), set()))
-    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(SocialGraphService, "who_is_active", lambda self, channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
 
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
 
-    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    bot = bot_mod.SocialGraphBot(monitor_channel_id=1)
     assert bot.intents.members
     assert bot.intents.presences
 
@@ -195,5 +199,7 @@ async def test_publish_input_received_warns_when_no_publisher(monkeypatch, caplo
         await sg.publish_input_received("hello")
 
     assert any(
-        "Dropping INPUT_RECEIVED event because NATS publisher is unavailable" in r.getMessage() for r in caplog.records
+        "Dropping INPUT_RECEIVED event because NATS publisher is unavailable"
+        in r.getMessage()
+        for r in caplog.records
     )

@@ -4,7 +4,7 @@ import json
 import aiosqlite
 import pytest
 
-import examples.social_graph_bot as sg
+import deepthought.social_graph as sg
 
 
 @pytest.mark.asyncio
