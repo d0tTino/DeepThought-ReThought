@@ -60,7 +60,7 @@ async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch, input_events):
         return None
 
     f = asyncio.Future()
-    f.set_result((set(), set()))
+    f.set_result((set(), set(), {}))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
     monkeypatch.setattr(sg, "store_theory", noop)
@@ -96,7 +96,7 @@ async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch, input_events):
         return None
 
     f = asyncio.Future()
-    f.set_result((set(), set()))
+    f.set_result((set(), set(), {}))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
     monkeypatch.setattr(sg, "store_theory", noop)

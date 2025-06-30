@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -13,14 +14,14 @@ import aiosqlite
 try:
     import discord
 except Exception:  # pragma: no cover - optional dependency
-    from datetime import datetime
+    from datetime import datetime as dt_datetime
     from datetime import timezone as dt_timezone
     from types import SimpleNamespace
 
     class _DummyUtils(SimpleNamespace):
         @staticmethod
         def utcnow():
-            return datetime.now(dt_timezone.utc)
+            return dt_datetime.now(dt_timezone.utc)
 
     class Client:
         async def wait_until_ready(self) -> None:  # pragma: no cover - stub
@@ -285,6 +286,14 @@ class DBManager:
             CREATE TABLE IF NOT EXISTS user_flags (
                 user_id TEXT PRIMARY KEY,
                 do_not_mock INTEGER
+            )
+            """
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS affinity (
+                user_id TEXT PRIMARY KEY,
+                score INTEGER DEFAULT 0
             )
             """
         )
@@ -768,15 +777,17 @@ def evaluate_triggers(message: discord.Message) -> List[Tuple[str, float]]:
 
 
 async def who_is_active(channel: discord.TextChannel, limit: int = 20):
-    """Return sets of bot and human authors from recent messages."""
+    """Return sets of bot and human authors and bot timestamps from recent messages."""
     bots = set()
     humans = set()
+    bot_times: dict[int, datetime.datetime] = {}
     async for msg in channel.history(limit=limit):
         if msg.author.bot:
             bots.add(msg.author.id)
+            bot_times.setdefault(msg.author.id, msg.created_at)
         else:
             humans.add(msg.author.id)
-    return bots, humans
+    return bots, humans, bot_times
 
 
 async def last_human_message_age(channel: discord.TextChannel, limit: int = 50):
@@ -826,7 +837,7 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                 if idle_minutes >= IDLE_TIMEOUT_MINUTES:
                     send_prompt = True
                 elif BOT_CHAT_ENABLED:
-                    bots, humans = await who_is_active(channel)
+                    bots, humans, _ = await who_is_active(channel)
                     if bots and not humans:
                         age = await last_human_message_age(channel)
                         if age is None or age >= PLAYFUL_REPLY_TIMEOUT_MINUTES:
@@ -886,7 +897,15 @@ class SocialGraphBot(discord.Client):
         )
         await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
 
-        bots, _ = await who_is_active(message.channel)
+        bots, _, bot_times = await who_is_active(message.channel)
+        now = discord.utils.utcnow()
+        user_id = self.user.id if self.user else None
+        for bot_id, ts in bot_times.items():
+            if user_id is None or bot_id != user_id:
+                age = (now - ts.replace(tzinfo=timezone.utc)).total_seconds() / 60
+                if age < PLAYFUL_REPLY_TIMEOUT_MINUTES:
+                    return
+
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
             # Too many bots talking and we're not addressed directly
             return
@@ -957,7 +976,6 @@ class SocialGraphBot(discord.Client):
         _js_context = None
         _input_publisher = None
         await super().close()
-
 
 
 def run(token: str, monitor_channel_id: int) -> None:

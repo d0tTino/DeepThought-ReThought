@@ -62,7 +62,7 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
         return None
 
     f = asyncio.Future()
-    f.set_result((set(), set()))
+    f.set_result((set(), set(), {}))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
     monkeypatch.setattr(sg, "store_theory", noop)
@@ -101,7 +101,7 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
         return None
 
     f = asyncio.Future()
-    f.set_result((set(), set()))
+    f.set_result((set(), set(), {}))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
@@ -160,7 +160,7 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
         return None
 
     f = asyncio.Future()
-    f.set_result((set(), set()))
+    f.set_result((set(), set(), {}))
     monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
     monkeypatch.setattr(sg, "send_to_prism", noop)
 
@@ -178,6 +178,35 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
     trend = await sg.get_sentiment_trend(message.author.id, message.channel.id)
     expected = sg.analyze_sentiment(message.content)
     assert trend == (expected, 1)
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_on_message_waits_for_other_bot(tmp_path, monkeypatch):
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    from datetime import timedelta
+
+    from discord.utils import utcnow
+
+    f = asyncio.Future()
+    f.set_result(({123}, set(), {123: utcnow() - timedelta(minutes=1)}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    message = DummyMessage("hi there")
+    await bot.on_message(message)
+
+    assert message.channel.sent_messages == []
     await sg.db_manager.close()
 
 
