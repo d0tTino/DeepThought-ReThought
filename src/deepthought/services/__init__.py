@@ -4,14 +4,14 @@ from .file_graph_dal import FileGraphDAL
 from .hierarchical_service import HierarchicalService
 from .memory_service import MemoryService
 from .persona_manager import PersonaManager
-from .social_graph_memory import SocialGraphMemory
-from .user_graph_dal import UserGraphDAL
+from .moderation import is_allowed, BANNED_PHRASES
 
 __all__ = [
     "FileGraphDAL",
-    "UserGraphDAL",
     "MemoryService",
     "HierarchicalService",
-    "SocialGraphMemory",
     "PersonaManager",
+    "is_allowed",
+    "BANNED_PHRASES",
+
 ]

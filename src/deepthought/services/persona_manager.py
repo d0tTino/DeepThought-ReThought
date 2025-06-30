@@ -21,6 +21,7 @@ class PersonaManager:
         self._descriptions = descriptions or {}
 
     async def get_persona(self, user_id: int) -> str:
+        await self._db.init_db()
         affinity = await self._db.get_affinity(user_id)
         if affinity >= self._friendly:
             return "friendly"
