@@ -90,7 +90,7 @@ async def test_handle_input_publishes_combined_context(monkeypatch):
     subject, sent_payload = service._publisher.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
-    facts = sent_payload.retrieved_knowledge["retrieved_knowledge"]["facts"]
+    facts = sent_payload.retrieved_knowledge["facts"]
     assert "vec1" in facts and "graph1" in facts
     ts = sent_payload.timestamp
     assert datetime.fromisoformat(ts).tzinfo == timezone.utc

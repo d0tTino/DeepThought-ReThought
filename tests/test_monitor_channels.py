@@ -176,12 +176,13 @@ async def test_monitor_channels_idle_prompt_old_message(monkeypatch):
     bot = DummyBot(channel)
 
     from datetime import timedelta
-
     from discord.utils import utcnow
+    from types import SimpleNamespace
 
     class DummyMessage:
         def __init__(self, created_at):
             self.created_at = created_at
+            self.author = SimpleNamespace(bot=False)
 
     async def history_gen():
         yield DummyMessage(utcnow() - timedelta(minutes=sg.IDLE_TIMEOUT_MINUTES + 1))
