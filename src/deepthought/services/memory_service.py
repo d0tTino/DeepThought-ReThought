@@ -40,7 +40,7 @@ class MemoryService:
             facts = self._dal.get_recent_facts()
             memory_data = {"facts": facts, "source": "memory_service"}
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={"retrieved_knowledge": memory_data},
+                retrieved_knowledge=memory_data,
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
