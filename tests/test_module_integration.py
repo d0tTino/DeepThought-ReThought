@@ -15,6 +15,7 @@ from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
 from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
 
+from deepthought.services import FileGraphDAL, MemoryService
 from tests.helpers import nats_server_available
 
 pytestmark = pytest.mark.nats
@@ -25,22 +26,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 # Import the modules to test
 from src.deepthought.modules import (
     BasicLLM,
-    GraphMemory,
     InputHandler,
     LLMStub,
     OutputHandler,
     ProductionLLM,
 )
-
-
-class DummyMemory:
-    def __init__(self):
-        self.prompt = None
-
-    def retrieve_context(self, prompt: str):
-        self.prompt = prompt
-        return ["fact1", "fact2"]
-
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -155,8 +145,8 @@ async def test_full_module_flow(monkeypatch):
         memory_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json").name
         if os.path.exists(memory_file):
             os.remove(memory_file)
-        memory_service = DummyMemory()
-        input_handler = InputHandler(nc, js, hierarchical_service=memory_service)
+        memory_service = MemoryService(nc, js)
+        input_handler = InputHandler(nc, js)
         llm_cls = ProductionLLM if os.path.isdir("./results/lora-adapter") else BasicLLM
         try:
             llm_module = llm_cls(nc, js)
@@ -170,6 +160,7 @@ async def test_full_module_flow(monkeypatch):
         # --- Set up subscriptions for the modules ---
         logger.info("Starting listeners...")
         results = await asyncio.gather(
+            memory_service.start(),
             llm_module.start_listening(durable_name="test_llm_listener"),
             output_handler.start_listening(durable_name="test_out_listener"),
             return_exceptions=True,  # Capture exceptions instead of raising immediately
@@ -223,6 +214,8 @@ async def test_full_module_flow(monkeypatch):
         # --- Stop stub listeners ---
         logger.info("Stopping listeners...")
         stubs_to_stop = []
+        if memory_service:
+            stubs_to_stop.append(memory_service.stop())
         if llm_module:
             stubs_to_stop.append(llm_module.stop_listening())
         if output_handler:
@@ -259,7 +252,6 @@ async def test_full_module_flow_graph_memory(monkeypatch):
     if not nats_server_available(get_nats_url()):
         pytest.skip("NATS server not available")
     nc = None
-    memory_module = None
     llm_module = None
     output_handler = None
 
@@ -296,9 +288,8 @@ async def test_full_module_flow_graph_memory(monkeypatch):
         logger.info("Initializing modules (GraphMemory)...")
         if os.path.exists(GRAPH_MEMORY_FILE):
             os.remove(GRAPH_MEMORY_FILE)
-        memory_service = DummyMemory()
-        input_handler = InputHandler(nc, js, hierarchical_service=memory_service)
-        memory_module = GraphMemory(nc, js, graph_file=GRAPH_MEMORY_FILE)
+        memory_service = MemoryService(nc, js, dal=FileGraphDAL(GRAPH_MEMORY_FILE))
+        input_handler = InputHandler(nc, js)
         llm_cls = ProductionLLM if os.path.isdir("./results/lora-adapter") else BasicLLM
         try:
             llm_module = llm_cls(nc, js)
@@ -308,7 +299,7 @@ async def test_full_module_flow_graph_memory(monkeypatch):
         output_handler = OutputHandler(nc, js, output_callback=output_callback)
 
         results = await asyncio.gather(
-            memory_module.start_listening(durable_name="test_graph_mem_listener"),
+            memory_service.start(),
             llm_module.start_listening(durable_name="test_graph_llm_listener"),
             output_handler.start_listening(durable_name="test_graph_out_listener"),
             return_exceptions=True,
@@ -338,8 +329,8 @@ async def test_full_module_flow_graph_memory(monkeypatch):
     finally:
         logger.info("Cleaning up graph memory test resources...")
         stubs_to_stop = []
-        if memory_module:
-            stubs_to_stop.append(memory_module.stop_listening())
+        if memory_service:
+            stubs_to_stop.append(memory_service.stop())
         if llm_module:
             stubs_to_stop.append(llm_module.stop_listening())
         if output_handler:
