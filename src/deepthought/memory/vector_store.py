@@ -13,6 +13,33 @@ except Exception:  # pragma: no cover - chromadb not installed
     chromadb = None  # type: ignore
     EmbeddingFunction = object  # type: ignore
 
+    class _DummyCollection:
+        def __init__(self) -> None:
+            self.docs: dict[str, str] = {}
+
+        def add(self, documents, ids, metadatas=None):  # type: ignore[override]
+            for i, doc in zip(ids, documents):
+                self.docs[str(i)] = doc
+
+        def query(self, query_texts, n_results=3):  # type: ignore[override]
+            docs = [list(self.docs.values())[:n_results] for _ in query_texts]
+            return {"documents": docs}
+
+        def count(self) -> int:
+            return len(self.docs)
+
+    class _DummyClient:
+        def get_or_create_collection(self, name, embedding_function=None):
+            return _DummyCollection()
+
+    def _create_client(path=None):
+        return _DummyClient()
+else:
+    def _create_client(path=None):
+        if path:
+            return chromadb.PersistentClient(path=path)
+        return chromadb.Client()
+
 
 class SimpleEmbeddingFunction(EmbeddingFunction):
     """Deterministic embedding function using SHA1 hashes."""
@@ -34,14 +61,8 @@ class VectorStore:
         persist_directory: Optional[str] = None,
         embedding_function: Optional[EmbeddingFunction] = None,
     ) -> None:
-        if chromadb is None:
-            raise ImportError("chromadb is required for VectorStore")
-        if persist_directory:
-            client = chromadb.PersistentClient(path=persist_directory)
-        else:
-            client = chromadb.Client()
-        self._client = client
-        self._collection = client.get_or_create_collection(
+        self._client = _create_client(persist_directory)
+        self._collection = self._client.get_or_create_collection(
             name=collection_name,
             embedding_function=embedding_function or SimpleEmbeddingFunction(),
         )

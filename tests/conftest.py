@@ -51,6 +51,37 @@ if "sentence_transformers" not in sys.modules:
 
     sys.modules["sentence_transformers.util"] = st.util
 
+# Provide a lightweight fallback for the ``deepthought.motivate`` package if it
+# isn't installed. Several tests insert a dummy module using
+# ``sys.modules.setdefault`` which can break imports that expect the real
+# submodules. Registering this stub early ensures those imports succeed even when
+# the optional package is missing.
+if "deepthought.motivate" not in sys.modules:
+    motivate = types.ModuleType("motivate")
+
+    caption = types.ModuleType("caption")
+
+    def summarise_message(message: str, max_words: int = 5) -> str:
+        return " ".join(message.split()[:max_words])
+
+    caption.summarise_message = summarise_message
+
+    scorer = types.ModuleType("scorer")
+
+    def score_caption(caption_str: str, nonce: str) -> int:
+        from hashlib import sha256
+
+        digest = sha256((nonce + caption_str).encode()).digest()
+        return 1 + digest[0] % 7
+
+    scorer.score_caption = score_caption
+
+    motivate.caption = caption
+    motivate.scorer = scorer
+    sys.modules["deepthought.motivate"] = motivate
+    sys.modules["deepthought.motivate.caption"] = caption
+    sys.modules["deepthought.motivate.scorer"] = scorer
+
 
 # Provide a minimal stub for ``send_to_prism`` and ``publish_input_received`` on
 # the social_graph_bot module so tests can intercept these calls. The stub must
