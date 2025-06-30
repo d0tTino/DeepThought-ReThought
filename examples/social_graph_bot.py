@@ -4,8 +4,14 @@ import logging
 import os
 import random
 import uuid
-from datetime import timezone
+from datetime import timedelta, timezone
 from typing import List, Tuple
+
+from deepthought.goal_scheduler import GoalScheduler
+from deepthought.services.scheduler import SchedulerService
+from deepthought.services.file_graph_dal import FileGraphDAL
+from deepthought.graph.connector import GraphConnector
+from deepthought.graph.dal import GraphDAL
 
 import aiohttp
 import aiosqlite
@@ -166,7 +172,16 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
+        if prompt:
+            gen_prompt = prompt
+        else:
+            gen_prompt = os.getenv(
+                "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
+            )
+            if "IDLE_GENERATOR_PROMPT" not in os.environ:
+                topics = await get_recent_topics()
+                if topics:
+                    gen_prompt += " Topics: " + ", ".join(topics)
 
         generator = _get_idle_generator()
         outputs = await asyncio.to_thread(
@@ -220,6 +235,14 @@ class DBManager:
                 user_id TEXT,
                 target_id TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS affinity (
+                user_id TEXT PRIMARY KEY,
+                score INTEGER DEFAULT 0
             )
             """
         )
@@ -549,6 +572,16 @@ class DBManager:
         ) as cur:
             return await cur.fetchall()
 
+    async def get_recent_topics(self, limit: int = 3) -> list[str]:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT topic FROM recent_topics ORDER BY last_used DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [r[0] for r in rows]
+
 
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
@@ -756,6 +789,35 @@ async def process_deep_reflections(bot: discord.Client) -> None:
             break
 
 
+async def process_goals(bot: "SocialGraphBot") -> None:
+    """Background task that schedules reminders for queued goals."""
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            if bot.scheduler_service is None:
+                await asyncio.sleep(1)
+                continue
+
+            goal = bot.goal_scheduler.next_goal()
+            if goal:
+                try:
+                    delay_str, message = goal.split(":", 1)
+                    delay = int(delay_str)
+                except ValueError:
+                    logger.warning("Invalid goal format: %s", goal)
+                else:
+                    when = discord.utils.utcnow().replace(
+                        tzinfo=timezone.utc
+                    ) + timedelta(seconds=delay)
+                    bot.scheduler_service.schedule_reminder(
+                        message, when, str(uuid.uuid4())
+                    )
+            await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            logger.info("process_goals cancelled")
+            break
+
+
 def evaluate_triggers(message: discord.Message) -> List[Tuple[str, float]]:
     """Return a list of (theory, confidence) pairs inferred from a message."""
     theories: List[Tuple[str, float]] = []
@@ -861,12 +923,25 @@ class SocialGraphBot(discord.Client):
         super().__init__(*args, intents=intents, **kwargs)
         self.monitor_channel_id = monitor_channel_id
         self._bg_tasks: list[asyncio.Task] = []
+        self.goal_scheduler = GoalScheduler()
+        self.scheduler_service: SchedulerService | None = None
 
     async def setup_hook(self) -> None:
         await db_manager.connect()
         await init_db()
-        self._bg_tasks.append(self.loop.create_task(monitor_channels(self, self.monitor_channel_id)))
+        await _ensure_nats()
+        if _input_publisher is not None:
+            self.scheduler_service = SchedulerService(
+                _input_publisher,
+                FileGraphDAL(),
+                GraphDAL(GraphConnector()),
+            )
+            await self.scheduler_service.start()
+        self._bg_tasks.append(
+            self.loop.create_task(monitor_channels(self, self.monitor_channel_id))
+        )
         self._bg_tasks.append(self.loop.create_task(process_deep_reflections(self)))
+        self._bg_tasks.append(self.loop.create_task(process_goals(self)))
 
     async def on_ready(self) -> None:
         """Log basic information once the bot connects."""
@@ -949,6 +1024,9 @@ class SocialGraphBot(discord.Client):
             task.cancel()
         await asyncio.gather(*self._bg_tasks, return_exceptions=True)
         self._bg_tasks.clear()
+        if self.scheduler_service is not None:
+            await self.scheduler_service.stop()
+            self.scheduler_service = None
         await db_manager.close()
         global _nats_client, _js_context, _input_publisher
         if _nats_client is not None and not _nats_client.is_closed:
