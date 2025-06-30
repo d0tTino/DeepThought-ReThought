@@ -104,6 +104,17 @@ class TieredMemory:
             logger.error("Graph query failed: %s", exc, exc_info=True)
             return []
 
+    # ------------------------------------------------------------------
+    # Public API
+
+    def vector_matches(self, prompt: str) -> List[str]:
+        """Return vector matches for ``prompt``."""
+        return self._vector_matches(prompt)
+
+    def graph_facts(self, limit: int | None = None) -> List[str]:
+        """Return facts from the graph, defaulting to ``top_k`` when ``limit`` is ``None``."""
+        return self._graph_facts(limit if limit is not None else self._top_k)
+
     def store_interaction(self, text: str) -> None:
         self._add_to_vector(text)
         try:

@@ -54,6 +54,8 @@ Key scripts include:
 
 Users would typically incorporate these scripts into their Unity projects and use them in conjunction with the official NATS C# client library.
 
+For instructions on compiling these scripts as part of your Unity project, see [docs/unity_compile.md](docs/unity_compile.md).
+
 ## Setup & Usage
 
 *(Note: This project is under active development. These are preliminary steps.)*
@@ -79,7 +81,7 @@ Users would typically incorporate these scripts into their Unity projects and us
 4.  **Initialize JetStream:**
     *   Run the `setup_jetstream.py` script to create the necessary JetStream streams:
         ```bash
-        python setup_jetstream.py
+        python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
         ```
 5.  **Start Additional Services:**
     *   Launch Chroma for vector memory:
@@ -154,7 +156,7 @@ If you don't already have a NATS server running locally, you can start one easil
 
 Once the server is up, create the required JetStream streams by running:
 ```bash
-python setup_jetstream.py
+python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
 ```
 
 This step is necessary before running the tests below.

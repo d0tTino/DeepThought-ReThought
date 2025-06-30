@@ -25,7 +25,7 @@ nats-server -js
 3. Initialize the required JetStream streams:
 
 ```bash
-python setup_jetstream.py
+python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
 ```
 
 ## Phase 2: Social Graph Logging

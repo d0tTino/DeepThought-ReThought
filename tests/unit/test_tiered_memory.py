@@ -66,3 +66,14 @@ def test_loads_from_graph():
     ctx = mem.retrieve_context("x")
     assert ctx == ["g1", "g2"]
     assert set(mem._lru.keys()) == {"g1", "g2"}
+
+
+def test_public_vector_and_graph_methods():
+    vec = DummyVector()
+    dal = DummyDAL([{"fact": "g1"}, {"fact": "g2"}])
+    mem = TieredMemory(vec, dal, capacity=3, top_k=1)
+    mem.store_interaction("v1")
+
+    assert mem.vector_matches("whatever") == ["v1"]
+    assert mem.graph_facts() == ["g1"]
+    assert mem.graph_facts(2) == ["g1", "g2"]
