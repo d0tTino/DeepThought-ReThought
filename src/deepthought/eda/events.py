@@ -33,6 +33,10 @@ class EventSubjects:
     # Scheduler events
     REMINDER_TRIGGERED = "dtr.scheduler.reminder_triggered"
 
+    # Code generation events
+    CODE_TEMPLATE_REQUEST = "dtr.codegen.template_request"
+    CODE_GENERATED = "dtr.codegen.generated"
+
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
     # e.g., METRICS = "dtr.metrics.reported"
@@ -92,4 +96,24 @@ class ReminderTriggeredPayload(EventPayload):
 
     message: str
     reminder_id: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+@dataclass
+class CodeTemplatePayload(EventPayload):
+    """Payload for requesting code generation from a template."""
+
+    template: str
+    variables: Dict[str, Any]
+    input_id: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+@dataclass
+class CodeGeneratedPayload(EventPayload):
+    """Payload for returning generated code and result."""
+
+    code: str
+    result: str
+    input_id: Optional[str] = None
     timestamp: Optional[str] = None
