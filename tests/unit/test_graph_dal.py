@@ -57,6 +57,20 @@ def test_get_entity():
     assert connector.executed == [("MATCH (n:Person {name: $value}) RETURN n", {"value": "Alice"})]
 
 
+def test_get_entity_invalid_label():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+    with pytest.raises(ValueError):
+        dal.get_entity("Bad Label;", "name", "Alice")
+
+
+def test_get_entity_invalid_field():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+    with pytest.raises(ValueError):
+        dal.get_entity("Person", "na.me", "Alice")
+
+
 def test_query_subgraph():
     connector = DummyConnector(result=[{"id": 1}])
     dal = GraphDAL(connector)
