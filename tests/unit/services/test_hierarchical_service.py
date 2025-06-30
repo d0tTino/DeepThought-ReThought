@@ -13,8 +13,8 @@ import pytest
 
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.memory.tiered import TieredMemory
-from deepthought.services.hierarchical_service import HierarchicalService
 from deepthought.search import OfflineSearch
+from deepthought.services.hierarchical_service import HierarchicalService
 
 
 class DummyNATS:
@@ -150,3 +150,18 @@ def test_retrieve_context_with_search(tmp_path):
     service = HierarchicalService(DummyNATS(), DummyJS(), memory, search=search)
     ctx = service.retrieve_context("result")
     assert "search result 1" in ctx and "search result 2" in ctx
+
+
+def test_retrieve_context_from_config(monkeypatch, tmp_path):
+    vec = DummyVector()
+    dal = DummyDAL()
+    memory = TieredMemory(vec, dal, top_k=3)
+    db = tmp_path / "conf.db"
+    OfflineSearch.create_index(str(db), [("t", "via config")])
+    monkeypatch.setenv("DT_SEARCH_DB", str(db))
+    import deepthought.config as config
+
+    config._settings_cache = None
+    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
+    ctx = service.retrieve_context("config")
+    assert "via config" in ctx

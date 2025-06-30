@@ -308,6 +308,16 @@ Set the `IDLE_TIMEOUT_MINUTES` environment variable to control the inactivity
 threshold. By default the bot waits five minutes before sending a prompt.
 Enable bot-to-bot chatter by setting `BOT_CHAT_ENABLED=true`.
 
+### Example Goals
+
+The bot's `GoalScheduler` queues reminders formatted as `<seconds>:<message>`. They are forwarded to the `SchedulerService` in the background.
+
+```python
+bot.goal_scheduler.add_goal("60:Stretch your legs", priority=1)
+bot.goal_scheduler.add_goal("300:Time for a break", priority=2)
+```
+
+
 ## Discord Bot Roadmap
 
 For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
