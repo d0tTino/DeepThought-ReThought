@@ -49,11 +49,11 @@ class HierarchicalService:
 
     def _vector_matches(self, prompt: str) -> List[str]:
         """Return vector matches using the underlying memory store."""
-        return self._memory._vector_matches(prompt)
+        return self._memory.vector_matches(prompt)
 
     def _graph_facts(self) -> List[str]:
         """Return graph facts using the underlying memory store."""
-        return self._memory._graph_facts(self._memory._top_k)
+        return self._memory.graph_facts()
 
     @classmethod
     def from_chroma(
@@ -165,14 +165,20 @@ class HierarchicalService:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
+            logger.info(
+                "HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED
+            )
             return True
         except NatsError as e:
 
-            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
+            logger.error(
+                "HierarchicalService failed to subscribe: %s", e, exc_info=True
+            )
             return False
         except Exception as e:  # pragma: no cover - network failure
-            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
+            logger.error(
+                "HierarchicalService failed to subscribe: %s", e, exc_info=True
+            )
             return False
 
     async def stop(self) -> None:
