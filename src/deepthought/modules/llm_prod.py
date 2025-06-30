@@ -26,6 +26,7 @@ class ProductionLLM(BaseLLM):
         js_context: JetStreamContext,
         model_name: Optional[str] = None,
         adapter_dir: str = "./results/lora-adapter",
+        persona_manager=None,
     ) -> None:
         model_name = model_name or get_settings().model_path
         publisher = Publisher(nats_client, js_context)
@@ -42,7 +43,7 @@ class ProductionLLM(BaseLLM):
                 adapter_dir,
             )
             model = base_model
-        super().__init__(publisher, subscriber, tokenizer, model)
+        super().__init__(publisher, subscriber, tokenizer, model, persona_manager=persona_manager)
         logger.info("ProductionLLM initialized with model %s", model_name)
 
     async def start_listening(self, durable_name: str = "llm_prod_listener") -> bool:
