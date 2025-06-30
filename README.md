@@ -54,6 +54,8 @@ Key scripts include:
 
 Users would typically incorporate these scripts into their Unity projects and use them in conjunction with the official NATS C# client library.
 
+For instructions on compiling these scripts as part of your Unity project, see [docs/unity_compile.md](docs/unity_compile.md).
+
 ## Setup & Usage
 
 *(Note: This project is under active development. These are preliminary steps.)*
