@@ -54,6 +54,12 @@ def test_build_prompt_with_rewards(monkeypatch: pytest.MonkeyPatch):
     assert prompt == "[avg_reward: 1.50]\nfact1\nfact2\nResponse:"
 
 
+def test_build_prompt_with_persona(monkeypatch: pytest.MonkeyPatch):
+    llm = create_llm(monkeypatch)
+    prompt = llm._build_prompt(["fact"], persona_desc="Be nice")
+    assert prompt.startswith("Be nice")
+
+
 @pytest.mark.asyncio
 async def test_handle_reward_event_appends_and_acks(monkeypatch: pytest.MonkeyPatch):
     llm = create_llm(monkeypatch)

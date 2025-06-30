@@ -8,20 +8,7 @@ import sys
 import types
 import uuid
 from datetime import timedelta, timezone
-from typing import List, Tuple
-
-from deepthought.goal_scheduler import GoalScheduler
-from deepthought.services.file_graph_dal import FileGraphDAL
-from deepthought.graph.connector import GraphConnector
-from deepthought.graph.dal import GraphDAL
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:  # pragma: no cover - for type hints only
-    from deepthought.services.scheduler import SchedulerService
-
-
-import aiohttp
-import aiosqlite
+from typing import TYPE_CHECKING, List, Tuple
 
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.graph.connector import GraphConnector
@@ -29,7 +16,12 @@ from deepthought.graph.dal import GraphDAL
 from deepthought.services.persona_manager import PersonaManager
 from deepthought.services.moderation import is_allowed
 from deepthought.services.file_graph_dal import FileGraphDAL
-from deepthought.services.scheduler import SchedulerService
+
+if TYPE_CHECKING:  # pragma: no cover - for type hints only
+    from deepthought.services.scheduler import SchedulerService
+
+import aiohttp
+import aiosqlite
 
 try:
     import discord
@@ -194,15 +186,11 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        gen_prompt = prompt or os.getenv(
-            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
-        )
+        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
         if prompt is None and "IDLE_GENERATOR_PROMPT" not in os.environ:
             topics = await get_recent_topics(3)
             if topics:
                 gen_prompt = ", ".join(topics) + ": " + gen_prompt
-
-
 
         generator = _get_idle_generator()
         outputs = await asyncio.to_thread(
