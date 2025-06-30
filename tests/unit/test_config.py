@@ -3,7 +3,12 @@ import json
 import pytest
 import yaml
 
-from deepthought.config import get_settings, load_settings
+from deepthought.config import (
+    BotEnv,
+    get_settings,
+    load_settings,
+    load_bot_env,
+)
 
 
 def test_env_overrides(monkeypatch):
@@ -131,3 +136,29 @@ def test_load_settings_missing_yaml_module(monkeypatch, tmp_path):
 
     with pytest.raises(RuntimeError):
         load_settings(str(cfg))
+
+
+def test_load_bot_env_success(monkeypatch):
+    monkeypatch.setenv("DISCORD_TOKEN", "abc")
+    monkeypatch.setenv("MONITOR_CHANNEL", "42")
+
+    env = load_bot_env()
+    assert isinstance(env, BotEnv)
+    assert env.DISCORD_TOKEN == "abc"
+    assert env.MONITOR_CHANNEL == 42
+
+
+def test_load_bot_env_missing(monkeypatch):
+    monkeypatch.delenv("DISCORD_TOKEN", raising=False)
+    monkeypatch.delenv("MONITOR_CHANNEL", raising=False)
+
+    with pytest.raises(SystemExit):
+        load_bot_env()
+
+
+def test_load_bot_env_invalid_channel(monkeypatch):
+    monkeypatch.setenv("DISCORD_TOKEN", "abc")
+    monkeypatch.setenv("MONITOR_CHANNEL", "x")
+
+    with pytest.raises(SystemExit):
+        load_bot_env()

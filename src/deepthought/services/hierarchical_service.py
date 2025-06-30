@@ -14,6 +14,7 @@ from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
 from ..memory.tiered import TieredMemory
 from ..memory.vector_store import create_vector_store
+from ..search import OfflineSearch
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class HierarchicalService:
         nats_client: NATS,
         js_context: JetStreamContext,
         memory: TieredMemory | None,
+        search: OfflineSearch | None = None,
         graph_dal: GraphDAL | None = None,
         top_k: int = 3,
 
@@ -33,6 +35,8 @@ class HierarchicalService:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._memory = memory
+        self._search = search
+        self._top_k = top_k
 
     def _vector_matches(self, prompt: str) -> List[str]:
         """Return vector matches using the underlying memory store."""
@@ -53,15 +57,30 @@ class HierarchicalService:
         persist_directory: Optional[str] = None,
         capacity: int = 100,
         top_k: int = 3,
+        search_db: Optional[str] = None,
     ) -> "HierarchicalService":
         """Instantiate with a new :class:`TieredMemory` using Chroma."""
         store = create_vector_store(collection_name, persist_directory)
         memory = TieredMemory(store, graph_dal, capacity=capacity, top_k=top_k)
-        return cls(nats_client, js_context, memory)
+        search = OfflineSearch(search_db) if search_db else None
+        return cls(nats_client, js_context, memory, search=search)
 
     def retrieve_context(self, prompt: str) -> List[str]:
-        """Return retrieved facts using :class:`TieredMemory`."""
-        return self._memory.retrieve_context(prompt)
+        """Return retrieved facts using :class:`TieredMemory` and optional search."""
+        memory_facts = self._memory.retrieve_context(prompt) if self._memory else []
+        search_facts: List[str] = []
+        if self._search:
+            try:
+                search_facts = self._search.search(prompt, limit=self._top_k)
+            except Exception:  # pragma: no cover - defensive
+                logger.error("Offline search failed", exc_info=True)
+        seen = set()
+        merged: List[str] = []
+        for item in memory_facts + search_facts:
+            if item not in seen:
+                seen.add(item)
+                merged.append(item)
+        return merged
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -78,10 +97,8 @@ class HierarchicalService:
             facts: Sequence[str] = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={
-                    "retrieved_knowledge": {
-                        "facts": facts,
-                        "source": "hierarchical_service",
-                    }
+                    "facts": facts,
+                    "source": "hierarchical_service",
                 },
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),

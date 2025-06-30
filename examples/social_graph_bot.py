@@ -104,7 +104,9 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
 CURRENT_DB_PATH = DB_PATH
@@ -122,12 +124,17 @@ _input_publisher: Publisher | None = None
 # Configuration values
 MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
 IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "5"))
+PLAYFUL_REPLY_TIMEOUT_MINUTES = int(os.getenv("PLAYFUL_REPLY_TIMEOUT_MINUTES", "5"))
 REFLECTION_CHECK_SECONDS = int(os.getenv("REFLECTION_CHECK_SECONDS", "300"))
 SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
 
 # Optional bot-to-bot chatter configuration
 # Accepts values like "true", "1", or "yes" (case-insensitive)
-BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {"true", "1", "yes"}
+BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
+    "true",
+    "1",
+    "yes",
+}
 
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
@@ -294,6 +301,7 @@ class DBManager:
             CREATE TABLE IF NOT EXISTS recent_topics (
                 topic TEXT PRIMARY KEY,
                 last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
             )
             """
         )
@@ -305,6 +313,14 @@ class DBManager:
         await self._db.execute(
             "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
             (str(user_id), str(target_id)),
+        )
+        await self._db.execute(
+            """
+            INSERT INTO affinity (user_id, score)
+            VALUES (?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET score=affinity.score + 1
+            """,
+            (str(user_id),),
         )
         await self._db.commit()
 
@@ -353,7 +369,9 @@ class DBManager:
             )
         await self._db.commit()
 
-    async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
+    async def store_theory(
+        self, subject_id: int, theory: str, confidence: float
+    ) -> None:
         if not isinstance(theory, str) or not theory.strip():
             raise ValueError("theory must be a non-empty string")
         if len(theory) > MAX_THEORY_LENGTH:
@@ -430,6 +448,7 @@ class DBManager:
             return [r[0] for r in rows]
 
     async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
+
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
         if len(prompt) > MAX_PROMPT_LENGTH:
@@ -492,6 +511,29 @@ class DBManager:
             row = await cur.fetchone()
             return bool(row[0]) if row else False
 
+    async def adjust_affinity(self, user_id: int, delta: int) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO affinity (user_id, score)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET score=affinity.score + ?
+            """,
+            (str(user_id), delta, delta),
+        )
+        await self._db.commit()
+
+    async def get_affinity(self, user_id: int) -> int:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT score FROM affinity WHERE user_id=?",
+            (str(user_id),),
+        ) as cur:
+            row = await cur.fetchone()
+            return int(row[0]) if row else 0
+
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
         if not isinstance(theme, str) or not theme.strip():
             raise ValueError("theme must be a non-empty string")
@@ -539,7 +581,11 @@ async def init_db(db_path: str | None = None) -> None:
     target_path = (
         db_path
         if db_path is not None
-        else (DB_PATH if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH else db_manager.db_path)
+        else (
+            DB_PATH
+            if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH
+            else db_manager.db_path
+        )
     )
 
     if db_manager.db_path != target_path:
@@ -565,7 +611,9 @@ async def store_memory(
     topic: str = "",
     sentiment_score: float | None = None,
 ) -> None:
-    await db_manager.store_memory(user_id, memory, topic=topic, sentiment_score=sentiment_score)
+    await db_manager.store_memory(
+        user_id, memory, topic=topic, sentiment_score=sentiment_score
+    )
 
 
 async def send_to_prism(data: dict) -> None:
@@ -600,7 +648,9 @@ async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
     await _ensure_nats()
     if _input_publisher is None:
-        logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
+        logger.warning(
+            "Dropping INPUT_RECEIVED event because NATS publisher is unavailable"
+        )
 
         return
     payload = InputReceivedPayload(
@@ -653,6 +703,14 @@ async def set_do_not_mock(user_id: int, flag: bool = True) -> None:
 
 async def is_do_not_mock(user_id: int) -> bool:
     return await db_manager.is_do_not_mock(user_id)
+
+
+async def adjust_affinity(user_id: int, delta: int) -> None:
+    await db_manager.adjust_affinity(user_id, delta)
+
+
+async def get_affinity(user_id: int) -> int:
+    return await db_manager.get_affinity(user_id)
 
 
 async def set_theme(user_id: int, channel_id: int, theme: str) -> None:
@@ -749,7 +807,9 @@ async def last_human_message_age(channel: discord.TextChannel, limit: int = 50):
     """Return minutes since the most recent human message or ``None`` if none."""
     async for msg in channel.history(limit=limit):
         if not msg.author.bot:
-            return (discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+            return (
+                discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)
+            ).total_seconds() / 60
     return None
 
 
@@ -762,12 +822,25 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
         return
     while not bot.is_closed():
         last_message = None
-        async for msg in channel.history(limit=1):
-            last_message = msg
-            break
+        prev_message = None
+        idx = 0
+        async for msg in channel.history(limit=2):
+            if idx == 0:
+                last_message = msg
+            elif idx == 1:
+                prev_message = msg
+            idx += 1
 
         respond_to = None
         send_prompt = False
+        if last_message and last_message.author.bot and prev_message and not prev_message.author.bot:
+            age = (
+                discord.utils.utcnow() - prev_message.created_at.replace(tzinfo=timezone.utc)
+            ).total_seconds() / 60
+            if age < PLAYFUL_REPLY_TIMEOUT_MINUTES:
+                await asyncio.sleep(60)
+                continue
+
         if not last_message:
             send_prompt = True
         else:
@@ -780,7 +853,7 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                 bots, humans = await who_is_active(channel)
                 if bots and not humans:
                     age = await last_human_message_age(channel)
-                    if age is None or age >= IDLE_TIMEOUT_MINUTES:
+                    if age is None or age >= PLAYFUL_REPLY_TIMEOUT_MINUTES:
                         send_prompt = True
                         if last_message.author.bot:
                             respond_to = last_message
@@ -831,7 +904,9 @@ class SocialGraphBot(discord.Client):
             topic=topic,
             sentiment_score=sentiment_score,
         )
-        await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
+        await update_sentiment_trend(
+            message.author.id, message.channel.id, sentiment_score
+        )
 
         bots, _ = await who_is_active(message.channel)
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
@@ -843,6 +918,10 @@ class SocialGraphBot(discord.Client):
 
         async with message.channel.typing():
             await asyncio.sleep(random.uniform(1, 3))
+            if hasattr(message.channel, "history"):
+                async for recent in message.channel.history(limit=1):
+                    if recent.id != message.id and getattr(recent.author, "bot", False):
+                        return
             await message.channel.send("I'm pondering your message...")
 
         # Publish event and forward to Prism
@@ -886,6 +965,20 @@ class SocialGraphBot(discord.Client):
         if hasattr(self, "process_commands"):
             await self.process_commands(message)
 
+    async def close(self) -> None:
+        """Close DB and NATS connections."""
+        await super().close()
+        await db_manager.close()
+        global _nats_client, _js_context, _input_publisher
+        if _nats_client is not None and not getattr(_nats_client, "is_closed", False):
+            try:
+                await _nats_client.close()
+            except Exception:  # pragma: no cover - closing failure
+                pass
+        _nats_client = None
+        _js_context = None
+        _input_publisher = None
+
 
 def run(token: str, monitor_channel_id: int) -> None:
     """Run the SocialGraphBot."""
@@ -894,11 +987,7 @@ def run(token: str, monitor_channel_id: int) -> None:
 
 
 if __name__ == "__main__":
-    import os
+    from deepthought.config import load_bot_env
 
-    token = os.getenv("DISCORD_TOKEN")
-    channel_id = int(os.getenv("MONITOR_CHANNEL", "0"))
-    if not token or channel_id == 0:
-        print("Please set DISCORD_TOKEN and MONITOR_CHANNEL environment variables.")
-    else:
-        run(token, channel_id)
+    env = load_bot_env()
+    run(env.DISCORD_TOKEN, env.MONITOR_CHANNEL)

@@ -20,6 +20,13 @@ class DummyChannel:
     async def send(self, content, reference=None):
         self.sent_messages.append(content)
 
+    def history(self, limit=1):
+        async def _gen():
+            if False:
+                yield  # pragma: no cover
+
+        return _gen()
+
     def typing(self):
         class DummyContext:
             async def __aenter__(self):

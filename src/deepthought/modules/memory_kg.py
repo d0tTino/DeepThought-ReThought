@@ -56,7 +56,7 @@ class KnowledgeGraphMemory:
             self._store(nodes, edges)
 
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={"retrieved_knowledge": {"facts": [], "source": "knowledge_graph"}},
+                retrieved_knowledge={"facts": [], "source": "knowledge_graph"},
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )

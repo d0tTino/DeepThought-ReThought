@@ -60,12 +60,7 @@ class InputHandler:
                     logger.error("Memory retrieval failed: %s", err, exc_info=True)
 
                 mem_payload = MemoryRetrievedPayload(
-                    retrieved_knowledge={
-                        "retrieved_knowledge": {
-                            "facts": context,
-                            "source": "hierarchical",
-                        }
-                    },
+                    retrieved_knowledge={"facts": context, "source": "hierarchical"},
                     input_id=input_id,
                     timestamp=datetime.now(timezone.utc).isoformat(),
                 )

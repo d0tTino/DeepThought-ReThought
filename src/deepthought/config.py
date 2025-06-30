@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from pydantic import AnyUrl, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:  # YAML support is optional
@@ -44,6 +45,7 @@ class Settings(BaseSettings):
     db: DatabaseSettings = DatabaseSettings()
     model_path: str = "distilgpt2"
     memory_file: str = "memory.json"
+    search_db: str | None = None
     reward: RewardThresholds = RewardThresholds()
 
     model_config = SettingsConfigDict(env_prefix="DT_", env_nested_delimiter="__")
@@ -90,3 +92,23 @@ def get_settings(config_file: Optional[str] = None) -> Settings:
         _settings_cache = load_settings(config_file)
         _settings_path = path
     return _settings_cache
+
+
+class BotEnv(BaseSettings):
+    """Environment variables required for running the Discord bot."""
+
+    DISCORD_TOKEN: str
+    MONITOR_CHANNEL: int
+    NATS_URL: AnyUrl = "nats://localhost:4222"
+
+    model_config = SettingsConfigDict(env_prefix="")
+
+
+def load_bot_env() -> BotEnv:
+    """Return bot environment settings or exit with a clear error."""
+
+    try:
+        return BotEnv()
+    except ValidationError as exc:  # pragma: no cover - runtime validation
+        missing = ", ".join(err["loc"][0] for err in exc.errors())
+        raise SystemExit(f"Missing or invalid environment variables: {missing}") from exc

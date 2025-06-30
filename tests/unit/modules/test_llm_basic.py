@@ -159,13 +159,15 @@ async def test_handle_memory_event_non_dict(monkeypatch, caplog):
     llm = create_llm(monkeypatch)
     payload = MemoryRetrievedPayload(retrieved_knowledge="oops", input_id="xyz")
     msg = DummyMsg(payload.to_json())
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.ERROR):
         await llm._handle_memory_event(msg)
 
     assert msg.nacked
     pub = llm._publisher
     assert not pub.published
-    assert any("not a dict" in r.getMessage() for r in caplog.records)
+    assert any(
+        "Invalid MemoryRetrieved payload" in r.getMessage() for r in caplog.records
+    )
 
 
 @pytest.mark.asyncio
