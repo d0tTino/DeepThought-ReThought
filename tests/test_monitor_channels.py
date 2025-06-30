@@ -172,7 +172,7 @@ async def test_monitor_channels_only_bots(monkeypatch):
     channel.history = history_gen
 
     f = asyncio.Future()
-    f.set_result(({1}, set()))
+    f.set_result(({1}, set(), {1: None}))
     monkeypatch.setattr(sg, "who_is_active", lambda channel, limit=20: f)
 
     monkeypatch.setattr(sg, "BOT_CHAT_ENABLED", True)
@@ -202,8 +202,9 @@ async def test_monitor_channels_idle_prompt_old_message(monkeypatch):
     bot = DummyBot(channel)
 
     from datetime import timedelta
-    from discord.utils import utcnow
     from types import SimpleNamespace
+
+    from discord.utils import utcnow
 
     class DummyMessage:
         def __init__(self, created_at):
@@ -306,7 +307,7 @@ async def test_monitor_channels_playful_waits_for_humans(monkeypatch):
     from types import SimpleNamespace
 
     f = asyncio.Future()
-    f.set_result(({1}, set()))
+    f.set_result(({1}, set(), {1: None}))
     monkeypatch.setattr(sg, "who_is_active", lambda channel, limit=20: f)
     monkeypatch.setattr(sg, "BOT_CHAT_ENABLED", True)
     monkeypatch.setattr(sg, "PLAYFUL_REPLY_TIMEOUT_MINUTES", 5)
