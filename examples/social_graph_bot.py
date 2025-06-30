@@ -26,7 +26,8 @@ import aiosqlite
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.graph.connector import GraphConnector
 from deepthought.graph.dal import GraphDAL
-from deepthought.services import PersonaManager
+from deepthought.services.persona_manager import PersonaManager
+from deepthought.services.moderation import is_allowed
 from deepthought.services.file_graph_dal import FileGraphDAL
 from deepthought.services.scheduler import SchedulerService
 
@@ -329,10 +330,98 @@ class DBManager:
             await self._db.close()
             self._db = None
 
+    def _create_table_statements(self) -> list[str]:
+        """Return SQL statements for creating required tables."""
+        try:
+            return CREATE_TABLE_QUERIES
+        except NameError:  # pragma: no cover - executed in isolated test context
+            return [
+                """
+                CREATE TABLE IF NOT EXISTS interactions (
+                    user_id TEXT,
+                    target_id TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS affinity (
+                    user_id TEXT PRIMARY KEY,
+                    score INTEGER DEFAULT 0
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS relationships (
+                    source_id TEXT,
+                    target_id TEXT,
+                    interaction_count INTEGER DEFAULT 0,
+                    sentiment_sum REAL DEFAULT 0,
+                    PRIMARY KEY(source_id, target_id)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS memories (
+                    user_id TEXT,
+                    topic TEXT,
+                    memory TEXT,
+                    sentiment_score REAL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS theories (
+                    subject_id TEXT,
+                    theory TEXT,
+                    confidence REAL,
+                    updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY(subject_id, theory)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS queued_tasks (
+                    task_id INTEGER PRIMARY KEY,
+                    user_id TEXT,
+                    context TEXT,
+                    prompt TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS sentiment_trends (
+                    user_id TEXT,
+                    channel_id TEXT,
+                    sentiment_sum REAL DEFAULT 0,
+                    message_count INTEGER DEFAULT 0,
+                    PRIMARY KEY(user_id, channel_id)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS themes (
+                    user_id TEXT,
+                    channel_id TEXT,
+                    theme TEXT,
+                    updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY(user_id, channel_id)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS user_flags (
+                    user_id TEXT PRIMARY KEY,
+                    do_not_mock INTEGER
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS recent_topics (
+                    topic TEXT PRIMARY KEY,
+                    last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+            ]
+
     async def init_db(self) -> None:
         await self.connect()
         assert self._db
-        for query in CREATE_TABLE_QUERIES:
+        for query in self._create_table_statements():
             await self._db.execute(query)
 
         await self._db.commit()
@@ -719,6 +808,9 @@ async def _ensure_nats() -> None:
 
 async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
+    if not is_allowed(text):
+        logger.info("Dropping INPUT_RECEIVED due to banned content")
+        return
     await _ensure_nats()
     if _input_publisher is None:
         logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
@@ -1012,6 +1104,9 @@ class SocialGraphBot(discord.Client):
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author == self.user:
+            return
+
+        if any(getattr(m, "bot", False) for m in message.mentions) and self.user not in message.mentions:
             return
 
         sentiment_score = analyze_sentiment(message.content)
