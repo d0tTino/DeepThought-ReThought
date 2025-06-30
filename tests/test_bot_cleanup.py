@@ -20,7 +20,7 @@ class DummyNATS:
 async def test_bot_cleanup_on_cancel(tmp_path, monkeypatch):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     dummy_nats = DummyNATS()
     sg._nats_client = dummy_nats

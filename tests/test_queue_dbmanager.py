@@ -12,7 +12,7 @@ async def test_db_manager_list_pending_tasks_only_pending(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.db_manager = sg.DBManager(str(db_file))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     ctx = {"channel_id": 1}
     done_task = await sg.queue_deep_reflection("u1", ctx, "hello1")
@@ -31,7 +31,7 @@ async def test_db_manager_mark_task_done_updates_status(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.db_manager = sg.DBManager(str(db_file))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     task_id = await sg.queue_deep_reflection("u1", {"channel_id": 1}, "hello")
     await sg.db_manager.mark_task_done(task_id)

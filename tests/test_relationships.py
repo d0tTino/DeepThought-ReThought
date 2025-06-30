@@ -8,12 +8,10 @@ import examples.social_graph_bot as sg
 async def test_relationship_table_and_updates(tmp_path):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     async with aiosqlite.connect(str(tmp_path / "sg.db")) as db:
-        async with db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='relationships'"
-        ) as cur:
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='relationships'") as cur:
             row = await cur.fetchone()
     assert row is not None, "relationships table should exist"
 

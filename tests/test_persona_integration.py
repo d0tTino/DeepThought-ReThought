@@ -55,7 +55,7 @@ class DummyMessage:
 async def test_on_message_persona_changes_with_affinity(tmp_path, monkeypatch, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     # Use lower thresholds for easier testing
     sg.persona_manager = PersonaManager(sg.db_manager, friendly=3, playful=1)

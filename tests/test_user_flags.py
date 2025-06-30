@@ -8,7 +8,7 @@ import examples.social_graph_bot as sg
 async def test_user_flags_table_and_functions(tmp_path):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     async with aiosqlite.connect(str(tmp_path / "sg.db")) as db:
         async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_flags'") as cur:
