@@ -9,6 +9,7 @@ def test_persona_selection():
     selector = PersonaSelector({"friendly": ["hello", "hi"], "formal": ["dear", "regards"]})
     assert selector.choose("hello there") == "friendly"
     assert selector.choose("Dear sir, regards") == "formal"
+    assert selector.choose("no keywords here") is None
 
 
 def test_affinity_updates():

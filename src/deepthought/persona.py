@@ -15,10 +15,10 @@ class PersonaSelector:
         """Return the persona with the most keyword matches."""
         text_low = text.lower()
         best = None
-        best_count = -1
+        best_count = 0
         for name, keywords in self._personas.items():
             count = sum(text_low.count(kw.lower()) for kw in keywords)
             if count > best_count:
                 best = name
                 best_count = count
-        return best
+        return best if best_count > 0 else None
