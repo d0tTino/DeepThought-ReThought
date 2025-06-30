@@ -109,3 +109,28 @@ Effective LLM fine-tuning requires diligent monitoring and evaluation:
 ## 6. Conclusion
 
 This report outlines the approach and key elements for the LLM fine-tuning task within the DeepThought-ReThought project, utilizing the `meta-llama/Llama-3.2-3B-Instruct` model, the `databricks/databricks-dolly-15k` dataset, and the QLoRA technique. While the initial fine-tuning, iterative refinement, and detailed monitoring were conducted by the project owner ('d0tTino'), the provided `train_script.py` contains the specific implementation details allowing users to reproduce or extend this fine-tuning work.
+
+## 7. Running `train_script.py`
+
+Follow these steps to execute the fine-tuning process:
+
+1. **Install dependencies** using `pip install -r requirements.txt`.
+2. **Launch training** with optional arguments:
+
+   ```bash
+   python train_script.py --model-path meta-llama/Llama-3.2-3B-Instruct \
+       --dataset-path databricks/databricks-dolly-15k
+   ```
+
+   Use `--resume` to continue from the latest checkpoint in `./results/lora-adapter`.
+3. **Review metrics** in `./results/lora-adapter/train_results.json`.
+
+### Example Metrics
+
+```
+{
+  "train_runtime": 1234.0,
+  "train_loss": 1.23,
+  "eval_loss": 1.10
+}
+```

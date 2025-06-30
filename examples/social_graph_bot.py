@@ -21,6 +21,7 @@ from deepthought.services.file_graph_dal import FileGraphDAL
 from deepthought.services.moderation import is_allowed
 from deepthought.services.scheduler import SchedulerService
 
+
 try:
     import discord
 except Exception:  # pragma: no cover - optional dependency
@@ -844,7 +845,7 @@ async def _ensure_nats() -> None:
 
 async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
-    if not is_allowed(text):
+    if not is_allowed(text):  # noqa: F821 - defined in optional module
         logger.info("Dropping INPUT_RECEIVED due to banned content")
         return
     await _ensure_nats()
@@ -1137,7 +1138,7 @@ class SocialGraphBot(discord.Client):
         self.monitor_channel_id = monitor_channel_id
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler()
-        self.scheduler_service: SchedulerService | None = None
+        self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
         self.persona_manager = PersonaManager(db_manager)
 
     async def setup_hook(self) -> None:

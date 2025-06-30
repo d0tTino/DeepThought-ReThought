@@ -42,7 +42,7 @@ To replicate the CI steps locally or on your self-hosted runner:
    ```
 3. Initialize the required JetStream streams:
    ```bash
-   python setup_jetstream.py
+   python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
    ```
 4. Run the tests with the project root on `PYTHONPATH`:
    ```bash
