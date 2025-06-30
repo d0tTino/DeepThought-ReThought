@@ -9,10 +9,9 @@ from typing import Awaitable, Callable, List, Optional
 
 from ..eda.events import EventSubjects, ReminderTriggeredPayload
 from ..eda.publisher import Publisher
-from ..motivate.caption import summarise_message
-from examples.social_graph_bot import generate_reflection
-from .file_graph_dal import FileGraphDAL
 from ..graph.dal import GraphDAL
+from ..motivate.caption import summarise_message
+from .file_graph_dal import FileGraphDAL
 
 
 @dataclass
@@ -64,11 +63,7 @@ class SchedulerService:
 
     async def stop(self) -> None:
         self._running = False
-        tasks = [
-            t
-            for t in [self._summary_task, self._daily_summary_task, self._reminder_task]
-            if t
-        ]
+        tasks = [t for t in [self._summary_task, self._daily_summary_task, self._reminder_task] if t]
         for task in tasks:
             task.cancel()
         for task in tasks:
@@ -97,6 +92,8 @@ class SchedulerService:
         )
 
     async def _generate_daily_summary(self) -> None:
+        from examples.social_graph_bot import generate_reflection
+
         facts = self._memory_dal.get_recent_facts(50)
         text = " ".join(facts)
         summary = generate_reflection(text)
@@ -123,4 +120,3 @@ class SchedulerService:
                     use_jetstream=True,
                     timeout=10.0,
                 )
-
