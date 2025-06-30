@@ -119,7 +119,7 @@ async def test_generate_idle_response_env(monkeypatch):
 async def test_generate_idle_response_topics(tmp_path, monkeypatch):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     await sg.store_memory(1, "hi", topic="greet")
     await sg.store_memory(2, "bye", topic="farewell")

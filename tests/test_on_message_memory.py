@@ -56,7 +56,7 @@ class DummyMessage:
 async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     async def noop(*args, **kwargs):
         return None
@@ -95,7 +95,7 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
 async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     async def noop(*args, **kwargs):
         return None
@@ -124,7 +124,7 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
 async def test_update_sentiment_trend(tmp_path):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     await sg.update_sentiment_trend("u1", "c1", 0.2)
     await sg.update_sentiment_trend("u1", "c1", -0.1)
@@ -138,7 +138,7 @@ async def test_update_sentiment_trend(tmp_path):
 async def test_update_sentiment_trend_validation(tmp_path):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     with pytest.raises(ValueError):
         await sg.update_sentiment_trend("u1", "c1", "bad")
@@ -154,7 +154,7 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
 
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     async def noop(*args, **kwargs):
         return None
@@ -185,7 +185,7 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
 async def test_on_message_waits_for_other_bot(tmp_path, monkeypatch):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     async def noop(*args, **kwargs):
         return None
