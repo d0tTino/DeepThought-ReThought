@@ -25,14 +25,27 @@ async def test_persona_changes_with_affinity(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_affinity_adjustment_new_db(tmp_path):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg_new.db"))
+async def test_choose_prompt_uses_persona(tmp_path, monkeypatch):
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.init_db()
 
-    user = "user1"
+    pm = PersonaManager(sg.db_manager, friendly=2, playful=1)
+    user = "u1"
+    prompts = {"snarky": ["s"], "playful": ["p"], "friendly": ["f"], "default": ["d"]}
+
+    monkeypatch.setattr("random.choice", lambda opts: opts[0])
+
+    # default persona
+    assert await pm.choose_prompt(user, prompts) == "s"
+
     await sg.adjust_affinity(user, 1)
-    score = await sg.get_affinity(user)
-    assert score == 1
+    assert await pm.choose_prompt(user, prompts) == "p"
+
+    await sg.adjust_affinity(user, 1)
+    assert await pm.choose_prompt(user, prompts) == "f"
+
+    # fallback to default when persona key missing
+    assert await pm.choose_prompt(user, {"default": ["x"]}) == "x"
 
     await sg.db_manager.close()
