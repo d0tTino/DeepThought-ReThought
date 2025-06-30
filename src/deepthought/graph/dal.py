@@ -68,6 +68,8 @@ class GraphDAL:
 
     def get_entity(self, label: str, field: str, value):
         """Return the first node of ``label`` where ``field`` equals ``value``."""
+        self._validate_identifier(label)
+        self._validate_identifier(field)
         query = f"MATCH (n:{label} {{{field}: $value}}) RETURN n"
         rows = self._connector.execute(query, {"value": value})
         return rows[0] if rows else None
