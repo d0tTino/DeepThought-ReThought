@@ -97,10 +97,8 @@ class HierarchicalService:
             facts: Sequence[str] = self.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={
-                    "retrieved_knowledge": {
-                        "facts": facts,
-                        "source": "hierarchical_service",
-                    }
+                    "facts": facts,
+                    "source": "hierarchical_service",
                 },
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),

@@ -70,7 +70,7 @@ async def test_process_input_success():
     assert subject == EventSubjects.MEMORY_RETRIEVED
     memory_payload = json.loads(data.decode())
     assert memory_payload["input_id"] == input_id
-    assert memory_payload["retrieved_knowledge"]["retrieved_knowledge"]["facts"] == [
+    assert memory_payload["retrieved_knowledge"]["facts"] == [
         "fact1",
         "fact2",
     ]

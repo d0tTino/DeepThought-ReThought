@@ -116,6 +116,32 @@ async def test_generate_idle_response_env(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_idle_response_topics(tmp_path, monkeypatch):
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.init_db()
+
+    await sg.store_memory(1, "hi", topic="greet")
+    await sg.store_memory(2, "bye", topic="farewell")
+
+    captured = {}
+
+    def fake_generator(prompt: str, **kwargs):
+        captured["prompt"] = prompt
+        return [{"generated_text": "pong"}]
+
+    monkeypatch.setattr(sg, "_get_idle_generator", lambda: fake_generator)
+
+    text = await sg.generate_idle_response()
+
+    assert text == "pong"
+    assert "greet" in captured["prompt"]
+    assert "farewell" in captured["prompt"]
+
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
 async def test_monitor_channels_only_bots(monkeypatch):
     """Prompt when only bots have chatted for a while."""
     channel = DummyChannel()
@@ -176,12 +202,13 @@ async def test_monitor_channels_idle_prompt_old_message(monkeypatch):
     bot = DummyBot(channel)
 
     from datetime import timedelta
-
     from discord.utils import utcnow
+    from types import SimpleNamespace
 
     class DummyMessage:
         def __init__(self, created_at):
             self.created_at = created_at
+            self.author = SimpleNamespace(bot=False)
 
     async def history_gen():
         yield DummyMessage(utcnow() - timedelta(minutes=sg.IDLE_TIMEOUT_MINUTES + 1))
