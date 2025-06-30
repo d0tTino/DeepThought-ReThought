@@ -9,7 +9,50 @@ from typing import List, Tuple
 
 import aiohttp
 import aiosqlite
-import discord
+
+try:
+    import discord
+except Exception:  # pragma: no cover - optional dependency
+    from datetime import datetime
+    from datetime import timezone as dt_timezone
+    from types import SimpleNamespace
+
+    class _DummyUtils(SimpleNamespace):
+        @staticmethod
+        def utcnow():
+            return datetime.now(dt_timezone.utc)
+
+    class Client:
+        async def wait_until_ready(self) -> None:  # pragma: no cover - stub
+            return None
+
+        def get_channel(self, _cid):  # pragma: no cover - stub
+            return None
+
+        def is_closed(self) -> bool:  # pragma: no cover - stub
+            return True
+
+    class Message(SimpleNamespace):  # pragma: no cover - stub
+        pass
+
+    class TextChannel(SimpleNamespace):  # pragma: no cover - stub
+        async def history(self, *args, **kwargs):
+            if False:
+                yield  # pragma: no cover - stub
+
+    class Intents(SimpleNamespace):
+        @classmethod
+        def default(cls):
+            return cls()
+
+    discord = SimpleNamespace(
+        Client=Client,
+        Message=Message,
+        TextChannel=TextChannel,
+        Intents=Intents,
+        utils=_DummyUtils,
+    )
+
 import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
@@ -32,9 +75,33 @@ else:
         return TextBlob(text).sentiment.polarity
 
 
-from deepthought.config import get_settings
-from deepthought.eda.events import EventSubjects, InputReceivedPayload
-from deepthought.eda.publisher import Publisher
+try:
+    from deepthought.config import get_settings
+    from deepthought.eda.events import EventSubjects, InputReceivedPayload
+    from deepthought.eda.publisher import Publisher
+except Exception:  # pragma: no cover - optional dependency
+    from types import SimpleNamespace
+
+    def get_settings():
+        return SimpleNamespace(nats_url="nats://localhost:4222")
+
+    class EventSubjects(SimpleNamespace):
+        INPUT_RECEIVED = "dtr.input.received"
+
+    class InputReceivedPayload:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        def to_json(self) -> str:
+            return "{}"
+
+    class Publisher:
+        def __init__(self, *args, **kwargs) -> None:
+            self._nc = None
+
+        async def publish(self, *args, **kwargs) -> None:
+            return None
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -94,7 +161,14 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
+        base_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
+        topics = await get_recent_topics()
+        if topics:
+            seed = " ".join(topics)
+            gen_prompt = f"{seed}. {base_prompt}"
+        else:
+            gen_prompt = base_prompt
+
         generator = _get_idle_generator()
         outputs = await asyncio.to_thread(
             generator,
@@ -215,6 +289,14 @@ class DBManager:
             )
             """
         )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recent_topics (
+                topic TEXT PRIMARY KEY,
+                last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         await self._db.commit()
 
     async def log_interaction(self, user_id: int, target_id: int) -> None:
@@ -260,6 +342,15 @@ class DBManager:
             "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
             (str(user_id), topic, memory, sentiment_score),
         )
+        if topic:
+            await self._db.execute(
+                """
+                INSERT INTO recent_topics (topic, last_used)
+                VALUES (?, CURRENT_TIMESTAMP)
+                ON CONFLICT(topic) DO UPDATE SET last_used=CURRENT_TIMESTAMP
+                """,
+                (topic,),
+            )
         await self._db.commit()
 
     async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
@@ -327,6 +418,16 @@ class DBManager:
             (str(user_id), str(channel_id)),
         ) as cur:
             return await cur.fetchone()
+
+    async def get_recent_topics(self, limit: int = 3) -> list[str]:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT topic FROM recent_topics ORDER BY last_used DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [r[0] for r in rows]
 
     async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
         if not isinstance(prompt, str) or not prompt.strip():
@@ -536,6 +637,10 @@ async def update_sentiment_trend(
 
 async def get_sentiment_trend(user_id: int, channel_id: int):
     return await db_manager.get_sentiment_trend(user_id, channel_id)
+
+
+async def get_recent_topics(limit: int = 3) -> list[str]:
+    return await db_manager.get_recent_topics(limit)
 
 
 async def queue_deep_reflection(user_id: int, context: dict, prompt: str) -> int:
