@@ -43,7 +43,11 @@ def check_nats_server_running(url: str = NATS_URL) -> bool:
         return False
 
 
-async def setup_jetstream():
+class JetStreamSetupError(Exception):
+    """Raised when JetStream initialization fails."""
+
+
+async def setup_jetstream() -> None:
     """Set up the JetStream streams needed for testing."""
     logger.info("Setting up JetStream streams for DeepThought reThought...")
 
@@ -52,7 +56,7 @@ async def setup_jetstream():
         logger.error("NATS server does not appear to be running!")
         logger.error("Please start a NATS server with JetStream enabled before running this script.")
         logger.error("Example command: 'nats-server -js'")
-        sys.exit(1)
+        raise JetStreamSetupError("NATS server unavailable")
 
     # Connect to NATS
     nats_client = NATS()
@@ -92,7 +96,7 @@ async def setup_jetstream():
         logger.error(
             "Please ensure your NATS server is running and JetStream is enabled (e.g., start with 'nats-server -js')."
         )
-        sys.exit(1)
+        raise JetStreamSetupError("Timed out connecting to NATS")
     except Exception as e:
         logger.error(f"Failed to set up JetStream: {e}")
         if "Connection refused" in str(e):  # This check is good
@@ -108,7 +112,7 @@ async def setup_jetstream():
                 "An unexpected error occurred. Ensure NATS is running, JetStream is enabled ('-js' flag), and the server is accessible at %s."
                 % NATS_URL
             )
-        sys.exit(1)
+        raise JetStreamSetupError("Failed to set up JetStream")
     finally:
         # Close the connection
         if nats_client.is_connected:
@@ -116,5 +120,18 @@ async def setup_jetstream():
             logger.info("Disconnected from NATS server")
 
 
+def main() -> int:
+    """CLI entry point for setup_jetstream."""
+    try:
+        asyncio.run(setup_jetstream())
+        return 0
+    except JetStreamSetupError as e:
+        logger.error(e)
+        return 1
+    except Exception as e:  # pragma: no cover - unexpected errors
+        logger.error(f"Unexpected error: {e}")
+        return 1
+
+
 if __name__ == "__main__":
-    asyncio.run(setup_jetstream())
+    sys.exit(main())

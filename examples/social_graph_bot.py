@@ -18,11 +18,16 @@ from deepthought.services.scheduler import SchedulerService
 
 
 
+
 import aiohttp
 import aiosqlite
 
+from deepthought.goal_scheduler import GoalScheduler
+from deepthought.graph.connector import GraphConnector
+from deepthought.graph.dal import GraphDAL
 from deepthought.services import PersonaManager
 from deepthought.services.moderation import is_allowed
+
 
 
 try:
@@ -216,6 +221,7 @@ BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
 MAX_MEMORY_LENGTH = 1000
 MAX_THEORY_LENGTH = 256
 MAX_PROMPT_LENGTH = 2000
+
 
 class DBManager:
     """Lightweight wrapper managing a single aiosqlite connection."""
@@ -847,7 +853,7 @@ async def _ensure_nats() -> None:
 
 async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
-    if not is_allowed(text):
+    if not is_allowed(text):  # noqa: F821 - defined in optional module
         logger.info("Dropping INPUT_RECEIVED due to banned content")
         return
     await _ensure_nats()
@@ -1140,7 +1146,7 @@ class SocialGraphBot(discord.Client):
         self.monitor_channel_id = monitor_channel_id
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler()
-        self.scheduler_service: SchedulerService | None = None
+        self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
         self.persona_manager = PersonaManager(db_manager)
 
     async def setup_hook(self) -> None:

@@ -50,7 +50,7 @@ pip install -r requirements.txt
 # Start NATS with JetStream enabled
 docker run --rm -p 4222:4222 -p 8222:8222 nats:latest -js
 # Initialize JetStream streams
-python setup_jetstream.py
+python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
 ```
 
 Notes: Everything worked out of the box. Feel free to add your own setup notes below!
