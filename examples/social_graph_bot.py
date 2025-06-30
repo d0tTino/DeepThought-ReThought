@@ -110,7 +110,9 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
 CURRENT_DB_PATH = DB_PATH
@@ -172,16 +174,12 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        if prompt:
-            gen_prompt = prompt
-        else:
-            gen_prompt = os.getenv(
-                "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
-            )
-            if "IDLE_GENERATOR_PROMPT" not in os.environ:
-                topics = await get_recent_topics()
-                if topics:
-                    gen_prompt += " Topics: " + ", ".join(topics)
+        gen_prompt = prompt or os.getenv(
+            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
+        )
+        topics = await get_recent_topics(3)
+        if topics:
+            gen_prompt = ", ".join(topics) + ": " + gen_prompt
 
         generator = _get_idle_generator()
         outputs = await asyncio.to_thread(
@@ -248,6 +246,18 @@ class DBManager:
         )
         await self._db.execute(
             """
+            CREATE TABLE IF NOT EXISTS relationships (
+                source_id TEXT,
+                target_id TEXT,
+                interaction_count INTEGER DEFAULT 0,
+                sentiment_sum REAL DEFAULT 0,
+                PRIMARY KEY(source_id, target_id)
+            )
+            """
+        )
+        await self._db.execute(
+            """
+
             CREATE TABLE IF NOT EXISTS memories (
                 user_id TEXT,
                 topic TEXT,
@@ -330,12 +340,22 @@ class DBManager:
         )
         await self._db.commit()
 
-    async def log_interaction(self, user_id: int, target_id: int) -> None:
+    async def log_interaction(
+        self,
+        user_id: int,
+        target_id: int | None = None,
+        sentiment_score: float | None = None,
+    ) -> None:
         await self.connect()
         assert self._db
+        if sentiment_score is not None:
+            if not isinstance(sentiment_score, (int, float)):
+                raise ValueError("sentiment_score must be numeric")
+            if not -1 <= float(sentiment_score) <= 1:
+                raise ValueError("sentiment_score out of range")
         await self._db.execute(
             "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
-            (str(user_id), str(target_id)),
+            (str(user_id), str(target_id) if target_id is not None else None),
         )
         await self._db.execute(
             """
@@ -345,6 +365,17 @@ class DBManager:
             """,
             (str(user_id),),
         )
+        if target_id is not None:
+            await self._db.execute(
+                """
+                INSERT INTO relationships (source_id, target_id, interaction_count, sentiment_sum)
+                VALUES (?, ?, 1, ?)
+                ON CONFLICT(source_id, target_id) DO UPDATE SET
+                    interaction_count=relationships.interaction_count + 1,
+                    sentiment_sum=relationships.sentiment_sum + excluded.sentiment_sum
+                """,
+                (str(user_id), str(target_id), sentiment_score or 0.0),
+            )
         await self._db.commit()
 
     async def recall_user(self, user_id: int):
@@ -392,7 +423,9 @@ class DBManager:
             )
         await self._db.commit()
 
-    async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
+    async def store_theory(
+        self, subject_id: int, theory: str, confidence: float
+    ) -> None:
         if not isinstance(theory, str) or not theory.strip():
             raise ValueError("theory must be a non-empty string")
         if len(theory) > MAX_THEORY_LENGTH:
@@ -458,7 +491,9 @@ class DBManager:
         ) as cur:
             return await cur.fetchone()
 
-    async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
+    async def queue_deep_reflection(
+        self, user_id: int, context: dict, prompt: str
+    ) -> int:
 
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
@@ -545,6 +580,30 @@ class DBManager:
             row = await cur.fetchone()
             return int(row[0]) if row else 0
 
+    async def get_relationship(self, user_id: int, target_id: int):
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT interaction_count, sentiment_sum FROM relationships WHERE source_id=? AND target_id=?",
+            (str(user_id), str(target_id)),
+        ) as cur:
+            return await cur.fetchone()
+
+    async def _get_relationship_avg(self, user_id: int, target_id: int) -> float:
+        row = await self.get_relationship(user_id, target_id)
+        if not row or not row[0]:
+            return 0.0
+        count, sentiment_sum = row
+        return float(sentiment_sum) / count
+
+    async def get_friendliness(self, user_id: int, target_id: int) -> float:
+        avg = await self._get_relationship_avg(user_id, target_id)
+        return max(0.0, avg)
+
+    async def get_hostility(self, user_id: int, target_id: int) -> float:
+        avg = await self._get_relationship_avg(user_id, target_id)
+        return min(0.0, avg)
+
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
         if not isinstance(theme, str) or not theme.strip():
             raise ValueError("theme must be a non-empty string")
@@ -588,8 +647,7 @@ class DBManager:
             (limit,),
         ) as cur:
             rows = await cur.fetchall()
-        return [r[0] for r in rows]
-
+            return [r[0] for r in rows]
 
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
@@ -602,7 +660,11 @@ async def init_db(db_path: str | None = None) -> None:
     target_path = (
         db_path
         if db_path is not None
-        else (DB_PATH if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH else db_manager.db_path)
+        else (
+            DB_PATH
+            if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH
+            else db_manager.db_path
+        )
     )
 
     if db_manager.db_path != target_path:
@@ -614,8 +676,14 @@ async def init_db(db_path: str | None = None) -> None:
     CURRENT_DB_PATH = db_manager.db_path
 
 
-async def log_interaction(user_id: int, target_id: int) -> None:
-    await db_manager.log_interaction(user_id, target_id)
+async def log_interaction(
+    user_id: int,
+    target_id: int | None = None,
+    sentiment_score: float | None = None,
+) -> None:
+    await db_manager.log_interaction(
+        user_id, target_id, sentiment_score=sentiment_score
+    )
 
 
 async def recall_user(user_id: int):
@@ -628,7 +696,9 @@ async def store_memory(
     topic: str = "",
     sentiment_score: float | None = None,
 ) -> None:
-    await db_manager.store_memory(user_id, memory, topic=topic, sentiment_score=sentiment_score)
+    await db_manager.store_memory(
+        user_id, memory, topic=topic, sentiment_score=sentiment_score
+    )
 
 
 async def send_to_prism(data: dict) -> None:
@@ -663,7 +733,9 @@ async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
     await _ensure_nats()
     if _input_publisher is None:
-        logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
+        logger.warning(
+            "Dropping INPUT_RECEIVED event because NATS publisher is unavailable"
+        )
 
         return
     payload = InputReceivedPayload(
@@ -724,6 +796,14 @@ async def adjust_affinity(user_id: int, delta: int) -> None:
 
 async def get_affinity(user_id: int) -> int:
     return await db_manager.get_affinity(user_id)
+
+
+async def get_friendliness(user_id: int, target_id: int) -> float:
+    return await db_manager.get_friendliness(user_id, target_id)
+
+
+async def get_hostility(user_id: int, target_id: int) -> float:
+    return await db_manager.get_hostility(user_id, target_id)
 
 
 async def set_theme(user_id: int, channel_id: int, theme: str) -> None:
@@ -853,7 +933,9 @@ async def last_human_message_age(channel: discord.TextChannel, limit: int = 50):
     """Return minutes since the most recent human message or ``None`` if none."""
     async for msg in channel.history(limit=limit):
         if not msg.author.bot:
-            return (discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+            return (
+                discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)
+            ).total_seconds() / 60
     return None
 
 
@@ -878,9 +960,15 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
 
             respond_to = None
             send_prompt = False
-            if last_message and last_message.author.bot and prev_message and not prev_message.author.bot:
+            if (
+                last_message
+                and last_message.author.bot
+                and prev_message
+                and not prev_message.author.bot
+            ):
                 age = (
-                    discord.utils.utcnow() - prev_message.created_at.replace(tzinfo=timezone.utc)
+                    discord.utils.utcnow()
+                    - prev_message.created_at.replace(tzinfo=timezone.utc)
                 ).total_seconds() / 60
                 if age < PLAYFUL_REPLY_TIMEOUT_MINUTES:
                     await asyncio.sleep(60)
@@ -891,7 +979,8 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                 send_prompt = True
             else:
                 idle_minutes = (
-                    discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)
+                    discord.utils.utcnow()
+                    - last_message.created_at.replace(tzinfo=timezone.utc)
                 ).total_seconds() / 60
                 if idle_minutes >= IDLE_TIMEOUT_MINUTES:
                     send_prompt = True
@@ -937,14 +1026,7 @@ class SocialGraphBot(discord.Client):
     async def setup_hook(self) -> None:
         await db_manager.connect()
         await init_db()
-        await _ensure_nats()
-        if _input_publisher is not None:
-            self.scheduler_service = SchedulerService(
-                _input_publisher,
-                FileGraphDAL(),
-                GraphDAL(GraphConnector()),
-            )
-            await self.scheduler_service.start()
+
         self._bg_tasks.append(
             self.loop.create_task(monitor_channels(self, self.monitor_channel_id))
         )
@@ -967,7 +1049,9 @@ class SocialGraphBot(discord.Client):
             topic=topic,
             sentiment_score=sentiment_score,
         )
-        await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
+        await update_sentiment_trend(
+            message.author.id, message.channel.id, sentiment_score
+        )
 
         bots, _ = await who_is_active(message.channel)
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
