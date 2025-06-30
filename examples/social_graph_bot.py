@@ -10,14 +10,18 @@ import uuid
 from datetime import timedelta, timezone
 from typing import TYPE_CHECKING, List, Tuple
 
-from typing import TYPE_CHECKING
+from deepthought.goal_scheduler import GoalScheduler
+from deepthought.graph.connector import GraphConnector
+from deepthought.graph.dal import GraphDAL
+from deepthought.services.file_graph_dal import FileGraphDAL
 
 
-if TYPE_CHECKING:  # pragma: no cover - for type hints only
-    from deepthought.services.scheduler import SchedulerService as _SchedulerService
 
 import aiohttp
 import aiosqlite
+
+from deepthought.services import PersonaManager
+
 
 try:
     import discord

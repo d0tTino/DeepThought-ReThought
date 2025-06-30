@@ -73,6 +73,6 @@ async def test_handle_input_updates_graph_and_publishes(monkeypatch):
     subject, sent_payload = service._publisher.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
-    assert "hello" in sent_payload.retrieved_knowledge["retrieved_knowledge"]["facts"]
+    assert "hello" in sent_payload.retrieved_knowledge["facts"]
     ts = sent_payload.timestamp
     assert datetime.fromisoformat(ts).tzinfo == timezone.utc
