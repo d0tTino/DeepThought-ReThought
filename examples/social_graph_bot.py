@@ -10,15 +10,6 @@ import uuid
 from datetime import timedelta, timezone
 from typing import TYPE_CHECKING, List, Tuple
 
-from deepthought.goal_scheduler import GoalScheduler
-from deepthought.graph.connector import GraphConnector
-from deepthought.graph.dal import GraphDAL
-from deepthought.services.file_graph_dal import FileGraphDAL
-from deepthought.services.scheduler import SchedulerService
-
-
-
-
 import aiohttp
 import aiosqlite
 
@@ -26,8 +17,9 @@ from deepthought.goal_scheduler import GoalScheduler
 from deepthought.graph.connector import GraphConnector
 from deepthought.graph.dal import GraphDAL
 from deepthought.services import PersonaManager
+from deepthought.services.file_graph_dal import FileGraphDAL
 from deepthought.services.moderation import is_allowed
-
+from deepthought.services.scheduler import SchedulerService
 
 
 try:
