@@ -373,17 +373,20 @@ PYTHONPATH=src pytest tests/
     ```
     The default settings are configured in [.flake8](.flake8).
 
-6.  Install and run the `pre-commit` hooks to automatically format and lint
-    your changes:
+6.  Install the `pre-commit` hooks so formatting and linting run automatically:
     ```bash
     pip install pre-commit
     pre-commit install
     ```
-    To run all hooks manually:
+    To check only the files you have modified use:
+    ```bash
+    pre-commit run
+    ```
+    Or run all hooks on the entire repository:
     ```bash
     pre-commit run --all-files
     ```
-    The configuration is provided in [.pre-commit-config.yaml](.pre-commit-config.yaml).
+    The configuration is stored in [.pre-commit-config.yaml](.pre-commit-config.yaml).
 
 7.  Alternatively, run the helper script that mirrors the CI workflow and
     automates setup:
