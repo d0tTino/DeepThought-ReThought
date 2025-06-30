@@ -225,6 +225,14 @@ class DBManager:
         )
         await self._db.execute(
             """
+            CREATE TABLE IF NOT EXISTS affinity (
+                user_id TEXT PRIMARY KEY,
+                score INTEGER DEFAULT 0
+            )
+            """
+        )
+        await self._db.execute(
+            """
             CREATE TABLE IF NOT EXISTS memories (
                 user_id TEXT,
                 topic TEXT,

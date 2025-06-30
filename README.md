@@ -118,6 +118,20 @@ Specify the NATS server address with the `NATS_URL` environment variable. If not
 export NATS_URL=nats://my-nats:4222
 ```
 
+The optional offline search index used by `HierarchicalService` can be configured
+via `DT_SEARCH_DB`:
+
+```bash
+export DT_SEARCH_DB=/data/wiki.db
+```
+
+`SchedulerService` runs periodic summarization and reminder tasks. Adjust the interval
+between summaries with `DT_SCHEDULER_INTERVAL` (seconds):
+
+```bash
+export DT_SCHEDULER_INTERVAL=120
+```
+
 ### Required environment variables
 
 * `DISCORD_TOKEN` - Discord bot token
