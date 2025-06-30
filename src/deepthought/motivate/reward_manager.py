@@ -10,7 +10,13 @@ from typing import Deque, Optional
 import aiohttp
 import numpy as np
 from nats.aio.msg import Msg
-from sentence_transformers import SentenceTransformer, util
+try:  # pragma: no cover - optional heavy dependency
+    from sentence_transformers import SentenceTransformer, util
+except Exception:  # pragma: no cover - fallback when package missing
+    from types import SimpleNamespace
+
+    SentenceTransformer = None  # type: ignore
+    util = SimpleNamespace(cos_sim=lambda a, b: [[0.0]])
 
 from ..config import get_settings
 from ..eda.publisher import Publisher
@@ -43,7 +49,14 @@ class RewardManager:
         self._social_weight = settings.social_weight
         self._window: Deque[np.ndarray] = deque(maxlen=settings.window_size)
 
-        self._model = model or SentenceTransformer("all-MiniLM-L6-v2")
+        if model is not None:
+            self._model = model
+        else:
+            if SentenceTransformer is None:  # pragma: no cover - optional dep
+                raise ImportError(
+                    "sentence-transformers is required unless a model is provided"
+                )
+            self._model = SentenceTransformer("all-MiniLM-L6-v2")
 
     async def start_listening(self, durable_name: str = "reward_listener") -> bool:
         """Begin consuming ``chat.bot`` messages."""
