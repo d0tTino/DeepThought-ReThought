@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import random
+import sys
+import types
 import uuid
 from datetime import timedelta, timezone
 from typing import List, Tuple
@@ -186,6 +188,7 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
         if topics:
             gen_prompt = ", ".join(topics) + ": " + gen_prompt
 
+
         generator = _get_idle_generator()
         outputs = await asyncio.to_thread(
             generator,
@@ -208,6 +211,89 @@ BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
 MAX_MEMORY_LENGTH = 1000
 MAX_THEORY_LENGTH = 256
 MAX_PROMPT_LENGTH = 2000
+
+CREATE_TABLE_QUERIES = [
+    """
+    CREATE TABLE IF NOT EXISTS interactions (
+        user_id TEXT,
+        target_id TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS affinity (
+        user_id TEXT PRIMARY KEY,
+        score INTEGER DEFAULT 0
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS relationships (
+        source_id TEXT,
+        target_id TEXT,
+        interaction_count INTEGER DEFAULT 0,
+        sentiment_sum REAL DEFAULT 0,
+        PRIMARY KEY(source_id, target_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS memories (
+        user_id TEXT,
+        topic TEXT,
+        memory TEXT,
+        sentiment_score REAL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS theories (
+        subject_id TEXT,
+        theory TEXT,
+        confidence REAL,
+        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(subject_id, theory)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS queued_tasks (
+        task_id INTEGER PRIMARY KEY,
+        user_id TEXT,
+        context TEXT,
+        prompt TEXT,
+        status TEXT DEFAULT 'pending',
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS sentiment_trends (
+        user_id TEXT,
+        channel_id TEXT,
+        sentiment_sum REAL DEFAULT 0,
+        message_count INTEGER DEFAULT 0,
+        PRIMARY KEY(user_id, channel_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS themes (
+        user_id TEXT,
+        channel_id TEXT,
+        theme TEXT,
+        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, channel_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS user_flags (
+        user_id TEXT PRIMARY KEY,
+        do_not_mock INTEGER
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS recent_topics (
+        topic TEXT PRIMARY KEY,
+        last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+]
 
 
 class DBManager:
@@ -319,6 +405,7 @@ class DBManager:
         assert self._db
         for stmt in self._create_table_statements():
             await self._db.execute(stmt)
+
         await self._db.commit()
 
     async def log_interaction(
@@ -1008,7 +1095,12 @@ class SocialGraphBot(discord.Client):
         )
         await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
 
-        bots, _, bot_times = await who_is_active(message.channel)
+        result = await who_is_active(message.channel)
+        if len(result) == 3:
+            bots, _, bot_times = result
+        else:
+            bots, _ = result
+            bot_times = {}
         now = discord.utils.utcnow()
         user_id = self.user.id if self.user else None
         for bot_id, ts in bot_times.items():
@@ -1064,7 +1156,6 @@ class SocialGraphBot(discord.Client):
 
         for theory, conf in evaluate_triggers(message):
             await store_theory(message.author.id, theory, conf)
-            await message.channel.send("Some patterns... are best left unspoken.")
 
         await queue_deep_reflection(
             message.author.id,

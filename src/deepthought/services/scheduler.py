@@ -94,6 +94,7 @@ class SchedulerService:
     async def _generate_daily_summary(self) -> None:
         from examples.social_graph_bot import generate_reflection  # local import to avoid circular
 
+
         facts = self._memory_dal.get_recent_facts(50)
         text = " ".join(facts)
         summary = generate_reflection(text)
