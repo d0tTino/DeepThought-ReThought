@@ -4,17 +4,13 @@ import pytest
 
 from tests.helpers import chroma_available
 
-try:
-    import chromadb
-except Exception:  # pragma: no cover - optional dependency
-    chromadb = None
+# Skip the test entirely when the optional chromadb package is missing
+chromadb = pytest.importorskip("chromadb")
 
 pytestmark = pytest.mark.chroma
 
 
 def test_chroma_running():
-    if chromadb is None:
-        pytest.skip("chromadb not installed")
     if not chroma_available():
         pytest.skip("Chroma service not available")
     client = chromadb.HttpClient(host=os.getenv("CHROMA_HOST", "localhost"), port=int(os.getenv("CHROMA_PORT", 8000)))

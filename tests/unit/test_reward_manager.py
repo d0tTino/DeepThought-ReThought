@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from deepthought.motivate import reward_manager as rm_mod
+rm_mod = pytest.importorskip("deepthought.motivate.reward_manager")
 
 
 class DummySubscriber:
@@ -50,9 +50,7 @@ class DummyMsg:
 @pytest.mark.asyncio
 async def test_start_listening_subscribes():
     sub = DummySubscriber()
-    mgr = rm_mod.RewardManager(
-        sub, DummyLedger(), DummyPublisher(), "tok", model=DummyModel()
-    )
+    mgr = rm_mod.RewardManager(sub, DummyLedger(), DummyPublisher(), "tok", model=DummyModel())
     result = await mgr.start_listening()
     assert result is True
     assert sub.calls
@@ -86,9 +84,7 @@ async def test_handle_chat_event_publishes(monkeypatch):
 @pytest.mark.asyncio
 async def test_score_social_returns_zero_on_exception(monkeypatch):
     """_score_social should return 0 when the HTTP request fails."""
-    mgr = rm_mod.RewardManager(
-        DummySubscriber(), DummyLedger(), DummyPublisher(), "tok", model=DummyModel()
-    )
+    mgr = rm_mod.RewardManager(DummySubscriber(), DummyLedger(), DummyPublisher(), "tok", model=DummyModel())
 
     class DummySession:
         async def __aenter__(self):
@@ -109,9 +105,7 @@ async def test_score_social_returns_zero_on_exception(monkeypatch):
 @pytest.mark.asyncio
 async def test_score_social_returns_zero_on_500(monkeypatch):
     """_score_social should return 0 when the HTTP status is not 200."""
-    mgr = rm_mod.RewardManager(
-        DummySubscriber(), DummyLedger(), DummyPublisher(), "tok", model=DummyModel()
-    )
+    mgr = rm_mod.RewardManager(DummySubscriber(), DummyLedger(), DummyPublisher(), "tok", model=DummyModel())
 
     class DummyResp:
         def __init__(self, status):
@@ -139,9 +133,7 @@ async def test_score_social_returns_zero_on_500(monkeypatch):
         def get(self, *args, **kwargs):
             return self.resp
 
-    monkeypatch.setattr(
-        rm_mod.aiohttp, "ClientSession", lambda: DummySession(DummyResp(500))
-    )
+    monkeypatch.setattr(rm_mod.aiohttp, "ClientSession", lambda: DummySession(DummyResp(500)))
 
     result = await mgr._score_social(1, 2)
     assert result == 0

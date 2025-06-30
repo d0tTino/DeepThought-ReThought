@@ -358,6 +358,13 @@ Tests are implemented using the `pytest` framework. To run the tests:
     ```
     The pinned versions in this file match the CI environment.
     (Use `requirements.txt` instead if you plan to run the full application.)
+
+    A few tests cover optional integrations. They are skipped unless the
+    corresponding packages are installed. Install them if you wish to run the
+    entire suite:
+    ```bash
+    pip install chromadb pymemgraph deepthought-motivate
+    ```
 4.  Run pytest with the project root added to `PYTHONPATH` so the `src` modules
     are discoverable:
     ```bash
