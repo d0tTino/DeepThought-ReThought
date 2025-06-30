@@ -2,19 +2,18 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from collections import deque
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Deque, List, Optional
 
 import nats
 import torch
-from contextlib import contextmanager
 from nats.aio.msg import Msg
 
 from ..config import get_settings
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
-
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +42,7 @@ class BaseLLM(ABC):
         tokenizer,
         model,
         reward_buffer_size: Optional[int] = None,
+        persona_manager=None,
     ) -> None:
         self._publisher = publisher
         self._subscriber = subscriber
@@ -50,6 +50,8 @@ class BaseLLM(ABC):
         self._model = model
         buffer_size = reward_buffer_size or get_settings().reward.buffer_size
         self._recent_rewards: Deque[float] = deque(maxlen=buffer_size)
+        self._persona_manager = persona_manager
+        self._persona_descriptions = get_settings().persona_descriptions
 
     @abstractmethod
     async def start_listening(self, durable_name: str = "llm_listener") -> bool:
@@ -59,14 +61,17 @@ class BaseLLM(ABC):
     async def stop_listening(self) -> None:
         """Stop consuming events."""
 
-    def _build_prompt(self, facts: List[str]) -> str:
-        """Assemble a prompt from retrieved facts and recent rewards."""
+    def _build_prompt(self, facts: List[str], persona_desc: str | None = None) -> str:
+        """Assemble a prompt from persona, retrieved facts and rewards."""
         reward_part = ""
         if self._recent_rewards:
             avg = sum(self._recent_rewards) / len(self._recent_rewards)
             reward_part = f"[avg_reward: {avg:.2f}]\n"
         base = "\n".join(facts) + "\nResponse:" if facts else "Response:"
-        return reward_part + base
+        prompt = reward_part + base
+        if persona_desc:
+            prompt = persona_desc.strip() + "\n" + prompt
+        return prompt
 
     async def _handle_memory_event(self, msg: Msg) -> None:
         """Common handler for MEMORY_RETRIEVED events."""
@@ -97,7 +102,14 @@ class BaseLLM(ABC):
 
             logger.info("%s received memory event ID %s", self.__class__.__name__, input_id)
 
-            prompt = self._build_prompt([str(f) for f in facts])
+            persona_desc = ""
+            if self._persona_manager is not None:
+                try:
+                    persona_desc = await self._persona_manager.get_description(int(input_id))
+                except Exception:
+                    logger.error("Persona selection failed", exc_info=True)
+
+            prompt = self._build_prompt([str(f) for f in facts], persona_desc)
             inputs = self._tokenizer(prompt, return_tensors="pt")
             with _safe_no_grad():
                 outputs = self._model.generate(

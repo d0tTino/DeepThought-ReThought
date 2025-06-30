@@ -6,8 +6,8 @@ import yaml
 from deepthought.config import (
     BotEnv,
     get_settings,
-    load_settings,
     load_bot_env,
+    load_settings,
 )
 
 
@@ -96,6 +96,14 @@ def test_yaml_file_load(tmp_path):
     assert settings.reward.novelty_weight == 0.9
     assert settings.reward.social_weight == 0.8
     assert settings.reward.buffer_size == 25
+
+
+def test_persona_descriptions_file(tmp_path):
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps({"persona_descriptions": {"friendly": "hello"}}))
+
+    settings = load_settings(str(cfg))
+    assert settings.persona_descriptions["friendly"] == "hello"
 
 
 def test_get_settings_reload(monkeypatch, tmp_path):

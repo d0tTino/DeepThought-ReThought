@@ -226,3 +226,68 @@ async def test_publish_input_received_warns_when_no_publisher(monkeypatch, caplo
     assert any(
         "Dropping INPUT_RECEIVED event because NATS publisher is unavailable" in r.getMessage() for r in caplog.records
     )
+
+
+class DummyPublisher:
+    def __init__(self):
+        self.published = []
+
+    async def publish(self, *args, **kwargs):
+        self.published.append(args)
+
+
+@pytest.mark.asyncio
+async def test_publish_input_received_filters_banned(monkeypatch):
+    pub = DummyPublisher()
+    sg._input_publisher = pub
+
+    async def fake_ensure():
+        return None
+
+    monkeypatch.setattr(sg, "_ensure_nats", fake_ensure)
+
+    await sg.publish_input_received("this contains banned text")
+    assert pub.published == []
+
+    await sg.publish_input_received("hello")
+    assert pub.published and pub.published[0][0] == sg.EventSubjects.INPUT_RECEIVED
+
+
+@pytest.mark.asyncio
+async def test_on_message_ignores_other_bot_mentions(tmp_path, monkeypatch):
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(sg, "publish_input_received", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    dummy = DummyAuthor(5, bot=True)
+    monkeypatch.setattr(
+        sg.SocialGraphBot,
+        "user",
+        property(lambda self: dummy),
+        raising=False,
+    )
+
+    message = DummyMessage("hi otherbot")
+    message.mentions = [DummyAuthor(9, bot=True)]
+    await bot.on_message(message)
+    assert message.channel.sent_messages == []
+
+    message2 = DummyMessage(f"hi both <@{bot.user.id}>", message_id=11)
+    message2.mentions = [DummyAuthor(9, bot=True), bot.user]
+    await bot.on_message(message2)
+    assert message2.channel.sent_messages
+
+    await sg.db_manager.close()
