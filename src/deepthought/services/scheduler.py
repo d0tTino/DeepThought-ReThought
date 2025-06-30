@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, List, Optional
@@ -33,6 +34,8 @@ class SchedulerService:
         graph_dal: GraphDAL,
         summary_interval: float = 60.0,
         daily_summary_interval: float = 24 * 60 * 60.0,
+        chat_summary_interval: float = 300.0,
+        summary_db=None,
         now_func: Callable[[], datetime] | None = None,
         sleep_func: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -43,11 +46,15 @@ class SchedulerService:
         self._daily_summary_interval = daily_summary_interval
         self._now = now_func or (lambda: datetime.now(timezone.utc))
         self._sleep = sleep_func
+        self._summary_db = summary_db
+        self._chat_summary_interval = chat_summary_interval
         self._reminders: List[ScheduledReminder] = []
         self._running = False
         self._summary_task: Optional[asyncio.Task] = None
         self._reminder_task: Optional[asyncio.Task] = None
         self._daily_summary_task: Optional[asyncio.Task] = None
+        self._chat_summary_task: Optional[asyncio.Task] = None
+        self._goal_task: Optional[asyncio.Task] = None
 
     def schedule_reminder(self, message: str, when: datetime, reminder_id: str) -> None:
         """Schedule a reminder message for the future."""
@@ -59,11 +66,23 @@ class SchedulerService:
         self._summary_task = asyncio.create_task(self._summary_loop())
         self._daily_summary_task = asyncio.create_task(self._daily_summary_loop())
         self._reminder_task = asyncio.create_task(self._reminder_loop())
+        self._chat_summary_task = asyncio.create_task(self._chat_summary_loop())
+        self._goal_task = asyncio.create_task(self._goal_loop())
         return True
 
     async def stop(self) -> None:
         self._running = False
-        tasks = [t for t in [self._summary_task, self._daily_summary_task, self._reminder_task] if t]
+        tasks = [
+            t
+            for t in [
+                self._summary_task,
+                self._daily_summary_task,
+                self._reminder_task,
+                self._chat_summary_task,
+                self._goal_task,
+            ]
+            if t
+        ]
         for task in tasks:
             task.cancel()
         for task in tasks:
@@ -103,6 +122,21 @@ class SchedulerService:
             {"text": summary, "timestamp": self._now().isoformat()},
         )
 
+    async def _generate_chat_summary(self) -> None:
+        facts = self._memory_dal.get_recent_facts(20)
+        text = " ".join(facts)
+        summary = summarise_message(text, max_words=20)
+        self._graph_dal.add_entity(
+            "ChatSummary",
+            {"text": summary, "timestamp": self._now().isoformat()},
+        )
+        if self._summary_db is not None:
+            goal = {
+                "due": (self._now() + timedelta(seconds=60)).isoformat(),
+                "goal": f"Reflect on: {summary}",
+            }
+            await self._summary_db.add_summary_goal(0, goal, summary)
+
     async def _reminder_loop(self) -> None:
         while self._running:
             await self._sleep(1.0)
@@ -121,3 +155,44 @@ class SchedulerService:
                     use_jetstream=True,
                     timeout=10.0,
                 )
+
+    async def _chat_summary_loop(self) -> None:
+        while self._running:
+            await self._sleep(self._chat_summary_interval)
+            await self._generate_chat_summary()
+
+    async def _goal_loop(self) -> None:
+        if self._summary_db is None:
+            while self._running:
+                await self._sleep(1.0)
+            return
+        while self._running:
+            await self._sleep(1.0)
+            rows = await self._summary_db.list_pending_summary_goals()
+            now = self._now()
+            for task_id, _uid, ctx_json, prompt in rows:
+                try:
+                    ctx = json.loads(ctx_json)
+                except Exception:
+                    continue
+                due = ctx.get("due")
+                message = ctx.get("goal")
+                if not due or not message:
+                    continue
+                try:
+                    due_dt = datetime.fromisoformat(due)
+                except ValueError:
+                    continue
+                if due_dt <= now:
+                    payload = ReminderTriggeredPayload(
+                        message=message,
+                        reminder_id=str(task_id),
+                        timestamp=now.isoformat(),
+                    )
+                    await self._publisher.publish(
+                        EventSubjects.REMINDER_TRIGGERED,
+                        payload,
+                        use_jetstream=True,
+                        timeout=10.0,
+                    )
+                    await self._summary_db.mark_summary_goal_done(task_id)
