@@ -14,6 +14,8 @@ from deepthought.goal_scheduler import GoalScheduler
 from deepthought.graph.connector import GraphConnector
 from deepthought.graph.dal import GraphDAL
 from deepthought.services.file_graph_dal import FileGraphDAL
+from deepthought.services.moderation import is_allowed
+from deepthought.services.scheduler import SchedulerService
 
 
 
