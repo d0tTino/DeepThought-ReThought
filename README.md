@@ -118,6 +118,20 @@ Specify the NATS server address with the `NATS_URL` environment variable. If not
 export NATS_URL=nats://my-nats:4222
 ```
 
+The optional offline search index used by `HierarchicalService` can be configured
+via `DT_SEARCH_DB`:
+
+```bash
+export DT_SEARCH_DB=/data/wiki.db
+```
+
+`SchedulerService` runs periodic summarization and reminder tasks. Adjust the interval
+between summaries with `DT_SCHEDULER_INTERVAL` (seconds):
+
+```bash
+export DT_SCHEDULER_INTERVAL=120
+```
+
 ### Required environment variables
 
 * `DISCORD_TOKEN` - Discord bot token
@@ -293,6 +307,16 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
 Set the `IDLE_TIMEOUT_MINUTES` environment variable to control the inactivity
 threshold. By default the bot waits five minutes before sending a prompt.
 Enable bot-to-bot chatter by setting `BOT_CHAT_ENABLED=true`.
+
+### Example Goals
+
+The bot's `GoalScheduler` queues reminders formatted as `<seconds>:<message>`. They are forwarded to the `SchedulerService` in the background.
+
+```python
+bot.goal_scheduler.add_goal("60:Stretch your legs", priority=1)
+bot.goal_scheduler.add_goal("300:Time for a break", priority=2)
+```
+
 
 ## Discord Bot Roadmap
 
