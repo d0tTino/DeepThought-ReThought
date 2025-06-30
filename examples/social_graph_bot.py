@@ -297,6 +297,14 @@ class DBManager:
             )
             """
         )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS affinity (
+                user_id TEXT PRIMARY KEY,
+                score INTEGER DEFAULT 0
+            )
+            """
+        )
         await self._db.commit()
 
     async def log_interaction(self, user_id: int, target_id: int) -> None:
@@ -957,7 +965,6 @@ class SocialGraphBot(discord.Client):
         _js_context = None
         _input_publisher = None
         await super().close()
-
 
 
 def run(token: str, monitor_channel_id: int) -> None:
