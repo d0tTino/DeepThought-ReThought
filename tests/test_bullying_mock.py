@@ -54,7 +54,7 @@ class DummyMessage:
 async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     async def noop(*args, **kwargs):
         return None
@@ -90,7 +90,7 @@ async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch, input_events):
 async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch, input_events):
     sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     async def noop(*args, **kwargs):
         return None

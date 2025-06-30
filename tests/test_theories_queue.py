@@ -12,7 +12,7 @@ async def test_store_theory(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.db_manager = sg.DBManager(str(db_file))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
     await sg.store_theory("u1", "insomniac", 0.5)
     async with aiosqlite.connect(str(db_file)) as db:
         async with db.execute("SELECT theory FROM theories WHERE subject_id=?", ("u1",)) as cur:
@@ -26,7 +26,7 @@ async def test_store_theory_update(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.db_manager = sg.DBManager(str(db_file))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
     await sg.store_theory("u1", "insomniac", 0.5)
     await sg.store_theory("u1", "insomniac", 0.8)
     async with aiosqlite.connect(str(db_file)) as db:
@@ -44,7 +44,7 @@ async def test_store_memory(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.db_manager = sg.DBManager(str(db_file))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
     await sg.store_memory("u1", "hello", sentiment_score=0.3)
     async with aiosqlite.connect(str(db_file)) as db:
         async with db.execute(
@@ -61,7 +61,7 @@ async def test_queue_deep_reflection(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.db_manager = sg.DBManager(str(db_file))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
     task_id = await sg.queue_deep_reflection("u2", {"channel_id": 1}, "hello")
     async with aiosqlite.connect(str(db_file)) as db:
         async with db.execute("SELECT status FROM queued_tasks WHERE task_id=?", (task_id,)) as cur:
@@ -75,7 +75,7 @@ async def test_list_pending_tasks(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.db_manager = sg.DBManager(str(db_file))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     ctx1 = {"channel_id": 1}
     ctx2 = {"channel_id": 2}
@@ -93,7 +93,7 @@ async def test_mark_task_done(tmp_path):
     db_file = tmp_path / "db.sqlite"
     sg.db_manager = sg.DBManager(str(db_file))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     task_id = await sg.queue_deep_reflection("u1", {"channel_id": 1}, "hello")
     await sg.db_manager.mark_task_done(task_id)
@@ -163,7 +163,7 @@ class DummyBot:
 async def test_process_deep_reflections_posts(tmp_path, monkeypatch):
     sg.DB_PATH = str(tmp_path / "db.sqlite")
     sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     bot = DummyBot()
 
@@ -188,7 +188,7 @@ async def test_process_deep_reflections_posts(tmp_path, monkeypatch):
 async def test_process_deep_reflections_negative(tmp_path, monkeypatch):
     sg.DB_PATH = str(tmp_path / "db.sqlite")
     sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     bot = DummyBot()
 
@@ -213,7 +213,7 @@ async def test_process_deep_reflections_negative(tmp_path, monkeypatch):
 async def test_store_memory_validation(tmp_path):
     sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
     long_memory = "x" * (sg.MAX_MEMORY_LENGTH + 1)
     with pytest.raises(ValueError):
         await sg.store_memory("u1", long_memory)
@@ -224,7 +224,7 @@ async def test_store_memory_validation(tmp_path):
 async def test_store_theory_validation(tmp_path):
     sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
     with pytest.raises(ValueError):
         await sg.store_theory("u1", "theory", 1.5)
     await sg.db_manager.close()
@@ -234,7 +234,7 @@ async def test_store_theory_validation(tmp_path):
 async def test_queue_deep_reflection_validation(tmp_path):
     sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.connect()
-    await sg.init_db()
+    await sg.db_manager.init_db()
     with pytest.raises(ValueError):
         await sg.queue_deep_reflection("u1", "not a dict", "hi")
     long_prompt = "x" * (sg.MAX_PROMPT_LENGTH + 1)
@@ -247,7 +247,7 @@ async def test_queue_deep_reflection_validation(tmp_path):
 async def test_assign_themes(tmp_path, monkeypatch):
     sg.DB_PATH = str(tmp_path / "db.sqlite")
     sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
-    await sg.init_db()
+    await sg.db_manager.init_db()
 
     await sg.update_sentiment_trend("u1", "c1", 0.5)
     await sg.update_sentiment_trend("u1", "c1", 0.5)
