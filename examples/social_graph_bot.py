@@ -37,9 +37,7 @@ from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.eda.publisher import Publisher
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
 CURRENT_DB_PATH = DB_PATH
@@ -101,9 +99,7 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        gen_prompt = prompt or os.getenv(
-            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
-        )
+        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
         generator = _get_idle_generator()
         outputs = await asyncio.to_thread(
             generator,
@@ -287,9 +283,7 @@ class DBManager:
         )
         await self._db.commit()
 
-    async def store_theory(
-        self, subject_id: int, theory: str, confidence: float
-    ) -> None:
+    async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
         if not isinstance(theory, str) or not theory.strip():
             raise ValueError("theory must be a non-empty string")
         if len(theory) > MAX_THEORY_LENGTH:
@@ -355,9 +349,7 @@ class DBManager:
         ) as cur:
             return await cur.fetchone()
 
-    async def queue_deep_reflection(
-        self, user_id: int, context: dict, prompt: str
-    ) -> int:
+    async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
         if len(prompt) > MAX_PROMPT_LENGTH:
@@ -490,11 +482,7 @@ async def init_db(db_path: str | None = None) -> None:
     target_path = (
         db_path
         if db_path is not None
-        else (
-            DB_PATH
-            if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH
-            else db_manager.db_path
-        )
+        else (DB_PATH if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH else db_manager.db_path)
     )
 
     if db_manager.db_path != target_path:
@@ -520,9 +508,7 @@ async def store_memory(
     topic: str = "",
     sentiment_score: float | None = None,
 ) -> None:
-    await db_manager.store_memory(
-        user_id, memory, topic=topic, sentiment_score=sentiment_score
-    )
+    await db_manager.store_memory(user_id, memory, topic=topic, sentiment_score=sentiment_score)
 
 
 async def send_to_prism(data: dict) -> None:
@@ -557,9 +543,7 @@ async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
     await _ensure_nats()
     if _input_publisher is None:
-        logger.warning(
-            "Dropping INPUT_RECEIVED event because NATS publisher is unavailable"
-        )
+        logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
 
         return
     payload = InputReceivedPayload(
@@ -659,30 +643,34 @@ async def process_deep_reflections(bot: discord.Client) -> None:
     """Background task to process queued reflections."""
     await bot.wait_until_ready()
     while not bot.is_closed():
-        rows = await db_manager.list_pending_tasks()
-        if not rows:
-            logger.debug("No queued reflections to process")
-        for task_id, user_id, ctx_json, prompt in rows:
-            context = json.loads(ctx_json)
-            channel = bot.get_channel(int(context.get("channel_id")))
-            msg_id = context.get("message_id")
-            ref = None
-            if channel and msg_id:
-                try:
-                    ref = await channel.fetch_message(int(msg_id))
-                except Exception:
-                    ref = None
-            if channel:
-                await asyncio.sleep(2)
-                reflection = generate_reflection(prompt)
-                logger.info(f"Posting deep reflection for task {task_id}")
-                await channel.send(
-                    f"After some thought... {reflection}",
-                    reference=ref,
-                )
-            await db_manager.mark_task_done(task_id)
-        await assign_themes()
-        await asyncio.sleep(REFLECTION_CHECK_SECONDS)
+        try:
+            rows = await db_manager.list_pending_tasks()
+            if not rows:
+                logger.debug("No queued reflections to process")
+            for task_id, user_id, ctx_json, prompt in rows:
+                context = json.loads(ctx_json)
+                channel = bot.get_channel(int(context.get("channel_id")))
+                msg_id = context.get("message_id")
+                ref = None
+                if channel and msg_id:
+                    try:
+                        ref = await channel.fetch_message(int(msg_id))
+                    except Exception:
+                        ref = None
+                if channel:
+                    await asyncio.sleep(2)
+                    reflection = generate_reflection(prompt)
+                    logger.info(f"Posting deep reflection for task {task_id}")
+                    await channel.send(
+                        f"After some thought... {reflection}",
+                        reference=ref,
+                    )
+                await db_manager.mark_task_done(task_id)
+            await assign_themes()
+            await asyncio.sleep(REFLECTION_CHECK_SECONDS)
+        except asyncio.CancelledError:
+            logger.info("process_deep_reflections cancelled")
+            break
 
 
 def evaluate_triggers(message: discord.Message) -> List[Tuple[str, float]]:
@@ -712,9 +700,7 @@ async def last_human_message_age(channel: discord.TextChannel, limit: int = 50):
     """Return minutes since the most recent human message or ``None`` if none."""
     async for msg in channel.history(limit=limit):
         if not msg.author.bot:
-            return (
-                discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)
-            ).total_seconds() / 60
+            return (discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
     return None
 
 
@@ -726,61 +712,58 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
         logger.error("Channel %s does not exist", channel_id)
         return
     while not bot.is_closed():
-        last_message = None
-        prev_message = None
-        idx = 0
-        async for msg in channel.history(limit=2):
-            if idx == 0:
-                last_message = msg
-            elif idx == 1:
-                prev_message = msg
-            idx += 1
+        try:
+            last_message = None
+            prev_message = None
+            idx = 0
+            async for msg in channel.history(limit=2):
+                if idx == 0:
+                    last_message = msg
+                elif idx == 1:
+                    prev_message = msg
+                idx += 1
 
-        respond_to = None
-        send_prompt = False
-        if (
-            last_message
-            and last_message.author.bot
-            and prev_message
-            and not prev_message.author.bot
-        ):
-            age = (
-                discord.utils.utcnow()
-                - prev_message.created_at.replace(tzinfo=timezone.utc)
-            ).total_seconds() / 60
-            if age < PLAYFUL_REPLY_TIMEOUT_MINUTES:
-                await asyncio.sleep(60)
-                continue
+            respond_to = None
+            send_prompt = False
+            if last_message and last_message.author.bot and prev_message and not prev_message.author.bot:
+                age = (
+                    discord.utils.utcnow() - prev_message.created_at.replace(tzinfo=timezone.utc)
+                ).total_seconds() / 60
+                if age < PLAYFUL_REPLY_TIMEOUT_MINUTES:
+                    await asyncio.sleep(60)
+                    continue
 
-        if not last_message:
-            send_prompt = True
-        else:
-            idle_minutes = (
-                discord.utils.utcnow()
-                - last_message.created_at.replace(tzinfo=timezone.utc)
-            ).total_seconds() / 60
-            if idle_minutes >= IDLE_TIMEOUT_MINUTES:
+            if not last_message:
                 send_prompt = True
-            elif BOT_CHAT_ENABLED:
-                bots, humans = await who_is_active(channel)
-                if bots and not humans:
-                    age = await last_human_message_age(channel)
-                    if age is None or age >= PLAYFUL_REPLY_TIMEOUT_MINUTES:
-                        send_prompt = True
-                        if last_message.author.bot:
-                            respond_to = last_message
+            else:
+                idle_minutes = (
+                    discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)
+                ).total_seconds() / 60
+                if idle_minutes >= IDLE_TIMEOUT_MINUTES:
+                    send_prompt = True
+                elif BOT_CHAT_ENABLED:
+                    bots, humans = await who_is_active(channel)
+                    if bots and not humans:
+                        age = await last_human_message_age(channel)
+                        if age is None or age >= PLAYFUL_REPLY_TIMEOUT_MINUTES:
+                            send_prompt = True
+                            if last_message.author.bot:
+                                respond_to = last_message
 
-        if send_prompt:
-            prompt = await generate_idle_response()
-            if not prompt:
-                prompt = random.choice(idle_response_candidates)
-            async with channel.typing():
-                await asyncio.sleep(random.uniform(3, 10))
-                if respond_to is not None:
-                    await channel.send(prompt, reference=respond_to)
-                else:
-                    await channel.send(prompt)
-        await asyncio.sleep(60)
+            if send_prompt:
+                prompt = await generate_idle_response()
+                if not prompt:
+                    prompt = random.choice(idle_response_candidates)
+                async with channel.typing():
+                    await asyncio.sleep(random.uniform(3, 10))
+                    if respond_to is not None:
+                        await channel.send(prompt, reference=respond_to)
+                    else:
+                        await channel.send(prompt)
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            logger.info("monitor_channels cancelled")
+            break
 
 
 class SocialGraphBot(discord.Client):
@@ -793,12 +776,13 @@ class SocialGraphBot(discord.Client):
         intents.presences = True
         super().__init__(*args, intents=intents, **kwargs)
         self.monitor_channel_id = monitor_channel_id
+        self._bg_tasks: list[asyncio.Task] = []
 
     async def setup_hook(self) -> None:
         await db_manager.connect()
         await init_db()
-        self.loop.create_task(monitor_channels(self, self.monitor_channel_id))
-        self.loop.create_task(process_deep_reflections(self))
+        self._bg_tasks.append(self.loop.create_task(monitor_channels(self, self.monitor_channel_id)))
+        self._bg_tasks.append(self.loop.create_task(process_deep_reflections(self)))
 
     async def on_ready(self) -> None:
         """Log basic information once the bot connects."""
@@ -816,9 +800,7 @@ class SocialGraphBot(discord.Client):
             topic=topic,
             sentiment_score=sentiment_score,
         )
-        await update_sentiment_trend(
-            message.author.id, message.channel.id, sentiment_score
-        )
+        await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
 
         bots, _ = await who_is_active(message.channel)
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
@@ -875,6 +857,21 @@ class SocialGraphBot(discord.Client):
 
         if hasattr(self, "process_commands"):
             await self.process_commands(message)
+
+    async def close(self) -> None:
+        """Cancel background tasks and close external connections."""
+        for task in self._bg_tasks:
+            task.cancel()
+        await asyncio.gather(*self._bg_tasks, return_exceptions=True)
+        self._bg_tasks.clear()
+        await db_manager.close()
+        global _nats_client, _js_context, _input_publisher
+        if _nats_client is not None and not _nats_client.is_closed:
+            await _nats_client.close()
+        _nats_client = None
+        _js_context = None
+        _input_publisher = None
+        await super().close()
 
 
 def run(token: str, monitor_channel_id: int) -> None:
