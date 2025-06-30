@@ -10,6 +10,8 @@ from typing import List, Tuple
 import aiohttp
 import aiosqlite
 
+from deepthought.services import PersonaManager
+
 try:
     import discord
 except Exception:  # pragma: no cover - optional dependency
@@ -141,6 +143,13 @@ idle_response_candidates = [
     "Silence can be golden, but conversation is better.",
 ]
 
+# Persona-based canned replies for immediate acknowledgements
+PERSONA_REPLIES = {
+    "friendly": ["I'm pondering your message..."],
+    "playful": ["Hmm, let me think on that!"],
+    "snarky": ["Yeah, yeah, I'll think about it."],
+}
+
 # -----------------------------
 # Idle text generation helpers
 # -----------------------------
@@ -220,6 +229,14 @@ class DBManager:
                 user_id TEXT,
                 target_id TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await self._db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS affinity (
+                user_id TEXT PRIMARY KEY,
+                score INTEGER DEFAULT 0
             )
             """
         )
@@ -552,11 +569,12 @@ class DBManager:
 
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
+persona_manager = PersonaManager(db_manager)
 
 
 async def init_db(db_path: str | None = None) -> None:
     """Initialize the database, recreating the manager when the path changes."""
-    global db_manager, CURRENT_DB_PATH
+    global db_manager, persona_manager, CURRENT_DB_PATH
 
     target_path = (
         db_path
@@ -570,6 +588,7 @@ async def init_db(db_path: str | None = None) -> None:
         db_manager = DBManager(target_path)
 
     await db_manager.init_db()
+    persona_manager = PersonaManager(db_manager)
     CURRENT_DB_PATH = db_manager.db_path
 
 
@@ -891,16 +910,18 @@ class SocialGraphBot(discord.Client):
             # Too many bots talking and we're not addressed directly
             return
 
-        # Log the interaction
-        await log_interaction(message.author.id, message.channel.id)
-
         async with message.channel.typing():
             await asyncio.sleep(random.uniform(1, 3))
             if hasattr(message.channel, "history"):
                 async for recent in message.channel.history(limit=1):
                     if recent.id != message.id and getattr(recent.author, "bot", False):
                         return
-            await message.channel.send("I'm pondering your message...")
+            persona = await persona_manager.get_persona(message.author.id)
+            reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
+            await message.channel.send(reply)
+
+        # Log the interaction
+        await log_interaction(message.author.id, message.channel.id)
 
         # Publish event and forward to Prism
         await publish_input_received(message.content)
@@ -957,7 +978,6 @@ class SocialGraphBot(discord.Client):
         _js_context = None
         _input_publisher = None
         await super().close()
-
 
 
 def run(token: str, monitor_channel_id: int) -> None:
