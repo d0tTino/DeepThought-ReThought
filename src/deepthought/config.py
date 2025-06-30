@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     memory_file: str = "memory.json"
     search_db: str | None = None
     reward: RewardThresholds = RewardThresholds()
+    persona_descriptions: dict[str, str] = {
+        "friendly": "You are a friendly assistant who responds warmly.",
+        "playful": "You like to joke around in your answers.",
+        "snarky": "You reply with terse, witty sarcasm.",
+    }
 
     model_config = SettingsConfigDict(env_prefix="DT_", env_nested_delimiter="__")
 

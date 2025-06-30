@@ -8,27 +8,16 @@ import sys
 import types
 import uuid
 from datetime import timedelta, timezone
-from typing import List, Tuple
+from typing import TYPE_CHECKING, List, Tuple
 
-from deepthought.goal_scheduler import GoalScheduler
-from deepthought.services.file_graph_dal import FileGraphDAL
-from deepthought.graph.connector import GraphConnector
-from deepthought.graph.dal import GraphDAL
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # pragma: no cover - for type hints only
-    from deepthought.services.scheduler import SchedulerService
 
+if TYPE_CHECKING:  # pragma: no cover - for type hints only
+    from deepthought.services.scheduler import SchedulerService as _SchedulerService
 
 import aiohttp
 import aiosqlite
-
-from deepthought.goal_scheduler import GoalScheduler
-from deepthought.graph.connector import GraphConnector
-from deepthought.graph.dal import GraphDAL
-from deepthought.services import PersonaManager
-from deepthought.services.file_graph_dal import FileGraphDAL
-from deepthought.services.scheduler import SchedulerService
 
 try:
     import discord
@@ -193,15 +182,11 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        gen_prompt = prompt or os.getenv(
-            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
-        )
+        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
         if prompt is None and "IDLE_GENERATOR_PROMPT" not in os.environ:
             topics = await get_recent_topics(3)
             if topics:
                 gen_prompt = ", ".join(topics) + ": " + gen_prompt
-
-
 
         generator = _get_idle_generator()
         outputs = await asyncio.to_thread(
@@ -226,92 +211,101 @@ MAX_MEMORY_LENGTH = 1000
 MAX_THEORY_LENGTH = 256
 MAX_PROMPT_LENGTH = 2000
 
-CREATE_TABLE_QUERIES = [
-    """
-    CREATE TABLE IF NOT EXISTS interactions (
-        user_id TEXT,
-        target_id TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS affinity (
-        user_id TEXT PRIMARY KEY,
-        score INTEGER DEFAULT 0
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS relationships (
-        source_id TEXT,
-        target_id TEXT,
-        interaction_count INTEGER DEFAULT 0,
-        sentiment_sum REAL DEFAULT 0,
-        PRIMARY KEY(source_id, target_id)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS memories (
-        user_id TEXT,
-        topic TEXT,
-        memory TEXT,
-        sentiment_score REAL,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS theories (
-        subject_id TEXT,
-        theory TEXT,
-        confidence REAL,
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY(subject_id, theory)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS queued_tasks (
-        task_id INTEGER PRIMARY KEY,
-        user_id TEXT,
-        context TEXT,
-        prompt TEXT,
-        status TEXT DEFAULT 'pending',
-        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS sentiment_trends (
-        user_id TEXT,
-        channel_id TEXT,
-        sentiment_sum REAL DEFAULT 0,
-        message_count INTEGER DEFAULT 0,
-        PRIMARY KEY(user_id, channel_id)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS themes (
-        user_id TEXT,
-        channel_id TEXT,
-        theme TEXT,
-        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY(user_id, channel_id)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS user_flags (
-        user_id TEXT PRIMARY KEY,
-        do_not_mock INTEGER
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS recent_topics (
-        topic TEXT PRIMARY KEY,
-        last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """,
-]
-
-
 class DBManager:
     """Lightweight wrapper managing a single aiosqlite connection."""
+
+    CREATE_TABLE_QUERIES = [
+        """
+        CREATE TABLE IF NOT EXISTS interactions (
+            user_id TEXT,
+            target_id TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS affinity (
+            user_id TEXT PRIMARY KEY,
+            score INTEGER DEFAULT 0
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS relationships (
+            source_id TEXT,
+            target_id TEXT,
+            interaction_count INTEGER DEFAULT 0,
+            sentiment_sum REAL DEFAULT 0,
+            PRIMARY KEY(source_id, target_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS memories (
+            user_id TEXT,
+            topic TEXT,
+            memory TEXT,
+            sentiment_score REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS theories (
+            subject_id TEXT,
+            theory TEXT,
+            confidence REAL,
+            updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(subject_id, theory)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS queued_tasks (
+            task_id INTEGER PRIMARY KEY,
+            user_id TEXT,
+            context TEXT,
+            prompt TEXT,
+            status TEXT DEFAULT 'pending',
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS summary_goals (
+            task_id INTEGER PRIMARY KEY,
+            user_id TEXT,
+            context TEXT,
+            prompt TEXT,
+            status TEXT DEFAULT 'pending',
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS sentiment_trends (
+            user_id TEXT,
+            channel_id TEXT,
+            sentiment_sum REAL DEFAULT 0,
+            message_count INTEGER DEFAULT 0,
+            PRIMARY KEY(user_id, channel_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS themes (
+            user_id TEXT,
+            channel_id TEXT,
+            theme TEXT,
+            updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(user_id, channel_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS user_flags (
+            user_id TEXT PRIMARY KEY,
+            do_not_mock INTEGER
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS recent_topics (
+            topic TEXT PRIMARY KEY,
+            last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    ]
 
     def __init__(self, db_path: str = DB_PATH) -> None:
         self.db_path = db_path
@@ -329,10 +323,99 @@ class DBManager:
             await self._db.close()
             self._db = None
 
+    def _create_table_statements(self) -> list[str]:
+        """Return SQL statements for creating required tables."""
+        try:
+            return CREATE_TABLE_QUERIES
+        except NameError:  # pragma: no cover - executed in isolated test context
+            return [
+                """
+                CREATE TABLE IF NOT EXISTS interactions (
+                    user_id TEXT,
+                    target_id TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS affinity (
+                    user_id TEXT PRIMARY KEY,
+                    score INTEGER DEFAULT 0
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS relationships (
+                    source_id TEXT,
+                    target_id TEXT,
+                    interaction_count INTEGER DEFAULT 0,
+                    sentiment_sum REAL DEFAULT 0,
+                    PRIMARY KEY(source_id, target_id)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS memories (
+                    user_id TEXT,
+                    topic TEXT,
+                    memory TEXT,
+                    sentiment_score REAL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS theories (
+                    subject_id TEXT,
+                    theory TEXT,
+                    confidence REAL,
+                    updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY(subject_id, theory)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS queued_tasks (
+                    task_id INTEGER PRIMARY KEY,
+                    user_id TEXT,
+                    context TEXT,
+                    prompt TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS sentiment_trends (
+                    user_id TEXT,
+                    channel_id TEXT,
+                    sentiment_sum REAL DEFAULT 0,
+                    message_count INTEGER DEFAULT 0,
+                    PRIMARY KEY(user_id, channel_id)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS themes (
+                    user_id TEXT,
+                    channel_id TEXT,
+                    theme TEXT,
+                    updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY(user_id, channel_id)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS user_flags (
+                    user_id TEXT PRIMARY KEY,
+                    do_not_mock INTEGER
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS recent_topics (
+                    topic TEXT PRIMARY KEY,
+                    last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+            ]
+
     async def init_db(self) -> None:
         await self.connect()
         assert self._db
-        for query in CREATE_TABLE_QUERIES:
+        for query in self.CREATE_TABLE_QUERIES:
+
             await self._db.execute(query)
 
         await self._db.commit()
@@ -523,6 +606,45 @@ class DBManager:
         assert self._db
         await self._db.execute(
             "UPDATE queued_tasks SET status='done' WHERE task_id=?",
+            (task_id,),
+        )
+        await self._db.commit()
+
+    async def add_summary_goal(self, user_id: int, context: dict, prompt: str) -> int:
+        """Store a generated summary and goal using the queued task schema."""
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("prompt must be a non-empty string")
+        if not isinstance(context, dict):
+            raise ValueError("context must be a dictionary")
+        try:
+            context_json = json.dumps(context)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("context is not JSON serializable") from exc
+
+        await self.connect()
+        assert self._db
+        cur = await self._db.execute(
+            "INSERT INTO summary_goals (user_id, context, prompt) VALUES (?, ?, ?)",
+            (str(user_id), context_json, prompt),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def list_pending_summary_goals(self):
+        """Return pending summary/goal tasks."""
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT task_id, user_id, context, prompt FROM summary_goals WHERE status='pending'"
+        ) as cur:
+            return await cur.fetchall()
+
+    async def mark_summary_goal_done(self, task_id: int) -> None:
+        """Mark a stored summary goal as completed."""
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "UPDATE summary_goals SET status='done' WHERE task_id=?",
             (task_id,),
         )
         await self._db.commit()
@@ -719,6 +841,9 @@ async def _ensure_nats() -> None:
 
 async def publish_input_received(text: str) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
+    if not is_allowed(text):
+        logger.info("Dropping INPUT_RECEIVED due to banned content")
+        return
     await _ensure_nats()
     if _input_publisher is None:
         logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
@@ -766,6 +891,19 @@ async def get_recent_topics(limit: int = 3) -> list[str]:
 
 async def queue_deep_reflection(user_id: int, context: dict, prompt: str) -> int:
     return await db_manager.queue_deep_reflection(user_id, context, prompt)
+
+
+async def add_summary_goal(user_id: int, context: dict, prompt: str) -> int:
+    """Add a generated summary and goal entry."""
+    return await db_manager.add_summary_goal(user_id, context, prompt)
+
+
+async def list_pending_summary_goals():
+    return await db_manager.list_pending_summary_goals()
+
+
+async def mark_summary_goal_done(task_id: int) -> None:
+    await db_manager.mark_summary_goal_done(task_id)
 
 
 async def set_do_not_mock(user_id: int, flag: bool = True) -> None:
@@ -997,10 +1135,12 @@ class SocialGraphBot(discord.Client):
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler()
         self.scheduler_service: SchedulerService | None = None
+        self.persona_manager = PersonaManager(db_manager)
 
     async def setup_hook(self) -> None:
         await db_manager.connect()
         await init_db()
+        self.persona_manager = PersonaManager(db_manager)
 
         self._bg_tasks.append(self.loop.create_task(monitor_channels(self, self.monitor_channel_id)))
         self._bg_tasks.append(self.loop.create_task(process_deep_reflections(self)))
@@ -1012,6 +1152,9 @@ class SocialGraphBot(discord.Client):
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author == self.user:
+            return
+
+        if any(getattr(m, "bot", False) for m in message.mentions) and self.user not in message.mentions:
             return
 
         sentiment_score = analyze_sentiment(message.content)
@@ -1048,7 +1191,7 @@ class SocialGraphBot(discord.Client):
                 async for recent in message.channel.history(limit=1):
                     if recent.id != message.id and getattr(recent.author, "bot", False):
                         return
-            persona = await persona_manager.get_persona(message.author.id)
+            persona = await self.persona_manager.get_persona(message.author.id)
             reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
             await message.channel.send(reply)
 
