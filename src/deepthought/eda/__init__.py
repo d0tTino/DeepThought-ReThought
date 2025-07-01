@@ -6,7 +6,15 @@ different modules of the DeepThought reThought system using NATS as
 the message broker.
 """
 
-from .events import EventPayload, EventSubjects, InputReceivedPayload, MemoryRetrievedPayload, ResponseGeneratedPayload
+from .events import (
+    CodeGeneratedPayload,
+    CodeTemplatePayload,
+    EventPayload,
+    EventSubjects,
+    InputReceivedPayload,
+    MemoryRetrievedPayload,
+    ResponseGeneratedPayload,
+)
 from .publisher import Publisher
 from .subscriber import Subscriber
 
@@ -16,6 +24,8 @@ __all__ = [
     "InputReceivedPayload",
     "MemoryRetrievedPayload",
     "ResponseGeneratedPayload",
+    "CodeTemplatePayload",
+    "CodeGeneratedPayload",
     "Publisher",
     "Subscriber",
 ]

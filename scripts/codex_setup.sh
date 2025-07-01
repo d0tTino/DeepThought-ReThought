@@ -13,7 +13,7 @@ if ! docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
 fi
 
 # Ensure JetStream stream exists
-python setup_jetstream.py
+python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
 
 # Determine if code changes require running tests and linters
 RUN_CHECKS=$(python scripts/check_code_changes.py)

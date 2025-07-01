@@ -9,6 +9,8 @@ sys.modules.setdefault("deepthought.learn", types.ModuleType("learn"))
 sys.modules.setdefault("deepthought.modules", types.ModuleType("modules"))
 sys.modules.setdefault("deepthought.motivate", types.ModuleType("motivate"))
 
+from typing import List
+
 import pytest
 
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
@@ -165,3 +167,24 @@ def test_retrieve_context_from_config(monkeypatch, tmp_path):
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     ctx = service.retrieve_context("config")
     assert "via config" in ctx
+
+
+def test_service_uses_public_memory_interface():
+    class SpyMemory:
+        def __init__(self):
+            self.calls = []
+
+        def vector_matches(self, prompt: str) -> List[str]:
+            self.calls.append(("vector", prompt))
+            return ["v"]
+
+        def graph_facts(self) -> List[str]:
+            self.calls.append(("graph", None))
+            return ["g"]
+
+    mem = SpyMemory()
+    service = HierarchicalService(DummyNATS(), DummyJS(), mem)
+
+    assert service._vector_matches("hi") == ["v"]
+    assert service._graph_facts() == ["g"]
+    assert mem.calls == [("vector", "hi"), ("graph", None)]
