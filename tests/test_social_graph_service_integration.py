@@ -9,7 +9,8 @@ from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfi
 
 from deepthought.eda.events import EventSubjects
 from deepthought.modules.input_handler import InputHandler
-from deepthought.services.social_graph_service import DBManager, SocialGraphService
+from deepthought.services import DBManager
+from deepthought.services.social_graph_service import SocialGraphService
 from tests.helpers import nats_server_available
 
 pytestmark = pytest.mark.nats

@@ -5,12 +5,13 @@ import aiosqlite
 import pytest
 
 import examples.social_graph_bot as sg
+from deepthought.services import DBManager
 
 
 @pytest.mark.asyncio
 async def test_db_manager_list_pending_tasks_only_pending(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.db_manager = sg.DBManager(str(db_file))
+    sg.db_manager = DBManager(str(db_file))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -29,7 +30,7 @@ async def test_db_manager_list_pending_tasks_only_pending(tmp_path):
 @pytest.mark.asyncio
 async def test_db_manager_mark_task_done_updates_status(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.db_manager = sg.DBManager(str(db_file))
+    sg.db_manager = DBManager(str(db_file))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 

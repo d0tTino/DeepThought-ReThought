@@ -1,6 +1,6 @@
 """Service utilities for DeepThought."""
 
-from .code_generation_service import CodeGenerationService
+from .db_manager import DBManager
 from .file_graph_dal import FileGraphDAL
 from .hierarchical_service import HierarchicalService
 from .memory_service import MemoryService
@@ -13,5 +13,5 @@ __all__ = [
     "HierarchicalService",
     "PersonaManager",
     "SocialGraphService",
-    "CodeGenerationService",
+    "DBManager",
 ]

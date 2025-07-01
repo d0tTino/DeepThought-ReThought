@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 
-from examples import social_graph_bot as sg
+from .db_manager import DBManager
 
 
 class PersonaManager:
@@ -10,7 +10,7 @@ class PersonaManager:
 
     def __init__(
         self,
-        db_manager: sg.DBManager,
+        db_manager: DBManager,
         friendly: int = 5,
         playful: int = 2,
         descriptions: dict[str, str] | None = None,

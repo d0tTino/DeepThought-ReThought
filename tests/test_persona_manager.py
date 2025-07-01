@@ -1,12 +1,12 @@
 import pytest
 
 import examples.social_graph_bot as sg
-from deepthought.services import PersonaManager
+from deepthought.services import DBManager, PersonaManager
 
 
 @pytest.mark.asyncio
 async def test_persona_changes_with_affinity(tmp_path):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -26,7 +26,7 @@ async def test_persona_changes_with_affinity(tmp_path):
 
 @pytest.mark.asyncio
 async def test_choose_prompt_uses_persona(tmp_path, monkeypatch):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 

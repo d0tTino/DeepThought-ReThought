@@ -5,6 +5,7 @@ import random
 import pytest
 
 import examples.social_graph_bot as sg
+from deepthought.services import DBManager
 
 
 class DummyChannel:
@@ -117,7 +118,7 @@ async def test_generate_idle_response_env(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_generate_idle_response_topics(tmp_path, monkeypatch):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 

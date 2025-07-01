@@ -5,12 +5,13 @@ import aiosqlite
 import pytest
 
 import examples.social_graph_bot as sg
+from deepthought.services import DBManager
 
 
 @pytest.mark.asyncio
 async def test_store_theory(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.db_manager = sg.DBManager(str(db_file))
+    sg.db_manager = DBManager(str(db_file))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
     await sg.store_theory("u1", "insomniac", 0.5)
@@ -24,7 +25,7 @@ async def test_store_theory(tmp_path):
 @pytest.mark.asyncio
 async def test_store_theory_update(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.db_manager = sg.DBManager(str(db_file))
+    sg.db_manager = DBManager(str(db_file))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
     await sg.store_theory("u1", "insomniac", 0.5)
@@ -42,7 +43,7 @@ async def test_store_theory_update(tmp_path):
 @pytest.mark.asyncio
 async def test_store_memory(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.db_manager = sg.DBManager(str(db_file))
+    sg.db_manager = DBManager(str(db_file))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
     await sg.store_memory("u1", "hello", sentiment_score=0.3)
@@ -59,7 +60,7 @@ async def test_store_memory(tmp_path):
 @pytest.mark.asyncio
 async def test_queue_deep_reflection(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.db_manager = sg.DBManager(str(db_file))
+    sg.db_manager = DBManager(str(db_file))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
     task_id = await sg.queue_deep_reflection("u2", {"channel_id": 1}, "hello")
@@ -73,7 +74,7 @@ async def test_queue_deep_reflection(tmp_path):
 @pytest.mark.asyncio
 async def test_list_pending_tasks(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.db_manager = sg.DBManager(str(db_file))
+    sg.db_manager = DBManager(str(db_file))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -91,7 +92,7 @@ async def test_list_pending_tasks(tmp_path):
 @pytest.mark.asyncio
 async def test_mark_task_done(tmp_path):
     db_file = tmp_path / "db.sqlite"
-    sg.db_manager = sg.DBManager(str(db_file))
+    sg.db_manager = DBManager(str(db_file))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -162,7 +163,7 @@ class DummyBot:
 @pytest.mark.asyncio
 async def test_process_deep_reflections_posts(tmp_path, monkeypatch):
     sg.DB_PATH = str(tmp_path / "db.sqlite")
-    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    sg.db_manager = DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.init_db()
 
     bot = DummyBot()
@@ -187,7 +188,7 @@ async def test_process_deep_reflections_posts(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_process_deep_reflections_negative(tmp_path, monkeypatch):
     sg.DB_PATH = str(tmp_path / "db.sqlite")
-    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    sg.db_manager = DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.init_db()
 
     bot = DummyBot()
@@ -211,7 +212,7 @@ async def test_process_deep_reflections_negative(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_store_memory_validation(tmp_path):
-    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    sg.db_manager = DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
     long_memory = "x" * (sg.MAX_MEMORY_LENGTH + 1)
@@ -222,7 +223,7 @@ async def test_store_memory_validation(tmp_path):
 
 @pytest.mark.asyncio
 async def test_store_theory_validation(tmp_path):
-    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    sg.db_manager = DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
     with pytest.raises(ValueError):
@@ -232,7 +233,7 @@ async def test_store_theory_validation(tmp_path):
 
 @pytest.mark.asyncio
 async def test_queue_deep_reflection_validation(tmp_path):
-    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    sg.db_manager = DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
     with pytest.raises(ValueError):
@@ -246,7 +247,7 @@ async def test_queue_deep_reflection_validation(tmp_path):
 @pytest.mark.asyncio
 async def test_assign_themes(tmp_path, monkeypatch):
     sg.DB_PATH = str(tmp_path / "db.sqlite")
-    sg.db_manager = sg.DBManager(str(tmp_path / "db.sqlite"))
+    sg.db_manager = DBManager(str(tmp_path / "db.sqlite"))
     await sg.db_manager.init_db()
 
     await sg.update_sentiment_trend("u1", "c1", 0.5)
