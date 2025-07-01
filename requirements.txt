@@ -14,7 +14,7 @@ nats-py
 pytest-asyncio
 aiosqlite
 aiohttp
-flask
+fastapi
 discord.py
 textblob
 networkx

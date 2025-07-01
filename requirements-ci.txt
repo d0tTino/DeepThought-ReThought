@@ -8,6 +8,7 @@ pytest-asyncio==0.21.1
 flake8==6.1.0
 pydantic-settings==2.2.1
 aiohttp==3.12.3
+fastapi==0.111.0
 discord.py==2.5.2
 textblob==0.17.1
 pre-commit==4.2.0

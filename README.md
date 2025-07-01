@@ -249,15 +249,19 @@ python bot.py
 
 ### Running the Prism Server
 
-To test Prism integration, start the simple Flask server:
+Prism integration now uses a small FastAPI server that requires an
+`Authorization` header. Configure one or more valid tokens with the
+`PRISM_TOKENS` environment variable:
 
 ```bash
+export PRISM_TOKENS=my-secret-token
 python examples/prism_server.py
 ```
 
 The bot's `send_to_prism` function posts JSON data to the endpoint
 defined by the `PRISM_ENDPOINT` environment variable (default:
-`http://localhost:5000/receive_data`).
+`http://localhost:5000/receive_data`) and includes the token in the
+`Authorization` header.
 
 ### Idle Channel Monitoring
 
