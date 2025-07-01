@@ -342,6 +342,23 @@ Two lightweight reference modules show how components can interact through NATS:
 4. The `OutputHandler` (or another consumer) can then deliver the response to the user.
 
 
+## HTTP API
+
+A minimal FastAPI server provides HTTP access to the event system. Ensure a NATS server
+and JetStream stream are running (see [Running a Local NATS Server](#running-a-local-nats-server)).
+Install the extra dependencies and launch the server:
+
+```bash
+pip install fastapi uvicorn
+uvicorn deepthought.api.server:app
+```
+
+### Endpoints
+
+* `POST /memory/add` – send `{"text": "hello"}` to publish an `INPUT_RECEIVED` event.
+  The response includes the generated `input_id`.
+* `GET /memory/query?input_id=<id>` – retrieve the latest `MEMORY_RETRIEVED` payload.
+
 ## Testing
 
 Tests are implemented using the `pytest` framework. To run the tests:

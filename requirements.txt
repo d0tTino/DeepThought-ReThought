@@ -19,5 +19,9 @@ discord.py
 textblob
 networkx
 pydantic-settings
+pydantic
 vaderSentiment
 sentence-transformers
+fastapi
+uvicorn
+pyyaml
