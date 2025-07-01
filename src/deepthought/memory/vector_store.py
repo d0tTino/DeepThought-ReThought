@@ -1,10 +1,11 @@
-"""Lightweight wrapper around chromadb collections."""
+"""Vector store interfaces and implementations."""
 
 from __future__ import annotations
 
 import hashlib
 import uuid
-from typing import Iterable, List, Optional, Sequence
+from abc import ABC, abstractmethod
+from typing import Any, Iterable, List, Optional, Sequence
 
 try:  # pragma: no cover - optional dependency
     import chromadb
@@ -52,8 +53,30 @@ class SimpleEmbeddingFunction(EmbeddingFunction):
         return vectors
 
 
-class VectorStore:
-    """Small helper around a Chroma collection."""
+class VectorStore(ABC):
+    """Abstract base class for vector stores."""
+
+    @property
+    @abstractmethod
+    def collection(self) -> Any:  # pragma: no cover - abstract method
+        """Return the underlying collection object."""
+
+    @abstractmethod
+    def add_texts(
+        self,
+        texts: Sequence[str],
+        ids: Optional[Sequence[str]] = None,
+        metadatas: Optional[Sequence[dict]] = None,
+    ) -> None:
+        """Add text documents to the store."""
+
+    @abstractmethod
+    def query(self, query_texts: Sequence[str], n_results: int = 3):
+        """Query the vector store for matching texts."""
+
+
+class ChromaVectorStore(VectorStore):
+    """Thin wrapper around a Chroma collection."""
 
     def __init__(
         self,
@@ -93,10 +116,91 @@ class VectorStore:
         )
 
 
+try:  # pragma: no cover - optional dependency
+    import faiss
+except Exception:  # pragma: no cover - faiss not installed
+    faiss = None
+
+
+class FaissVectorStore(VectorStore):
+    """In-memory FAISS vector store with optional GPU support."""
+
+    def __init__(
+        self,
+        embedding_function: Optional[EmbeddingFunction] = None,
+        use_gpu: bool = False,
+    ) -> None:
+        if faiss is None:  # pragma: no cover - defensive
+            raise RuntimeError("faiss is not installed")
+
+        self._embedding = embedding_function or SimpleEmbeddingFunction()
+        # derive dimensionality from a sample embedding
+        dim = len(self._embedding(["sample"])[0])
+        index = faiss.IndexFlatL2(dim)
+        if use_gpu and hasattr(faiss, "StandardGpuResources"):
+            res = faiss.StandardGpuResources()
+            index = faiss.index_cpu_to_gpu(res, 0, index)
+        self._index = index
+        self._texts: list[Optional[str]] = []
+        self._id_to_idx: dict[str, int] = {}
+
+    @property
+    def collection(self):  # pragma: no cover - simple accessor
+        class _Coll:
+            def __init__(self, outer: "FaissVectorStore") -> None:
+                self._outer = outer
+
+            def delete(self, ids: Sequence[str]):
+                self._outer._delete(ids)
+
+        return _Coll(self)
+
+    def _delete(self, ids: Sequence[str]) -> None:
+        for _id in ids:
+            idx = self._id_to_idx.pop(str(_id), None)
+            if idx is not None:
+                self._texts[idx] = None
+
+    def add_texts(
+        self,
+        texts: Sequence[str],
+        ids: Optional[Sequence[str]] = None,
+        metadatas: Optional[Sequence[dict]] = None,
+    ) -> None:  # noqa: D401 - docstring inherited
+        ids = list(ids) if ids is not None else [str(uuid.uuid4()) for _ in texts]
+        vectors = self._embedding(list(texts))
+        import numpy as np
+
+        self._index.add(np.asarray(vectors, dtype="float32"))
+        for text, _id in zip(texts, ids):
+            self._texts.append(text)
+            self._id_to_idx[str(_id)] = len(self._texts) - 1
+
+    def query(self, query_texts: Sequence[str], n_results: int = 3):
+        import numpy as np
+
+        vecs = self._embedding(list(query_texts))
+        distances, indices = self._index.search(np.asarray(vecs, dtype="float32"), n_results)
+        docs: list[list[str]] = []
+        for inds in indices:
+            hits: list[str] = []
+            for i in inds:
+                if 0 <= i < len(self._texts):
+                    text = self._texts[i]
+                    if text is not None:
+                        hits.append(text)
+            docs.append(hits)
+        return {"documents": docs}
+
+
 def create_vector_store(
+    backend: str = "chroma",
     collection_name: str = "deepthought",
     persist_directory: Optional[str] = None,
     embedding_function: Optional[EmbeddingFunction] = None,
+    use_gpu: bool = False,
 ) -> VectorStore:
-    """Convenience initializer returning a :class:`VectorStore`."""
-    return VectorStore(collection_name, persist_directory, embedding_function)
+    """Return a vector store implementation based on ``backend``."""
+    if backend == "faiss":
+        return FaissVectorStore(embedding_function=embedding_function, use_gpu=use_gpu)
+    return ChromaVectorStore(collection_name, persist_directory, embedding_function)

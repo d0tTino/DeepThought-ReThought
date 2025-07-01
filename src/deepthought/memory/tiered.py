@@ -35,10 +35,17 @@ class TieredMemory:
         graph_dal: GraphDAL,
         collection_name: str = "deepthought",
         persist_directory: str | None = None,
+        backend: str = "chroma",
+        use_gpu: bool = False,
         capacity: int = 100,
         top_k: int = 3,
     ) -> "TieredMemory":
-        store = create_vector_store(collection_name, persist_directory)
+        store = create_vector_store(
+            backend=backend,
+            collection_name=collection_name,
+            persist_directory=persist_directory,
+            use_gpu=use_gpu,
+        )
         return cls(store, graph_dal, capacity=capacity, top_k=top_k)
 
     # internal helpers

@@ -51,7 +51,8 @@ from deepthought.services import HierarchicalService
 
 connector = GraphConnector(host="localhost", port=7687)
 dal = GraphDAL(connector)
-memory = TieredMemory.from_chroma(dal)
+# use the configured vector backend ("chroma" or "faiss")
+memory = TieredMemory.from_chroma(dal, backend="faiss")
 service = HierarchicalService(DummyNATS(), DummyJS(), memory)
 service.dump_graph("./graph_exports")
 ```
@@ -64,7 +65,7 @@ dot -Tpng graph_exports/graph.dot -o graph.png
 
 ## Migration to TieredMemory
 
-The `HierarchicalService` now relies on the `TieredMemory` layer for context retrieval. Create a `TieredMemory` instance and pass it to the service or use `HierarchicalService.from_chroma()` which constructs one automatically.
+The `HierarchicalService` now relies on the `TieredMemory` layer for context retrieval. Create a `TieredMemory` instance and pass it to the service or use `HierarchicalService.from_chroma()` which constructs one automatically using the configured vector backend.
 
 ## Offline Search
 
@@ -88,4 +89,9 @@ Example ``config.yaml``:
 ```yaml
 search_db: wiki.db
 ```
+
+### Vector Backend
+
+Set ``DT_VECTOR_BACKEND`` to ``faiss`` to use the in-memory FAISS store instead of Chroma.
+When using FAISS, ``DT_VECTOR_USE_GPU`` enables GPU acceleration if available.
 

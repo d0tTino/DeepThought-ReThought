@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     model_path: str = "distilgpt2"
     memory_file: str = "memory.json"
     search_db: str | None = None
+    vector_backend: str = "chroma"
+    vector_use_gpu: bool = False
     reward: RewardThresholds = RewardThresholds()
     persona_descriptions: dict[str, str] = {
         "friendly": "You are a friendly assistant who responds warmly.",
