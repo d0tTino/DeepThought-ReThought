@@ -6,6 +6,7 @@ import aiosqlite
 import pytest
 
 import examples.social_graph_bot as sg
+from deepthought.services import DBManager
 
 
 class DummyAuthor:
@@ -54,7 +55,7 @@ class DummyMessage:
 
 @pytest.mark.asyncio
 async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -93,7 +94,7 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
 
 @pytest.mark.asyncio
 async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls, input_events):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -122,7 +123,7 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
 
 @pytest.mark.asyncio
 async def test_update_sentiment_trend(tmp_path):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -136,7 +137,7 @@ async def test_update_sentiment_trend(tmp_path):
 
 @pytest.mark.asyncio
 async def test_update_sentiment_trend_validation(tmp_path):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -152,7 +153,7 @@ async def test_update_sentiment_trend_validation(tmp_path):
 @pytest.mark.asyncio
 async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_events):
 
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -183,7 +184,7 @@ async def test_on_message_updates_sentiment_trend(tmp_path, monkeypatch, input_e
 
 @pytest.mark.asyncio
 async def test_on_message_waits_for_other_bot(tmp_path, monkeypatch):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -255,7 +256,7 @@ async def test_publish_input_received_filters_banned(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_on_message_ignores_other_bot_mentions(tmp_path, monkeypatch):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 

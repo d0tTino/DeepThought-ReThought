@@ -4,6 +4,7 @@ import random
 import pytest
 
 import examples.social_graph_bot as sg
+from deepthought.services import DBManager
 
 
 class DummyAuthor:
@@ -52,7 +53,7 @@ class DummyMessage:
 
 @pytest.mark.asyncio
 async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch, input_events):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -88,7 +89,7 @@ async def test_bullying_triggers_sarcasm(tmp_path, monkeypatch, input_events):
 
 @pytest.mark.asyncio
 async def test_do_not_mock_blocks_sarcasm(tmp_path, monkeypatch, input_events):
-    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
