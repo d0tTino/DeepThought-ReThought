@@ -1,96 +1,12 @@
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Optional
 
-import aiosqlite
+from .db_manager import DBManager
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
-
-
-class DBManager:
-    """Minimal database manager for storing social interactions."""
-
-    def __init__(self, db_path: str = "social_graph.db") -> None:
-        self.db_path = db_path
-        self._db: aiosqlite.Connection | None = None
-
-    async def connect(self) -> None:
-        if self._db is None:
-            dir_path = os.path.dirname(self.db_path)
-            if dir_path:
-                os.makedirs(dir_path, exist_ok=True)
-            self._db = await aiosqlite.connect(self.db_path)
-
-    async def close(self) -> None:
-        if self._db is not None:
-            await self._db.close()
-            self._db = None
-
-    async def init_db(self) -> None:
-        await self.connect()
-        assert self._db
-        await self._db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS interactions (
-                user_id TEXT,
-                target_id TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        await self._db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memories (
-                user_id TEXT,
-                memory TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        await self._db.commit()
-
-    async def log_interaction(
-        self,
-        user_id: int,
-        target_id: int | None = None,
-        sentiment_score: float | None = None,
-    ) -> None:
-        await self.connect()
-        assert self._db
-        await self._db.execute(
-            "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
-            (str(user_id), str(target_id) if target_id is not None else None),
-        )
-        await self._db.commit()
-
-    async def store_memory(
-        self,
-        user_id: int,
-        memory: str,
-        topic: str = "",
-        sentiment_score: float | None = None,
-    ) -> None:
-        await self.connect()
-        assert self._db
-        await self._db.execute(
-            "INSERT INTO memories (user_id, memory) VALUES (?, ?)",
-            (str(user_id), memory),
-        )
-        await self._db.commit()
-
-    async def recall_user(self, user_id: int):
-        await self.connect()
-        assert self._db
-        async with self._db.execute(
-            "SELECT memory FROM memories WHERE user_id=?",
-            (str(user_id),),
-        ) as cur:
-            rows = await cur.fetchall()
-        return [("", r[0]) for r in rows]
-
 
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
