@@ -65,12 +65,19 @@ class HierarchicalService:
         graph_dal: GraphDAL,
         collection_name: str = "deepthought",
         persist_directory: Optional[str] = None,
+        backend: str = "chroma",
+        use_gpu: bool = False,
         capacity: int = 100,
         top_k: int = 3,
         search_db: Optional[str] = None,
     ) -> "HierarchicalService":
-        """Instantiate with a new :class:`TieredMemory` using Chroma."""
-        store = create_vector_store(collection_name, persist_directory)
+        """Instantiate with a new :class:`TieredMemory` using the chosen backend."""
+        store = create_vector_store(
+            backend=backend,
+            collection_name=collection_name,
+            persist_directory=persist_directory,
+            use_gpu=use_gpu,
+        )
         memory = TieredMemory(store, graph_dal, capacity=capacity, top_k=top_k)
         db_path = search_db or get_settings().search_db
         if db_path:

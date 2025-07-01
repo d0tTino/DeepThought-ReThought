@@ -84,7 +84,7 @@ For instructions on compiling these scripts as part of your Unity project, see [
         python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
         ```
 5.  **Start Additional Services:**
-    *   Launch Chroma for vector memory:
+    *   Launch Chroma for vector memory (optional if using the FAISS backend):
         ```bash
         docker run --rm -p 8000:8000 chromadb/chroma
         ```
@@ -125,6 +125,14 @@ via `DT_SEARCH_DB`:
 
 ```bash
 export DT_SEARCH_DB=/data/wiki.db
+```
+
+Control the vector store implementation with `DT_VECTOR_BACKEND` (`chroma` or `faiss`).
+Enable GPU acceleration for FAISS with `DT_VECTOR_USE_GPU`:
+
+```bash
+export DT_VECTOR_BACKEND=faiss
+export DT_VECTOR_USE_GPU=true
 ```
 
 `SchedulerService` runs periodic summarization and reminder tasks. Adjust the interval
