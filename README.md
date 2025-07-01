@@ -18,6 +18,8 @@ The project is hosted on GitHub: [https://github.com/d0tTino/DeepThought-ReThoug
 
 The system is built upon an **Event-Driven Architecture (EDA)** using NATS/JetStream for asynchronous communication between components.
 
+For a diagram of the service interactions and setup instructions for optional components such as the FAISS vector store, FastAPI endpoints and the metrics system, see [docs/architecture.md](docs/architecture.md).
+
 Key planned/in-progress components include:
 
 1.  **Core EDA Framework:** (Functional) Publishers, Subscribers, and Event definitions using NATS.
