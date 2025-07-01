@@ -21,3 +21,5 @@ networkx
 pydantic-settings
 vaderSentiment
 sentence-transformers
+
+httpx
