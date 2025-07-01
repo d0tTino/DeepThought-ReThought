@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -11,6 +12,7 @@ from nats.js.client import JetStreamContext
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from .file_graph_dal import FileGraphDAL
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,7 @@ class MemoryService:
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
+        start = time.perf_counter()
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
@@ -73,6 +76,10 @@ class MemoryService:
                     await msg.ack()
                 except nats.errors.Error:
                     logger.error("Failed to ack message after error", exc_info=True)
+        finally:
+            duration = time.perf_counter() - start
+            INPUTS_TOTAL.labels(service="memory_service").inc()
+            INPUT_LATENCY_SECONDS.labels(service="memory_service").observe(duration)
 
     async def start(self, durable_name: str = "memory_service_listener") -> bool:
         if self._subscriber is None:

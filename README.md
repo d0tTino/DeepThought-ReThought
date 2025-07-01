@@ -84,7 +84,7 @@ For instructions on compiling these scripts as part of your Unity project, see [
         python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
         ```
 5.  **Start Additional Services:**
-    *   Launch Chroma for vector memory:
+    *   Launch Chroma for vector memory (optional if using the FAISS backend):
         ```bash
         docker run --rm -p 8000:8000 chromadb/chroma
         ```
@@ -125,6 +125,14 @@ via `DT_SEARCH_DB`:
 
 ```bash
 export DT_SEARCH_DB=/data/wiki.db
+```
+
+Control the vector store implementation with `DT_VECTOR_BACKEND` (`chroma` or `faiss`).
+Enable GPU acceleration for FAISS with `DT_VECTOR_USE_GPU`:
+
+```bash
+export DT_VECTOR_BACKEND=faiss
+export DT_VECTOR_USE_GPU=true
 ```
 
 `SchedulerService` runs periodic summarization and reminder tasks. Adjust the interval
@@ -249,15 +257,19 @@ python bot.py
 
 ### Running the Prism Server
 
-To test Prism integration, start the simple Flask server:
+Prism integration now uses a small FastAPI server that requires an
+`Authorization` header. Configure one or more valid tokens with the
+`PRISM_TOKENS` environment variable:
 
 ```bash
+export PRISM_TOKENS=my-secret-token
 python examples/prism_server.py
 ```
 
 The bot's `send_to_prism` function posts JSON data to the endpoint
 defined by the `PRISM_ENDPOINT` environment variable (default:
-`http://localhost:5000/receive_data`).
+`http://localhost:5000/receive_data`) and includes the token in the
+`Authorization` header.
 
 ### Idle Channel Monitoring
 

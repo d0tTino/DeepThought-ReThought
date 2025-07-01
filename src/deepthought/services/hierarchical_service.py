@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
@@ -16,6 +17,7 @@ from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
 from ..memory.tiered import TieredMemory
 from ..memory.vector_store import create_vector_store
+from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ..search import OfflineSearch
 
 logger = logging.getLogger(__name__)
@@ -63,12 +65,19 @@ class HierarchicalService:
         graph_dal: GraphDAL,
         collection_name: str = "deepthought",
         persist_directory: Optional[str] = None,
+        backend: str = "chroma",
+        use_gpu: bool = False,
         capacity: int = 100,
         top_k: int = 3,
         search_db: Optional[str] = None,
     ) -> "HierarchicalService":
-        """Instantiate with a new :class:`TieredMemory` using Chroma."""
-        store = create_vector_store(collection_name, persist_directory)
+        """Instantiate with a new :class:`TieredMemory` using the chosen backend."""
+        store = create_vector_store(
+            backend=backend,
+            collection_name=collection_name,
+            persist_directory=persist_directory,
+            use_gpu=use_gpu,
+        )
         memory = TieredMemory(store, graph_dal, capacity=capacity, top_k=top_k)
         db_path = search_db or get_settings().search_db
         if db_path:
@@ -99,6 +108,7 @@ class HierarchicalService:
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
+        start = time.perf_counter()
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
@@ -152,6 +162,10 @@ class HierarchicalService:
                     await msg.ack()
                 except NatsError:
                     logger.error("Failed to ack message after error", exc_info=True)
+        finally:
+            duration = time.perf_counter() - start
+            INPUTS_TOTAL.labels(service="hierarchical_service").inc()
+            INPUT_LATENCY_SECONDS.labels(service="hierarchical_service").observe(duration)
 
     async def start(self, durable_name: str = "hierarchical_service_listener") -> bool:
         """Start listening for input events."""
@@ -165,20 +179,14 @@ class HierarchicalService:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info(
-                "HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED
-            )
+            logger.info("HierarchicalService subscribed to %s", EventSubjects.INPUT_RECEIVED)
             return True
         except NatsError as e:
 
-            logger.error(
-                "HierarchicalService failed to subscribe: %s", e, exc_info=True
-            )
+            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
         except Exception as e:  # pragma: no cover - network failure
-            logger.error(
-                "HierarchicalService failed to subscribe: %s", e, exc_info=True
-            )
+            logger.error("HierarchicalService failed to subscribe: %s", e, exc_info=True)
             return False
 
     async def stop(self) -> None:

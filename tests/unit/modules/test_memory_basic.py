@@ -30,7 +30,10 @@ class DummyPublisher:
 
 class FailingPublisher(DummyPublisher):
     async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
-        raise RuntimeError("boom")
+        summary = str(payload)
+        if len(summary) > 50:
+            summary = summary[:47] + "..."
+        raise RuntimeError(f"Failed to publish to '{subject}' with payload {summary}")
 
 
 class DummySubscriber:
@@ -85,12 +88,13 @@ async def test_handle_input_success(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_input_error(tmp_path, monkeypatch):
+async def test_handle_input_error(tmp_path, monkeypatch, caplog):
     mem_file = tmp_path / "mem.json"
     mem = create_memory(monkeypatch, mem_file, FailingPublisher)
     payload = InputReceivedPayload(user_input="boom", input_id="99")
     msg = DummyMsg(payload.to_json())
-    await mem._handle_input_event(msg)
+    with caplog.at_level(logging.ERROR):
+        await mem._handle_input_event(msg)
 
     assert msg.nacked
     assert not msg.acked
@@ -98,6 +102,7 @@ async def test_handle_input_error(tmp_path, monkeypatch):
     with open(mem_file, "r", encoding="utf-8") as f:
         history = json.load(f)
     assert history[-1]["user_input"] == "boom"
+    assert any("Failed to publish to 'dtr.memory.retrieved'" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio
