@@ -1,0 +1,93 @@
+# System Architecture
+
+This document provides a high level overview of how the main services in **DeepThought‑ReThought** interact and how to set up optional components like the FAISS vector store, FastAPI endpoints and the metrics system.
+
+## Service Interactions
+
+The project follows an event driven architecture built on NATS/JetStream. Components publish and subscribe to event subjects defined in `src/deepthought/eda/events.py`.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Bot
+    participant MemoryService
+    participant HierarchicalService
+    participant LLM
+
+    User->>Bot: Message
+    Bot->>NATS: INPUT_RECEIVED
+    NATS->>MemoryService: INPUT_RECEIVED
+    MemoryService->>NATS: MEMORY_RETRIEVED
+    NATS->>HierarchicalService: MEMORY_RETRIEVED
+    HierarchicalService->>LLM: Query
+    LLM-->>HierarchicalService: Response
+    HierarchicalService->>NATS: RESPONSE_GENERATED
+    NATS->>Bot: RESPONSE_GENERATED
+    Bot-->>User: Reply
+```
+
+The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events, retrieves knowledge from memory services and ultimately receives a `RESPONSE_GENERATED` message containing the model output.
+
+## FAISS Setup
+
+`FaissVectorStore` in `src/deepthought/memory/faiss_vector_store.py` offers a lightweight vector database for similarity search. To enable it:
+
+- Install FAISS and run the unit test:
+
+  ```bash
+  pip install faiss-cpu  # or faiss-gpu if available
+  pytest tests/unit/test_faiss_vector_store.py
+  ```
+  The test output should report `1 passed` indicating FAISS is working.
+
+- Create a store and query vectors:
+
+  ```python
+  from deepthought.memory.faiss_vector_store import FaissVectorStore
+
+  store = FaissVectorStore(embedding_dim=8)
+  store.add_texts(["hello world", "goodbye"], ids=["1", "2"])
+  results = store.query(["hello"], n_results=1)
+  ```
+
+## API Endpoints
+
+`examples/prism_server.py` exposes a minimal FastAPI service used by the social graph bot.
+
+- Launch the server with an authorization token:
+
+  ```bash
+  export PRISM_TOKENS=my-secret-token
+  python examples/prism_server.py
+  ```
+
+- Send a request to the `/receive_data` endpoint:
+
+  ```bash
+  curl -X POST \
+       -H "Authorization: Bearer my-secret-token" \
+       -H "Content-Type: application/json" \
+       -d '{"message": "hello"}' \
+       http://localhost:5000/receive_data
+  ```
+
+Configure the bot with the `PRISM_ENDPOINT` environment variable to forward JSON payloads to this endpoint.
+
+## Metrics System
+
+Execution traces from bots or training runs can be replayed and analyzed.
+
+- Send recorded events through NATS and store metrics:
+
+  ```bash
+  python tools/discord_replay.py traces.jsonl --metrics metrics.json
+  ```
+
+- Visualize the results with the dashboard utility:
+
+  ```bash
+  pip install matplotlib
+  python tools/dashboard.py metrics.json --show
+  ```
+
+The generated `dashboard.png` illustrates BLEU, ROUGE‑L and average latency over time.
