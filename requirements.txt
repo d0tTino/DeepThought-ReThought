@@ -21,6 +21,6 @@ networkx
 pydantic-settings
 vaderSentiment
 sentence-transformers
-fastapi
-prometheus-client
+
+
 httpx

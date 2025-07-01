@@ -14,6 +14,6 @@ textblob==0.17.1
 pre-commit==4.2.0
 vaderSentiment==3.3.2
 sentence-transformers==2.7.0
-fastapi==0.115.14
-prometheus-client==0.22.1
-httpx==0.28.1
+
+httpx==0.27.0
+
