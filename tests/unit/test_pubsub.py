@@ -180,3 +180,22 @@ async def test_subscriber_requires_durable():
 
     with pytest.raises(ValueError):
         await sub.subscribe("topic", handler, use_jetstream=True)
+
+
+class FailingJS(DummyJS):
+    async def publish(self, subject, data, timeout=10.0):
+        raise RuntimeError("boom")
+
+
+@pytest.mark.asyncio
+async def test_publish_exception_message():
+    nc = DummyNATS()
+    js = FailingJS()
+    pub = Publisher(nc, js)
+    payload = {"foo": "bar"}
+    with pytest.raises(RuntimeError) as exc:
+        await pub.publish("test.subject", payload)
+
+    msg = str(exc.value)
+    assert "test.subject" in msg
+    assert "foo" in msg
