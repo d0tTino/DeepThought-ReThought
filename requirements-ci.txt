@@ -7,7 +7,8 @@ pytest-xdist==3.7.0
 pytest-asyncio==0.21.1
 flake8==6.1.0
 pydantic-settings==2.2.1
-pydantic==2.11.7
+pydantic
+
 aiohttp==3.12.3
 fastapi==0.111.0
 discord.py==2.5.2
@@ -15,6 +16,7 @@ textblob==0.17.1
 pre-commit==4.2.0
 vaderSentiment==3.3.2
 sentence-transformers==2.7.0
-
-httpx==0.27.0
+fastapi
+uvicorn
+PyYAML
 
