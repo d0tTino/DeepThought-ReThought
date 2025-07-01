@@ -56,7 +56,7 @@ export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
 python examples/social_graph_bot.py
 ```
 
-The `examples/social_graph_bot.py` script logs user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`.
+The `examples/social_graph_bot.py` script logs user interactions in a SQLite database, monitors channel activity, and forwards data to a Prism endpoint implemented in `examples/prism_server.py`. The FastAPI server expects an `Authorization` header containing one of the tokens specified in the `PRISM_TOKENS` environment variable.
 
 The knowledge graph memory uses GraphDAL to persist data in Memgraph. Start Memgraph with `docker run --rm -p 7687:7687 memgraph/memgraph` and see [docs/graphdal.md](graphdal.md) for a full example service.
 

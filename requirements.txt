@@ -14,10 +14,13 @@ nats-py
 pytest-asyncio
 aiosqlite
 aiohttp
-flask
+fastapi
 discord.py
 textblob
 networkx
 pydantic-settings
 vaderSentiment
 sentence-transformers
+fastapi
+prometheus-client
+httpx

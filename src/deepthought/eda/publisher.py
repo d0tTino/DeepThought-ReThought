@@ -44,6 +44,10 @@ class Publisher:
         else:
             data = str(payload).encode()
 
+        payload_summary = str(payload)
+        if len(payload_summary) > 100:
+            payload_summary = payload_summary[:97] + "..."
+
         try:
             if use_jetstream:
                 # Use JetStream publish with timeout
@@ -56,8 +60,10 @@ class Publisher:
                 logger.debug(f"Published basic NATS message to '{subject}'")
                 return None
         except nats.errors.TimeoutError as e:
-            logger.error(f"Publish timeout for '{subject}': {e}", exc_info=True)
-            raise e
+            message = f"Publish timeout for '{subject}' with payload {payload_summary}: {e}"
+            logger.error(message, exc_info=True)
+            raise type(e)(message) from e
         except Exception as e:
-            logger.error(f"Failed to publish to '{subject}': {e}", exc_info=True)  # Log traceback
-            raise e
+            message = f"Failed to publish to '{subject}' with payload {payload_summary}: {e}"
+            logger.error(message, exc_info=True)  # Log traceback
+            raise type(e)(message) from e
