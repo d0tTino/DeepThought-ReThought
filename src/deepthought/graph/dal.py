@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 
 from .connector import GraphConnector
 
@@ -37,8 +38,12 @@ class GraphDAL:
             raise ValueError(f"Invalid identifier: {value!r}")
 
     def merge_entity(self, name: str) -> None:
-        """Ensure an Entity node exists with the given ``name``."""
-        self._connector.execute("MERGE (:Entity {name: $name})", {"name": name})
+        """Ensure an Entity node exists with the given ``name`` and stable ``id``."""
+        entity_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, name))
+        self._connector.execute(
+            "MERGE (:Entity {id: $id, name: $name})",
+            {"id": entity_id, "name": name},
+        )
 
     def merge_next_edge(self, src: str, dst: str) -> None:
         """Ensure a NEXT edge exists from ``src`` to ``dst``."""
@@ -56,8 +61,8 @@ class GraphDAL:
 
         self._connector.execute(query, {"props": props})
 
-    def add_relationship(self, start_id: int, end_id: int, rel_type: str, props: dict) -> None:
-        """Create or merge a relationship of ``rel_type`` between two nodes."""
+    def add_relationship(self, start_id: str, end_id: str, rel_type: str, props: dict) -> None:
+        """Create or merge a relationship of ``rel_type`` between two nodes identified by ``id``."""
         self._validate_identifier(rel_type)
         query = "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:" f"{rel_type} $props]->(b)"
 
