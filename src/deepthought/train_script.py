@@ -1,6 +1,8 @@
 # Combined training script for fine-tuning with LoRA
 # This script implements Subtask 5 from the instruction
 
+from __future__ import annotations
+
 import argparse
 import gc
 import os
@@ -19,7 +21,7 @@ from transformers import (
 )
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine-tune a language model with LoRA")
     parser.add_argument(
         "--model-path",
@@ -32,15 +34,27 @@ def parse_args() -> argparse.Namespace:
         help="Dataset path or HF dataset identifier",
     )
     parser.add_argument(
+        "--bits",
+        type=int,
+        default=4,
+        choices=[4, 8],
+        help="Quantization bits for loading the model",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="./results/lora-adapter",
+        help="Directory to save results",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume training from the last checkpoint",
     )
-    return parser.parse_args()
+    return parser.parse_args(args)
 
 
-def main() -> int:
-    args = parse_args()
+def run(args: argparse.Namespace) -> int:
+    """Run training with the provided arguments."""
     print("\n=== Starting Fine-tuning Process ===\n")
 
     # ===== Step 1: Load Model & Tokenizer =====
@@ -51,9 +65,10 @@ def main() -> int:
         base_model_id = args.model_path or "meta-llama/Llama-3.2-3B-Instruct"
         print(f"Attempting to load model: {base_model_id}")
 
-        # Configure 4-bit quantization for memory efficiency
+        # Configure quantization for memory efficiency
         quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
+            load_in_4bit=args.bits == 4,
+            load_in_8bit=args.bits == 8,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
@@ -75,9 +90,10 @@ def main() -> int:
         print(f"Attempting to load model: {base_model_id}")
         print("Note: Using Zephyr-7B instead of Llama 3.2 due to access restrictions")
 
-        # Configure 4-bit quantization for memory efficiency
+        # Configure quantization for memory efficiency
         quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
+            load_in_4bit=args.bits == 4,
+            load_in_8bit=args.bits == 8,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
@@ -201,7 +217,7 @@ def main() -> int:
     print("\nStep 4: Setting training arguments...")
 
     # Define output directory
-    output_dir = "./results/lora-adapter"
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
     print(f"Output directory: {output_dir}")
 
@@ -337,6 +353,11 @@ def main() -> int:
     torch.cuda.empty_cache()
     print("CUDA cache cleared post-training (attempted).")
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point."""
+    return run(parse_args(argv))
 
 
 if __name__ == "__main__":
