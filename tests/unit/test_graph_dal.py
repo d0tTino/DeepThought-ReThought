@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 
 from deepthought.graph.dal import GraphDAL
@@ -21,15 +23,24 @@ def test_add_entity():
     assert connector.executed == [("MERGE (n:Person $props)", {"props": {"name": "Alice"}})]
 
 
+def test_merge_entity():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+    dal.merge_entity("Alice")
+
+    expected_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, "Alice"))
+    assert connector.executed == [("MERGE (:Entity {id: $id, name: $name})", {"id": expected_id, "name": "Alice"})]
+
+
 def test_add_relationship():
     connector = DummyConnector()
     dal = GraphDAL(connector)
-    dal.add_relationship(1, 2, "KNOWS", {"since": 2020})
+    dal.add_relationship("1", "2", "KNOWS", {"since": 2020})
 
     assert connector.executed == [
         (
             "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:KNOWS $props]->(b)",
-            {"start_id": 1, "end_id": 2, "props": {"since": 2020}},
+            {"start_id": "1", "end_id": "2", "props": {"since": 2020}},
         )
     ]
 
@@ -45,7 +56,7 @@ def test_add_relationship_invalid_type():
     connector = DummyConnector()
     dal = GraphDAL(connector)
     with pytest.raises(ValueError):
-        dal.add_relationship(1, 2, "KNOWS DELETE *", {"since": 2020})
+        dal.add_relationship("1", "2", "KNOWS DELETE *", {"since": 2020})
 
 
 def test_get_entity():
