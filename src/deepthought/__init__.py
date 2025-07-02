@@ -16,10 +16,13 @@ from . import learn  # noqa: F401
 if not os.environ.get("DEEPTHOUGHT_LIGHT_IMPORT"):
     try:  # pragma: no cover - optional dependency may be missing
         from . import modules  # type: ignore  # noqa: F401
+        from . import train_script  # noqa: F401
     except Exception:  # pragma: no cover - optional dependency may be missing
         modules = None  # type: ignore
+        train_script = None  # type: ignore
 else:  # pragma: no cover - skip heavy optional import
     modules = None  # type: ignore
+    train_script = None  # type: ignore
 # motivate requires NATS, which may not be installed in test environments
 try:  # pragma: no cover - optional dependency may be missing
     from . import motivate  # type: ignore  # noqa: F401
