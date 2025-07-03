@@ -201,6 +201,9 @@ class HierarchicalService:
         """Write the underlying graph to ``path`` in DOT format."""
         import os
 
+        if self._memory is None:
+            raise ValueError("Cannot dump graph without memory")
+
         os.makedirs(path, exist_ok=True)
         dot_path = os.path.join(path, "graph.dot")
 
