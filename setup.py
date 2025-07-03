@@ -25,6 +25,7 @@ setup(
     packages=find_packages("src"),
     package_dir={"": "src"},
     install_requires=requirements,
+
     description="DeepThought reThought - experimental AI framework",
     license="MIT",
     url="https://github.com/d0tTino/DeepThought-ReThought",
@@ -33,6 +34,7 @@ setup(
         "console_scripts": [
             "dtrt=deepthought.cli:main",
             "deepthought-rethought=deepthought.cli.finetune:main",
+
         ]
     },
 )
