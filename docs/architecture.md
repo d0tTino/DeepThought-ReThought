@@ -105,6 +105,27 @@ dtrt init service <name>
 
 The command copies the template to `src/deepthought/services/<name>` and
 replaces `TemplateService` with a class named `<Name>Service`.
+
 The generated directory contains `publisher.py`, `subscriber.py` and a
 `Dockerfile` for containerized deployments. Customize these files to implement
 your service logic.
+
+Customize the generated files to implement your service logic.
+
+## Multi-Agent Demo
+
+A simple demonstration of multiple agents communicating over NATS is provided in `examples/multi_agent_demo.py`.
+Run `setup_jetstream.py` first to create the required JetStream stream:
+
+```bash
+python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
+```
+
+Then launch the demo:
+
+```bash
+python examples/multi_agent_demo.py
+```
+
+This script spins up three agents that forward responses to each other in a round-robin fashion using the existing `InputHandler`, `BasicMemory`, `BasicLLM` (or `LLMStub`), and `OutputHandler` modules.
+Ensure a NATS server is running on `localhost:4222` or set the `NATS_URL` environment variable accordingly.
