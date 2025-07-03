@@ -141,6 +141,12 @@ def test_dump_graph(tmp_path):
     assert '"B" -> "C" [label="LIKES"]' in contents
 
 
+def test_dump_graph_no_memory(tmp_path):
+    service = HierarchicalService(DummyNATS(), DummyJS(), None)
+    with pytest.raises(ValueError):
+        service.dump_graph(str(tmp_path))
+
+
 def test_retrieve_context_with_search(tmp_path):
     vec = DummyVector()
     dal = DummyDAL()
