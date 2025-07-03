@@ -30,8 +30,10 @@ setup(
             "dtrt=deepthought.cli:main",
         ]
     },
+
     description="DeepThought reThought - experimental AI framework",
     license="MIT",
     url="https://github.com/d0tTino/DeepThought-ReThought",
     python_requires=">=3.8",
+
 )
