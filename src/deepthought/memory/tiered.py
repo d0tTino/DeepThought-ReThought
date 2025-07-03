@@ -6,7 +6,7 @@ import logging
 from collections import OrderedDict
 from typing import List, Sequence
 
-from ..graph import GraphDAL
+from ..graph import GraphBackend
 from .vector_store import VectorStore, create_vector_store
 
 logger = logging.getLogger(__name__)
@@ -18,12 +18,12 @@ class TieredMemory:
     def __init__(
         self,
         vector_store: VectorStore,
-        graph_dal: GraphDAL,
+        graph_backend: GraphBackend,
         capacity: int = 100,
         top_k: int = 3,
     ) -> None:
         self._store = vector_store
-        self._dal = graph_dal
+        self._graph = graph_backend
         self._capacity = capacity
         self._top_k = top_k
         self._counter = 0
@@ -32,7 +32,7 @@ class TieredMemory:
     @classmethod
     def from_chroma(
         cls,
-        graph_dal: GraphDAL,
+        graph_backend: GraphBackend,
         collection_name: str = "deepthought",
         persist_directory: str | None = None,
         backend: str = "chroma",
@@ -46,7 +46,7 @@ class TieredMemory:
             persist_directory=persist_directory,
             use_gpu=use_gpu,
         )
-        return cls(store, graph_dal, capacity=capacity, top_k=top_k)
+        return cls(store, graph_backend, capacity=capacity, top_k=top_k)
 
     # internal helpers
     def _evict_if_needed(self) -> None:
@@ -102,7 +102,7 @@ class TieredMemory:
 
     def _graph_facts(self, limit: int) -> List[str]:
         try:
-            rows = self._dal.query_subgraph(
+            rows = self._graph.query_subgraph(
                 "MATCH (n:Entity) RETURN n.name AS fact LIMIT $limit",
                 {"limit": limit},
             )
@@ -125,7 +125,7 @@ class TieredMemory:
     def store_interaction(self, text: str) -> None:
         self._add_to_vector(text)
         try:
-            self._dal.merge_entity(text)
+            self._graph.merge_entity(text)
         except Exception:  # pragma: no cover - defensive
             logger.error("Failed to store interaction in graph", exc_info=True)
 
