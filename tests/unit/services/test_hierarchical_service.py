@@ -8,6 +8,56 @@ sys.modules.setdefault("deepthought.harness", types.ModuleType("harness"))
 sys.modules.setdefault("deepthought.learn", types.ModuleType("learn"))
 sys.modules.setdefault("deepthought.modules", types.ModuleType("modules"))
 sys.modules.setdefault("deepthought.motivate", types.ModuleType("motivate"))
+fake_nats = types.ModuleType("nats")
+fake_nats.aio = types.ModuleType("aio")
+fake_client_mod = types.ModuleType("client")
+setattr(fake_client_mod, "Client", object)
+fake_nats.aio.client = fake_client_mod
+fake_msg_mod = types.ModuleType("msg")
+setattr(fake_msg_mod, "Msg", object)
+fake_nats.aio.msg = fake_msg_mod
+fake_nats.js = types.ModuleType("js")
+fake_js_client_mod = types.ModuleType("client")
+setattr(fake_js_client_mod, "JetStreamContext", object)
+fake_nats.js.client = fake_js_client_mod
+fake_errors_mod = types.ModuleType("errors")
+setattr(fake_errors_mod, "Error", Exception)
+fake_nats.errors = fake_errors_mod
+sys.modules.setdefault("nats", fake_nats)
+sys.modules.setdefault("nats.aio", fake_nats.aio)
+sys.modules.setdefault("nats.aio.client", fake_client_mod)
+sys.modules.setdefault("nats.aio.msg", fake_msg_mod)
+sys.modules.setdefault("nats.js", fake_nats.js)
+sys.modules.setdefault("nats.js.client", fake_js_client_mod)
+sys.modules.setdefault("nats.errors", fake_errors_mod)
+sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
+fake_nx = types.ModuleType("networkx")
+setattr(fake_nx, "DiGraph", object)
+sys.modules.setdefault("networkx", fake_nx)
+fake_pyd = types.ModuleType("pydantic")
+fake_pyd.AnyUrl = str
+fake_pyd.ValidationError = Exception
+sys.modules.setdefault("pydantic", fake_pyd)
+fake_ps = types.ModuleType("pydantic_settings")
+fake_ps.BaseSettings = object
+fake_ps.SettingsConfigDict = dict
+sys.modules.setdefault("pydantic_settings", fake_ps)
+fake_prom = types.ModuleType("prometheus_client")
+
+class _Metric:
+    def labels(self, **kwargs):
+        return self
+
+    def inc(self, *args, **kwargs):
+        pass
+
+    def observe(self, *args, **kwargs):
+        pass
+
+
+fake_prom.Counter = lambda *a, **k: _Metric()
+fake_prom.Histogram = lambda *a, **k: _Metric()
+sys.modules.setdefault("prometheus_client", fake_prom)
 
 from typing import List
 
@@ -17,6 +67,7 @@ from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.memory.tiered import TieredMemory
 from deepthought.search import OfflineSearch
 from deepthought.services.hierarchical_service import HierarchicalService
+from deepthought.graph.backend import GraphDALBackend
 
 
 class DummyNATS:
@@ -46,6 +97,9 @@ class DummySubscriber:
 
 
 class DummyVector:
+    def add_texts(self, texts, ids=None, metadatas=None):
+        pass
+
     def query(self, query_texts, n_results=3):
         return {"documents": [["vec1"], ["vec2"]]}
 
@@ -78,7 +132,7 @@ class DummyMsg:
 async def test_handle_input_publishes_combined_context(monkeypatch):
     vec = DummyVector()
     dal = DummyDAL()
-    memory = TieredMemory(vec, dal, top_k=3)
+    memory = TieredMemory(vec, GraphDALBackend(dal), top_k=3)
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
@@ -101,14 +155,14 @@ async def test_handle_input_publishes_combined_context(monkeypatch):
 def test_retrieve_context_merges():
     vec = DummyVector()
     dal = DummyDAL()
-    memory = TieredMemory(vec, dal, top_k=3)
+    memory = TieredMemory(vec, GraphDALBackend(dal), top_k=3)
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     ctx = service.retrieve_context("hi")
     assert ctx == ["vec1", "vec2", "graph1"]
 
 
 def test_retrieve_context_failures():
-    memory = TieredMemory(FailingVector(), FailingDAL(), top_k=3)
+    memory = TieredMemory(FailingVector(), GraphDALBackend(FailingDAL()), top_k=3)
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     ctx = service.retrieve_context("x")
     assert ctx == []
@@ -123,13 +177,13 @@ class DummyGraphDAL:
 
 
 class DummyMemory:
-    def __init__(self, dal):
-        self._dal = dal
+    def __init__(self, backend):
+        self._graph = backend
 
 
 def test_dump_graph(tmp_path):
     dal = DummyGraphDAL()
-    memory = DummyMemory(dal)
+    memory = DummyMemory(GraphDALBackend(dal))
 
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
 
@@ -150,7 +204,7 @@ def test_dump_graph_no_memory(tmp_path):
 def test_retrieve_context_with_search(tmp_path):
     vec = DummyVector()
     dal = DummyDAL()
-    memory = TieredMemory(vec, dal, top_k=3)
+    memory = TieredMemory(vec, GraphDALBackend(dal), top_k=3)
     search = OfflineSearch.create_index(
         str(tmp_path / "index.db"),
         [("t1", "search result 1"), ("t2", "search result 2")],
@@ -163,13 +217,16 @@ def test_retrieve_context_with_search(tmp_path):
 def test_retrieve_context_from_config(monkeypatch, tmp_path):
     vec = DummyVector()
     dal = DummyDAL()
-    memory = TieredMemory(vec, dal, top_k=3)
+    memory = TieredMemory(vec, GraphDALBackend(dal), top_k=3)
     db = tmp_path / "conf.db"
     OfflineSearch.create_index(str(db), [("t", "via config")])
     monkeypatch.setenv("DT_SEARCH_DB", str(db))
     import deepthought.config as config
 
     config._settings_cache = None
+    monkeypatch.setattr(config, "get_settings", lambda: types.SimpleNamespace(search_db=str(db)))
+    import deepthought.services.hierarchical_service as hs
+    monkeypatch.setattr(hs, "get_settings", lambda: types.SimpleNamespace(search_db=str(db)))
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     ctx = service.retrieve_context("config")
     assert "via config" in ctx

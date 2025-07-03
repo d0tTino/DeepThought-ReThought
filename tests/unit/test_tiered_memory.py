@@ -5,6 +5,8 @@ sys.modules.setdefault("deepthought.harness", types.ModuleType("harness"))
 sys.modules.setdefault("deepthought.learn", types.ModuleType("learn"))
 sys.modules.setdefault("deepthought.modules", types.ModuleType("modules"))
 sys.modules.setdefault("deepthought.motivate", types.ModuleType("motivate"))
+sys.modules.setdefault("faiss", types.ModuleType("faiss"))
+sys.modules.setdefault("numpy", types.ModuleType("numpy"))
 
 from deepthought.memory.tiered import TieredMemory
 

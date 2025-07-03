@@ -45,14 +45,13 @@ inspect the knowledge graph. The `HierarchicalService` exposes a
 directory where the `graph.dot` file should be created:
 
 ```python
-from deepthought.graph import GraphConnector, GraphDAL
+from deepthought.graph import create_graph_backend
 from deepthought.memory import TieredMemory
 from deepthought.services import HierarchicalService
 
-connector = GraphConnector(host="localhost", port=7687)
-dal = GraphDAL(connector)
 # use the configured vector backend ("chroma" or "faiss")
-memory = TieredMemory.from_chroma(dal, backend="faiss")
+graph = create_graph_backend("memgraph")
+memory = TieredMemory.from_chroma(graph, backend="faiss")
 service = HierarchicalService(DummyNATS(), DummyJS(), memory)
 service.dump_graph("./graph_exports")
 ```
@@ -94,4 +93,11 @@ search_db: wiki.db
 
 Set ``DT_VECTOR_BACKEND`` to ``faiss`` to use the in-memory FAISS store instead of Chroma.
 When using FAISS, ``DT_VECTOR_USE_GPU`` enables GPU acceleration if available.
+
+### Graph Backend
+
+``HierarchicalService.from_chroma`` accepts a graph backend name such as
+``"memgraph"`` or ``"noop"``. The default connects to Memgraph using the
+environment variables ``MG_HOST``, ``MG_PORT``, ``MG_USER`` and
+``MG_PASSWORD``. Pass ``"noop"`` to disable graph persistence during testing.
 

@@ -14,7 +14,7 @@ from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
-from ..graph import GraphDAL
+
 from ..memory.tiered import TieredMemory
 from ..memory.vector_store import create_vector_store
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
@@ -32,7 +32,6 @@ class HierarchicalService:
         js_context: JetStreamContext,
         memory: TieredMemory | None,
         search: OfflineSearch | None = None,
-        graph_dal: GraphDAL | None = None,
         top_k: int = 3,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
@@ -62,7 +61,7 @@ class HierarchicalService:
         cls,
         nats_client: NATS,
         js_context: JetStreamContext,
-        graph_dal: GraphDAL,
+        graph_backend: str = "memgraph",
         collection_name: str = "deepthought",
         persist_directory: Optional[str] = None,
         backend: str = "chroma",
@@ -78,7 +77,14 @@ class HierarchicalService:
             persist_directory=persist_directory,
             use_gpu=use_gpu,
         )
-        memory = TieredMemory(store, graph_dal, capacity=capacity, top_k=top_k)
+        from ..graph import create_graph_backend, GraphBackend
+
+        if isinstance(graph_backend, str):
+            backend_obj: GraphBackend = create_graph_backend(graph_backend)
+        else:
+            backend_obj = graph_backend
+
+        memory = TieredMemory(store, backend_obj, capacity=capacity, top_k=top_k)
         db_path = search_db or get_settings().search_db
         if db_path:
             if not os.path.exists(db_path):
@@ -207,7 +213,7 @@ class HierarchicalService:
         os.makedirs(path, exist_ok=True)
         dot_path = os.path.join(path, "graph.dot")
 
-        rows = self._memory._dal.query_subgraph(
+        rows = self._memory._graph.query_subgraph(
             (
                 "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, "
                 "coalesce(a.name, '') AS src, type(r) AS rel, "
