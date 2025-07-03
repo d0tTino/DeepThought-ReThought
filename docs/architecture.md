@@ -94,8 +94,9 @@ The generated `dashboard.png` illustrates BLEU, ROUGE‑L and average latency ov
 
 ## Service Template
 
-A minimal skeleton is available under `tools/template_service/`. It demonstrates
+A minimal skeleton is available under `templates/service/`. It demonstrates
 how to use the shared `Publisher` and `Subscriber` helpers.
+The bus CLI exposes an initializer for creating new services.
 To create a new service based on this template run:
 
 ```bash
@@ -104,6 +105,11 @@ dtrt init service <name>
 
 The command copies the template to `src/deepthought/services/<name>` and
 replaces `TemplateService` with a class named `<Name>Service`.
+
+The generated directory contains `publisher.py`, `subscriber.py` and a
+`Dockerfile` for containerized deployments. Customize these files to implement
+your service logic.
+
 Customize the generated files to implement your service logic.
 
 ## Multi-Agent Demo

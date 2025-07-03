@@ -28,6 +28,7 @@ setup(
     entry_points={
         "console_scripts": [
             "dtrt = deepthought.cli:main",
+            "dtrt-bus=deepthought.cli.bus:main",
         ]
     },
     description="DeepThought reThought - experimental AI framework",
@@ -37,6 +38,7 @@ setup(
     entry_points={
         "console_scripts": [
             "dtrt=deepthought.cli:main",
+            "dtrt-bus=deepthought.cli.bus:main",
         ]
     },
 )
