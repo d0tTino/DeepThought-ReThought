@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+ENV MODEL_PATH=/model
+ARG MODEL_NAME=gpt2
+ENV MODEL_NAME=${MODEL_NAME}
+
+RUN apt-get update && \
+    apt-get install -y git gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir fastapi uvicorn[standard] transformers bitsandbytes
+
+WORKDIR /app
+COPY tools/edge_server.py /app/edge_server.py
+
+RUN python - <<PY
+from transformers import AutoModelForCausalLM, AutoTokenizer
+model = AutoModelForCausalLM.from_pretrained("$MODEL_NAME", device_map="auto", load_in_4bit=True)
+tokenizer = AutoTokenizer.from_pretrained("$MODEL_NAME")
+model.save_pretrained("/model")
+tokenizer.save_pretrained("/model")
+PY
+
+CMD ["uvicorn", "edge_server:app", "--host", "0.0.0.0", "--port", "8000"]

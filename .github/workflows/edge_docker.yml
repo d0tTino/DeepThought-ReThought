@@ -1,0 +1,17 @@
+name: Build Edge Image
+
+on:
+  push:
+    paths:
+      - 'docker/Dockerfile.edge'
+      - 'tools/edge_server.py'
+      - '.github/workflows/edge_docker.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build image
+        run: docker build -f docker/Dockerfile.edge -t dtrt-edge .

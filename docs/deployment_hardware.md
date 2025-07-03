@@ -36,3 +36,20 @@ Hardware requirements for the Language Model component vary significantly betwee
 *   **NATS Overhead**: The overhead of NATS communication within a Unity client is typically minimal and should not significantly impact overall performance unless message frequency is extremely high.
 
 Always monitor resource usage in your specific deployment to identify bottlenecks and adjust hardware as needed.
+
+## Edge Inference Container
+
+A lightweight container for running a 4-bit quantized model is available:
+
+```bash
+docker build -f docker/Dockerfile.edge -t dtrt-edge .
+docker run -p 8000:8000 dtrt-edge
+```
+
+Use the `MODEL_NAME` build argument to select a different base model:
+
+```bash
+docker build --build-arg MODEL_NAME=tiiuae/falcon-7b-instruct -f docker/Dockerfile.edge -t dtrt-edge .
+```
+
+This image downloads the model during build and starts `tools/edge_server.py` on port `8000`.

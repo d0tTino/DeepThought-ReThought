@@ -27,16 +27,11 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "dtrt = deepthought.cli:main",
+            "dtrt=deepthought.cli:main",
         ]
     },
     description="DeepThought reThought - experimental AI framework",
     license="MIT",
     url="https://github.com/d0tTino/DeepThought-ReThought",
     python_requires=">=3.8",
-    entry_points={
-        "console_scripts": [
-            "dtrt=deepthought.cli:main",
-        ]
-    },
 )
