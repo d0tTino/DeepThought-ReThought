@@ -27,13 +27,13 @@ Key planned/in-progress components include:
 
 ### CLI Usage
 
-After installing the project (`pip install -e .`), use the ``dtrt`` command to launch training:
+After installing the project (`pip install .`), you can launch fine-tuning:
 
 ```bash
-dtrt --model <model-id> --dataset <dataset> --bits 4 --output-dir ./results
+dtrt finetune --model-path <model-id>
 ```
 
-Run ``dtrt --help`` to see all available options.
+Run ``dtrt finetune --help`` to see all available options.
 3.  **Hierarchical Memory Service:** combines `BasicMemory`, a planned Chroma-backed vector memory, and `KnowledgeGraphMemory` using Memgraph. These layers are orchestrated by the `MemoryService` to produce aggregated `MEMORY_RETRIEVED` events. See [docs/hierarchical_memory_service.md](docs/hierarchical_memory_service.md).
 4.  **Reward Manager:** publishes user feedback as `RewardEvent` messages via JetStream, enabling future reinforcement or preference-based training. See [docs/reward_manager.md](docs/reward_manager.md).
 5.  **Adaptive Code Generation:** (Future Goal) Exploring techniques like template engines or JIT compilation (e.g., using AsmJit) for dynamic code optimization.
