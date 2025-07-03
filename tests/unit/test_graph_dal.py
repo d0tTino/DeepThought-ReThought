@@ -20,7 +20,12 @@ def test_add_entity():
     dal = GraphDAL(connector)
     dal.add_entity("Person", {"name": "Alice"})
 
-    assert connector.executed == [("MERGE (n:Person $props)", {"props": {"name": "Alice"}})]
+    assert connector.executed == [
+        (
+            "MERGE (n:`Person`) SET n += $props",
+            {"props": {"name": "Alice"}},
+        )
+    ]
 
 
 def test_merge_entity():

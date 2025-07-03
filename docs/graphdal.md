@@ -1,6 +1,6 @@
 # GraphDAL and Memory Service
 
-GraphDAL is a lightweight data access layer powering `KnowledgeGraphMemory`. It connects to a running Memgraph instance through the `GraphConnector` class.
+GraphDAL is a lightweight data access layer powering `KnowledgeGraphMemory`. It connects to a running graph database through the `GraphConnector` class. Both Neo4j and Memgraph are supported backends.
 
 ## Starting Memgraph
 

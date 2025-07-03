@@ -57,7 +57,7 @@ class GraphDAL:
     def add_entity(self, label: str, props: dict) -> None:
         """Create or merge a node with ``label`` and ``props``."""
         self._validate_identifier(label)
-        query = f"MERGE (n:{label} $props)"
+        query = f"MERGE (n:`{label}`) SET n += $props"
 
         self._connector.execute(query, {"props": props})
 
