@@ -19,4 +19,6 @@ sentence-transformers==2.7.0
 fastapi
 uvicorn
 PyYAML
+faiss-cpu
+prometheus-client
 

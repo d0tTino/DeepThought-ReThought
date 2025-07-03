@@ -91,3 +91,17 @@ Execution traces from bots or training runs can be replayed and analyzed.
   ```
 
 The generated `dashboard.png` illustrates BLEU, ROUGE‑L and average latency over time.
+
+## Service Template
+
+A minimal skeleton is available under `tools/template_service/`. It demonstrates
+how to use the shared `Publisher` and `Subscriber` helpers.
+To create a new service based on this template run:
+
+```bash
+dtrt init service <name>
+```
+
+The command copies the template to `src/deepthought/services/<name>` and
+replaces `TemplateService` with a class named `<Name>Service`.
+Customize the generated files to implement your service logic.

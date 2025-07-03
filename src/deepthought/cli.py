@@ -1,37 +1,45 @@
-"""Command line interface for DeepThought-ReThought."""
-
 from __future__ import annotations
 
 import argparse
-
-from . import __version__
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="DeepThought training utilities")
-    parser.add_argument("--model", dest="model_path", default=None, help="Model ID or local path")
-    parser.add_argument(
-        "--dataset",
-        dest="dataset_path",
-        default="databricks/databricks-dolly-15k",
-        help="Dataset path or HF dataset identifier",
-    )
-    parser.add_argument("--bits", type=int, choices=[4, 8], default=4, help="Quantization bits")
-    parser.add_argument(
-        "--output-dir", dest="output_dir", default="./results/lora-adapter", help="Directory to save results"
-    )
-    parser.add_argument("--resume", action="store_true", help="Resume training from last checkpoint")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    return parser
+import shutil
+from pathlib import Path
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+def _to_camel(name: str) -> str:
+    return "".join(part.capitalize() for part in name.split("_"))
+
+
+def init_service(name: str) -> None:
+    dest = Path("src/deepthought/services") / name
+    if dest.exists():
+        raise SystemExit(f"Service '{name}' already exists")
+    template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
+    shutil.copytree(template, dest)
+    class_name = _to_camel(name) + "Service"
+    for path in dest.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        text = text.replace("TemplateService", class_name)
+        text = text.replace("template_service", name)
+        path.write_text(text, encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="dtrt")
+    sub = parser.add_subparsers(dest="command")
+
+    init_p = sub.add_parser("init")
+    init_sub = init_p.add_subparsers(dest="target")
+
+    svc_p = init_sub.add_parser("service")
+    svc_p.add_argument("name")
+
     args = parser.parse_args(argv)
-    from . import train_script
 
-    return train_script.run(args)
+    if args.command == "init" and args.target == "service":
+        init_service(args.name)
+    else:
+        parser.print_help()
 
 
-if __name__ == "__main__":  # pragma: no cover - manual invocation
-    raise SystemExit(main())
+if __name__ == "__main__":
+    main()

@@ -25,4 +25,6 @@ sentence-transformers
 fastapi
 uvicorn
 pyyaml
+faiss-cpu
+prometheus-client
 
