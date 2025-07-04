@@ -44,7 +44,7 @@ def test_add_relationship():
 
     assert connector.executed == [
         (
-            "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:KNOWS $props]->(b)",
+            "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:KNOWS]->(b) SET r += $props",
             {"start_id": "1", "end_id": "2", "props": {"since": 2020}},
         )
     ]
