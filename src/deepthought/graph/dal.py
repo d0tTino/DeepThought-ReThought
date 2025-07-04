@@ -64,7 +64,7 @@ class GraphDAL:
     def add_relationship(self, start_id: str, end_id: str, rel_type: str, props: dict) -> None:
         """Create or merge a relationship of ``rel_type`` between two nodes identified by ``id``."""
         self._validate_identifier(rel_type)
-        query = "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:" f"{rel_type} $props]->(b)"
+        query = f"MATCH (a {{id: $start_id}}), (b {{id: $end_id}}) " f"MERGE (a)-[r:{rel_type}]->(b) SET r += $props"
 
         self._connector.execute(
             query,
