@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
-from importlib import import_module
+from importlib import import_module, resources
 from pathlib import Path
 
 
@@ -19,6 +19,7 @@ def init_service(name: str) -> None:
     if not template.exists():
         # fallback to package data when installed from a wheel
         template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
+
 
     shutil.copytree(template, dest)
     class_name = _to_camel(name) + "Service"
