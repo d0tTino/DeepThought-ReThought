@@ -3,3 +3,4 @@ WORKDIR /app
 COPY . .
 RUN pip install -e ../../..
 CMD ["python", "-m", "template_service"]
+
