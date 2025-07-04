@@ -14,8 +14,8 @@ def init_service(name: str) -> None:
     dest = Path("src/deepthought/services") / name
     if dest.exists():
         raise SystemExit(f"Service '{name}' already exists")
-    # templates live at repo root/tools; navigate up to repository base
-    template = Path(__file__).resolve().parents[3] / "tools" / "template_service"
+    # templates live alongside installed packages under site-packages/tools
+    template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
 
     shutil.copytree(template, dest)
     class_name = _to_camel(name) + "Service"
