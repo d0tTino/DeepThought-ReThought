@@ -8,7 +8,7 @@ def test_cli_init_service(tmp_path):
     env = dict(**os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
     service_name = "sample"
     subprocess.run(
-        [sys.executable, "-m", "deepthought.cli.bus", "init", "service", service_name],
+        [sys.executable, "-m", "deepthought.cli", "init", "service", service_name],
         cwd=tmp_path,
         stdout=subprocess.PIPE,
         text=True,
