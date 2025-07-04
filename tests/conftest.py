@@ -1,9 +1,13 @@
 # Standard library imports
+import os
 import sys
 import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+# Avoid importing heavy optional dependencies during test collection.
+os.environ.setdefault("DEEPTHOUGHT_LIGHT_IMPORT", "1")
 
 import pytest
 
@@ -23,6 +27,7 @@ sg_stub.publish_input_received = _noop
 
 try:  # Attempt to load the real example module
     import importlib
+
     sg = importlib.import_module("examples.social_graph_bot")
     sg.send_to_prism = _noop
 except Exception:  # pragma: no cover - fallback when dependencies are missing
@@ -43,6 +48,7 @@ if "sentence_transformers" not in sys.modules:
 
         def encode(self, text, convert_to_numpy=True):
             import numpy as np
+
             return np.array([len(text)], dtype=float)
 
     st.SentenceTransformer = DummyModel
@@ -87,6 +93,7 @@ if "deepthought.motivate" not in sys.modules:
 # the social_graph_bot module so tests can intercept these calls. The stub must
 # be applied after ensuring ``sentence_transformers`` is available so the module
 # imports cleanly.
+
 
 @pytest.fixture
 def prism_calls(monkeypatch):

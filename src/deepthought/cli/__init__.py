@@ -14,8 +14,13 @@ def init_service(name: str) -> None:
     dest = Path("src/deepthought/services") / name
     if dest.exists():
         raise SystemExit(f"Service '{name}' already exists")
-    # templates live in the packaged "tools" module
-    template = Path(resources.files("tools")) / "template_service"
+    # templates live under ``templates/service`` during development
+    template = Path(__file__).resolve().parents[3] / "templates" / "service"
+    if not template.exists():
+        # fallback to package data when installed from a wheel
+        template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
+
+
     shutil.copytree(template, dest)
     class_name = _to_camel(name) + "Service"
     for path in dest.rglob("*.py"):
@@ -30,8 +35,8 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
 
 
 def _cmd_finetune(args: argparse.Namespace) -> int:
-    train_script = import_module("deepthought.train_script")
-    return train_script.run(args)
+    training = import_module("deepthought.train")
+    return training.run(args)
 
 
 def _build_parser() -> argparse.ArgumentParser:
