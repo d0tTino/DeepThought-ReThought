@@ -77,12 +77,9 @@ class HierarchicalService:
             persist_directory=persist_directory,
             use_gpu=use_gpu,
         )
-        from ..graph import create_graph_backend, GraphBackend
+        from ..graph import create_graph_backend
 
-        if isinstance(graph_backend, str):
-            backend_obj: GraphBackend = create_graph_backend(graph_backend)
-        else:
-            backend_obj = graph_backend
+        backend_obj = create_graph_backend(graph_backend)
 
         memory = TieredMemory(store, backend_obj, capacity=capacity, top_k=top_k)
         db_path = search_db or get_settings().search_db
