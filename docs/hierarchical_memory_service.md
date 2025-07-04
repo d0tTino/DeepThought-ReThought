@@ -45,14 +45,15 @@ inspect the knowledge graph. The `HierarchicalService` exposes a
 directory where the `graph.dot` file should be created:
 
 ```python
-from deepthought.graph import create_graph_backend
-from deepthought.memory import TieredMemory
 from deepthought.services import HierarchicalService
 
 # use the configured vector backend ("chroma" or "faiss")
-graph = create_graph_backend("memgraph")
-memory = TieredMemory.from_chroma(graph, backend="faiss")
-service = HierarchicalService(DummyNATS(), DummyJS(), memory)
+service = HierarchicalService.from_chroma(
+    DummyNATS(),
+    DummyJS(),
+    graph_backend="memgraph",
+    backend="faiss",
+)
 service.dump_graph("./graph_exports")
 ```
 
