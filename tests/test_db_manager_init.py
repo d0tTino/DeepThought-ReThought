@@ -1,7 +1,12 @@
+import sys
+import types
+
 import aiosqlite
 import pytest
 
-from deepthought.services import DBManager
+sys.modules.setdefault("faiss", types.ModuleType("faiss"))
+
+from deepthought.services.db_manager import DBManager
 
 TABLES = [
     "interactions",
@@ -32,3 +37,8 @@ async def test_db_manager_init_creates_tables_once(tmp_path):
             assert row[0] == 1, f"{table} table should exist exactly once"
 
     await manager.close()
+
+
+def test_create_table_statements_returns_class_queries(tmp_path):
+    manager = DBManager(str(tmp_path / "db.sqlite"))
+    assert manager._create_table_statements() is DBManager.CREATE_TABLE_QUERIES
