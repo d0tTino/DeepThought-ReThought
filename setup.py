@@ -32,10 +32,20 @@ setup(
             "dtrt=deepthought.cli:main",
         ]
     },
-
     description="DeepThought reThought - experimental AI framework",
     license="MIT",
     url="https://github.com/d0tTino/DeepThought-ReThought",
     python_requires=">=3.8",
-
+    long_description=Path("README.md").read_text(encoding="utf-8"),
+    long_description_content_type="text/markdown",
+    classifiers=[
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3 :: Only",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+    ],
 )

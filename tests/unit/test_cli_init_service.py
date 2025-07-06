@@ -5,7 +5,8 @@ from pathlib import Path
 
 
 def test_cli_init_service(tmp_path):
-    env = dict(**os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
     service_name = "sample"
     subprocess.run(
         [sys.executable, "-m", "deepthought.cli", "init", "service", service_name],

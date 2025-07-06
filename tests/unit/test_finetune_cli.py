@@ -5,7 +5,8 @@ from pathlib import Path
 
 
 def test_finetune_cli_help(tmp_path):
-    env = dict(**os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
     result = subprocess.run(
         [sys.executable, "-m", "deepthought.cli", "finetune", "--help"],
         stdout=subprocess.PIPE,
