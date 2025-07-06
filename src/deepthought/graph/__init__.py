@@ -1,13 +1,14 @@
 """Graph utilities for DeepThought."""
 
-from .connector import GraphConnector, Neo4jConnector
-from .dal import GraphDAL
 from .backend import (
     GraphBackend,
     GraphDALBackend,
+    Neo4jBackend,
     NoOpGraphBackend,
     create_graph_backend,
 )
+from .connector import GraphConnector, Neo4jConnector
+from .dal import GraphDAL
 
 __all__ = [
     "GraphConnector",
@@ -15,6 +16,7 @@ __all__ = [
     "GraphDAL",
     "GraphBackend",
     "GraphDALBackend",
+    "Neo4jBackend",
     "NoOpGraphBackend",
     "create_graph_backend",
 ]
