@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Training utilities for fine-tuning language models."""
+
 import argparse
 import os
 from typing import Tuple
@@ -15,6 +17,13 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+
+__all__ = [
+    "load_model",
+    "load_dataset",
+    "create_trainer",
+    "run",
+]
 
 
 def load_model(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
