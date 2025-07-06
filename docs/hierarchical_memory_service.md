@@ -102,3 +102,22 @@ When using FAISS, ``DT_VECTOR_USE_GPU`` enables GPU acceleration if available.
 environment variables ``MG_HOST``, ``MG_PORT``, ``MG_USER`` and
 ``MG_PASSWORD``. Pass ``"noop"`` to disable graph persistence during testing.
 
+### Running with Neo4j
+
+To try the service with Neo4j instead of Memgraph start a Neo4j container:
+
+```bash
+docker run --rm -p 7687:7687 -e NEO4J_AUTH=neo4j/test neo4j:5
+```
+
+Set the corresponding variables so ``create_graph_backend("neo4j")`` can connect:
+
+```bash
+export NEO4J_HOST=localhost
+export NEO4J_PORT=7687
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=test
+```
+
+Then pass ``graph_backend_name="neo4j"`` to ``HierarchicalService.from_chroma``.
+

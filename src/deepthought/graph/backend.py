@@ -2,9 +2,10 @@ from __future__ import annotations
 
 """Graph backend strategy interfaces."""
 
+import os
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any, List
-import os
 
 from .connector import GraphConnector, Neo4jConnector
 from .dal import GraphDAL
@@ -35,6 +36,23 @@ class GraphDALBackend(GraphBackend):
         self._dal.merge_entity(name)
 
 
+class Neo4jBackend(GraphBackend):
+    """Direct backend using :class:`Neo4jConnector`."""
+
+    def __init__(self, connector: Neo4jConnector) -> None:
+        self._connector = connector
+
+    def query_subgraph(self, query: str, params: dict) -> List[Any]:
+        return self._connector.execute(query, params)
+
+    def merge_entity(self, name: str) -> None:
+        entity_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, name))
+        self._connector.execute(
+            "MERGE (:Entity {id: $id, name: $name})",
+            {"id": entity_id, "name": name},
+        )
+
+
 class NoOpGraphBackend(GraphBackend):
     """Graph backend that does nothing."""
 
@@ -53,9 +71,7 @@ def create_graph_backend(name: str = "memgraph", **params: Any) -> GraphBackend:
         port = int(params.get("port", os.getenv("MG_PORT", 7687)))
         username = params.get("username", os.getenv("MG_USER", ""))
         password = params.get("password", os.getenv("MG_PASSWORD", ""))
-        connector = GraphConnector(
-            host=host, port=port, username=username, password=password
-        )
+        connector = GraphConnector(host=host, port=port, username=username, password=password)
         dal = GraphDAL(connector)
         return GraphDALBackend(dal)
     if lower == "neo4j":
@@ -63,12 +79,8 @@ def create_graph_backend(name: str = "memgraph", **params: Any) -> GraphBackend:
         port = int(params.get("port", os.getenv("NEO4J_PORT", 7687)))
         username = params.get("username", os.getenv("NEO4J_USER", "neo4j"))
         password = params.get("password", os.getenv("NEO4J_PASSWORD", "neo4j"))
-        connector = Neo4jConnector(
-            host=host, port=port, username=username, password=password
-        )
-        dal = GraphDAL(connector)
-        return GraphDALBackend(dal)
+        connector = Neo4jConnector(host=host, port=port, username=username, password=password)
+        return Neo4jBackend(connector)
     if lower in {"none", "noop", "stub"}:
         return NoOpGraphBackend()
     raise ValueError(f"Unknown graph backend: {name}")
-
