@@ -6,6 +6,21 @@ DeepThought-ReThought is an experimental Artificial Intelligence (AI) project fo
 
 The project is hosted on GitHub: [https://github.com/d0tTino/DeepThought-ReThought](https://github.com/d0tTino/DeepThought-ReThought)
 
+## Installation
+
+Build a wheel and install it with pip:
+
+```bash
+python -m build
+pip install dist/*.whl
+```
+
+After installation, the `dtrt` CLI is available. View its commands with:
+
+```bash
+dtrt finetune --help
+```
+
 ## Goals
 
 * **Extreme Efficiency:** Develop AI components that minimize computational cost (CPU, memory, energy) and financial expenditure.
@@ -27,7 +42,7 @@ Key planned/in-progress components include:
 
 ### CLI Usage
 
-After installing the project (`pip install .`), you can launch fine-tuning:
+After installing the project (`pip install dist/*.whl`), you can launch fine-tuning:
 
 ```bash
 dtrt finetune --model-path <model-id>

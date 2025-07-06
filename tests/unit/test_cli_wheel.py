@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import sys
@@ -20,8 +21,14 @@ def test_dtrt_init_service_from_wheel(tmp_path: Path) -> None:
         subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
         pip = venv_dir / "bin" / "pip"
         dtrt = venv_dir / "bin" / "dtrt"
-        subprocess.run([str(pip), "install", "--no-deps", str(wheel)], check=True)
-        subprocess.run([str(dtrt), "init", "service", "demo"], cwd=tmp_path, check=True)
+        env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
+        subprocess.run(
+            [str(pip), "install", "--no-deps", "--no-build-isolation", str(wheel)],
+            check=True,
+            env=env,
+        )
+        subprocess.run([str(dtrt), "init", "service", "demo"], cwd=tmp_path, check=True, env=env)
         assert (tmp_path / "src" / "deepthought" / "services" / "demo" / "service.py").exists()
     finally:
         shutil.rmtree(repo_root / "build", ignore_errors=True)
