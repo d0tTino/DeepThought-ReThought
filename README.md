@@ -146,6 +146,7 @@ Specify the NATS server address with the `NATS_URL` environment variable. If not
 ```bash
 export NATS_URL=nats://my-nats:4222
 ```
+Use `NATS_TLS_CERT` and `NATS_TLS_KEY` to provide a client certificate and key when connecting to a secure server. Optional variables `NATS_TLS_CA`, `NATS_USERNAME`, and `NATS_PASSWORD` can configure a custom certificate authority and basic authentication.
 
 The optional offline search index used by `HierarchicalService` can be configured
 via `DT_SEARCH_DB`:
@@ -195,6 +196,18 @@ python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_je
 ```
 
 This step is necessary before running the tests below.
+
+## Running a Secure NATS Server
+
+To run NATS with TLS enabled, supply the server with certificate and key files. A Docker example is shown below:
+
+```bash
+docker run --rm -p 4222:4222 -p 8222:8222 \
+  -v $PWD/certs:/certs nats:latest -js \
+  --tlscert /certs/server-cert.pem --tlskey /certs/server-key.pem --tlsverify
+```
+
+Clients can then connect using the `NATS_TLS_CERT` and `NATS_TLS_KEY` environment variables along with `NATS_URL`. Optionally set `NATS_TLS_CA` if your server uses a custom CA certificate.
 
 ## Recording Event Traces
 
