@@ -103,6 +103,16 @@ To create a new service based on this template run:
 dtrt init service <name>
 ```
 
+The same initializer is available under the `bus` command with JetStream
+persistence enabled by default:
+
+```bash
+dtrt bus init service <name>
+```
+
+This variant also creates an `nats.env.example` file alongside the
+`Dockerfile` showing how to configure credentials and mTLS settings.
+
 The command copies the template to `src/deepthought/services/<name>` and
 replaces `TemplateService` with a class named `<Name>Service`.
 

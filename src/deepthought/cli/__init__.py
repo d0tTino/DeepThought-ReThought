@@ -10,16 +10,15 @@ def _to_camel(name: str) -> str:
     return "".join(part.capitalize() for part in name.split("_"))
 
 
-def init_service(name: str) -> None:
+def init_service(name: str, *, template_name: str = "service") -> None:
     dest = Path("src/deepthought/services") / name
     if dest.exists():
         raise SystemExit(f"Service '{name}' already exists")
-    # templates live under ``templates/service`` during development
-    template = Path(__file__).resolve().parents[3] / "templates" / "service"
+    # templates live under ``templates/<template_name>`` during development
+    template = Path(__file__).resolve().parents[3] / "templates" / template_name
     if not template.exists():
         # fallback to package data when installed from a wheel
         template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
-
 
     shutil.copytree(template, dest)
     class_name = _to_camel(name) + "Service"
@@ -31,7 +30,7 @@ def init_service(name: str) -> None:
 
 
 def _cmd_init_service(args: argparse.Namespace) -> None:
-    init_service(args.name)
+    init_service(args.name, template_name=args.template)
 
 
 def _cmd_finetune(args: argparse.Namespace) -> int:
@@ -70,7 +69,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     svc_p = init_sub.add_parser("service")
     svc_p.add_argument("name")
-    svc_p.set_defaults(func=_cmd_init_service)
+    svc_p.set_defaults(func=_cmd_init_service, template="service")
+
+    bus_p = sub.add_parser("bus")
+    bus_sub = bus_p.add_subparsers(dest="bus_cmd")
+
+    bus_init = bus_sub.add_parser("init")
+    bus_init_sub = bus_init.add_subparsers(dest="target")
+
+    bus_svc = bus_init_sub.add_parser("service")
+    bus_svc.add_argument("name")
+    bus_svc.set_defaults(func=_cmd_init_service, template="bus_service")
 
     return parser
 
