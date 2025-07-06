@@ -20,8 +20,11 @@ class TemplateService:
 
     async def _handle_input(self, msg: Msg) -> None:
         logger.info("Handling message %s", msg.subject)
-        # TODO: add processing logic
-        await msg.ack()
+        # Echo the received data to an output subject
+        try:
+            await self._publisher.publish("dtr.template.output", msg.data, use_jetstream=True)
+        finally:
+            await msg.ack()
 
     async def start(self, durable_name: str = "template_service_listener") -> bool:
         await self._subscriber.subscribe(
