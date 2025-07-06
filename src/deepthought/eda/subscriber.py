@@ -1,6 +1,8 @@
 # File: src/deepthought/eda/subscriber.py
 import asyncio
 import logging
+import os
+import ssl
 from typing import Awaitable, Callable, Optional
 
 import nats
@@ -91,3 +93,41 @@ class Subscriber:
             except nats.errors.Error as e:
                 logger.error(f"Error acking message in default handler: {e}")
         # Basic NATS messages don't need ack.
+
+
+async def connect(
+    nats_url: str | None = None,
+    *,
+    tls_cert: str | None = None,
+    tls_key: str | None = None,
+    tls_ca: str | None = None,
+    user: str | None = None,
+    password: str | None = None,
+    name: str = "dtrt_subscriber",
+) -> "Subscriber":
+    """Create a :class:`Subscriber` connected to ``nats_url`` with optional TLS."""
+
+    nats_url = nats_url or os.getenv("NATS_URL", "nats://localhost:4222")
+    tls_cert = tls_cert or os.getenv("NATS_TLS_CERT")
+    tls_key = tls_key or os.getenv("NATS_TLS_KEY")
+    tls_ca = tls_ca or os.getenv("NATS_TLS_CA")
+    user = user or os.getenv("NATS_USERNAME")
+    password = password or os.getenv("NATS_PASSWORD")
+
+    ssl_ctx = None
+    if tls_cert and tls_key:
+        ssl_ctx = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
+        if tls_ca:
+            ssl_ctx.load_verify_locations(tls_ca)
+        ssl_ctx.load_cert_chain(tls_cert, tls_key)
+
+    nc = NATS()
+    await nc.connect(
+        servers=[nats_url],
+        tls=ssl_ctx,
+        user=user,
+        password=password,
+        name=name,
+    )
+    js = nc.jetstream()
+    return Subscriber(nc, js)
