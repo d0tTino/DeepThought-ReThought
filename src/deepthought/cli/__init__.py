@@ -20,7 +20,6 @@ def init_service(name: str) -> None:
         # fallback to package data when installed from a wheel
         template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
 
-
     shutil.copytree(template, dest)
     class_name = _to_camel(name) + "Service"
     for path in dest.rglob("*.py"):
@@ -36,6 +35,17 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
 
 def _cmd_finetune(args: argparse.Namespace) -> int:
     training = import_module("deepthought.train")
+    if args.estimate_vram:
+        model, _ = training.load_model(args.model_path, args.bits)
+        vram = training.estimate_vram(
+            model,
+            batch_size=2,
+            seq_length=args.max_seq_length,
+            gradient_accumulation_steps=8,
+            bits=args.bits,
+        )
+        print(f"Estimated VRAM requirement: {vram:.2f} GB")
+        return 0
     return training.run(args)
 
 
@@ -61,6 +71,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         default="./results/lora-adapter",
         help="Directory to save results",
+    )
+    finetune_p.add_argument(
+        "--max-seq-length",
+        type=int,
+        default=2048,
+        help="Maximum sequence length",
+    )
+    finetune_p.add_argument(
+        "--pack-sequences",
+        action="store_true",
+        help="Pack multiple sequences to reduce padding",
+    )
+    finetune_p.add_argument(
+        "--estimate-vram",
+        action="store_true",
+        help="Estimate VRAM requirements and exit",
     )
     finetune_p.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint")
     finetune_p.set_defaults(func=_cmd_finetune)

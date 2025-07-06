@@ -7,7 +7,7 @@ import os
 from typing import Tuple
 
 import torch
-from datasets import load_dataset
+from datasets import Dataset, load_dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
@@ -23,6 +23,7 @@ __all__ = [
     "load_dataset",
     "create_trainer",
     "run",
+    "estimate_vram",
 ]
 
 
@@ -38,13 +39,19 @@ def load_model(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM,
     )
     try:
         model = AutoModelForCausalLM.from_pretrained(
-            base_model_id, quantization_config=quantization_config, device_map="auto", trust_remote_code=True
+            base_model_id,
+            quantization_config=quantization_config,
+            device_map="auto",
+            trust_remote_code=True,
         )
         tokenizer = AutoTokenizer.from_pretrained(base_model_id, trust_remote_code=True)
     except Exception:
         base_model_id = "HuggingFaceH4/zephyr-7b-beta"
         model = AutoModelForCausalLM.from_pretrained(
-            base_model_id, quantization_config=quantization_config, device_map="auto", trust_remote_code=True
+            base_model_id,
+            quantization_config=quantization_config,
+            device_map="auto",
+            trust_remote_code=True,
         )
         tokenizer = AutoTokenizer.from_pretrained(base_model_id, trust_remote_code=True)
 
@@ -53,7 +60,12 @@ def load_model(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM,
     return model, tokenizer
 
 
-def load_dataset(dataset_path: str, tokenizer: AutoTokenizer, max_seq_length: int = 2048):
+def load_dataset(
+    dataset_path: str,
+    tokenizer: AutoTokenizer,
+    max_seq_length: int = 2048,
+    pack_sequences: bool = False,
+):
     """Load and tokenize the dataset used for fine-tuning."""
     raw_dataset = load_dataset(dataset_path)
 
@@ -77,12 +89,36 @@ def load_dataset(dataset_path: str, tokenizer: AutoTokenizer, max_seq_length: in
     formatted_dataset = raw_dataset["train"].map(format_prompt)
 
     def tokenize_function(examples):
-        return tokenizer(examples["text"], truncation=True, max_length=max_seq_length, padding="max_length")
+        return tokenizer(
+            examples["text"],
+            truncation=True,
+            max_length=max_seq_length,
+            padding="max_length",
+        )
 
     tokenized_dataset = formatted_dataset.map(tokenize_function, batched=True, remove_columns=["text"])
-    filtered_dataset = tokenized_dataset.filter(lambda ex: len(ex["input_ids"]) <= max_seq_length)
-    split_dataset = filtered_dataset.train_test_split(test_size=0.05, seed=42)
-    return split_dataset["train"], split_dataset["test"]
+
+    if pack_sequences:
+
+        def _pack(ds: Dataset) -> Dataset:
+            flat_ids = [tid for ids in ds["input_ids"] for tid in ids]
+            flat_mask = [m for mask in ds["attention_mask"] for m in mask]
+            total = len(flat_ids) // max_seq_length
+            input_ids = [flat_ids[i * max_seq_length : (i + 1) * max_seq_length] for i in range(total)]  # noqa: E203
+            attention_mask = [
+                flat_mask[i * max_seq_length : (i + 1) * max_seq_length] for i in range(total)  # noqa: E203
+            ]
+            return Dataset.from_dict({"input_ids": input_ids, "attention_mask": attention_mask})
+
+        split_dataset = tokenized_dataset.train_test_split(test_size=0.05, seed=42)
+        train_ds = _pack(split_dataset["train"])
+        eval_ds = _pack(split_dataset["test"])
+    else:
+        filtered_dataset = tokenized_dataset.filter(lambda ex: len(ex["input_ids"]) <= max_seq_length)
+        split_dataset = filtered_dataset.train_test_split(test_size=0.05, seed=42)
+        train_ds, eval_ds = split_dataset["train"], split_dataset["test"]
+
+    return train_ds, eval_ds
 
 
 def create_trainer(
@@ -131,10 +167,30 @@ def create_trainer(
     return trainer, training_args
 
 
+def estimate_vram(
+    model: AutoModelForCausalLM,
+    batch_size: int,
+    seq_length: int,
+    gradient_accumulation_steps: int = 1,
+    bits: int = 16,
+) -> float:
+    """Roughly estimate VRAM (in GB) required for training."""
+    params = sum(p.numel() for p in model.parameters())
+    param_bytes = params * bits / 8
+    hidden_size = getattr(model.config, "hidden_size", 0)
+    activation_bytes = batch_size * gradient_accumulation_steps * seq_length * hidden_size * 2
+    return (param_bytes + activation_bytes) / (1024**3)
+
+
 def run(args: argparse.Namespace) -> int:
     """Execute training using high level helper functions."""
     model, tokenizer = load_model(args.model_path, args.bits)
-    train_ds, eval_ds = load_dataset(args.dataset_path, tokenizer)
+    train_ds, eval_ds = load_dataset(
+        args.dataset_path,
+        tokenizer,
+        max_seq_length=args.max_seq_length,
+        pack_sequences=args.pack_sequences,
+    )
     trainer, _ = create_trainer(model, tokenizer, train_ds, eval_ds, args.output_dir)
     trainer.train(resume_from_checkpoint=args.resume)
     trainer.save_model()
