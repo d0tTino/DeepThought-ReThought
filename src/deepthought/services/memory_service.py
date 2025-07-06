@@ -13,18 +13,42 @@ from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
-from .file_graph_dal import FileGraphDAL
+from ..memory.tiered import TieredMemory
+from ..memory.vector_store import create_vector_store
+from ..graph import create_graph_backend
 
 logger = logging.getLogger(__name__)
 
 
 class MemoryService:
-    """Service that stores user interactions in a graph using FileGraphDAL."""
+    """Service that stores and retrieves interactions using :class:`TieredMemory`."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, dal: Optional[FileGraphDAL] = None) -> None:
+    def __init__(
+        self,
+        nats_client: NATS,
+        js_context: JetStreamContext,
+        memory: Optional[TieredMemory] = None,
+        *,
+        graph_backend_name: str = "memgraph",
+        collection_name: str = "deepthought",
+        persist_directory: str | None = None,
+        vector_backend: str = "chroma",
+        use_gpu: bool = False,
+        capacity: int = 100,
+        top_k: int = 3,
+    ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._dal = dal or FileGraphDAL()
+        if memory is None:
+            store = create_vector_store(
+                backend=vector_backend,
+                collection_name=collection_name,
+                persist_directory=persist_directory,
+                use_gpu=use_gpu,
+            )
+            backend_obj = create_graph_backend(graph_backend_name)
+            memory = TieredMemory(store, backend_obj, capacity=capacity, top_k=top_k)
+        self._memory = memory
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -39,8 +63,8 @@ class MemoryService:
                 raise ValueError("Invalid input payload fields")
             logger.info("MemoryService received input event ID %s", input_id)
 
-            self._dal.add_interaction(user_input)
-            facts = self._dal.get_recent_facts()
+            self._memory.store_interaction(user_input)
+            facts = self._memory.retrieve_context(user_input)
             memory_data = {"facts": facts, "source": "memory_service"}
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge=memory_data,

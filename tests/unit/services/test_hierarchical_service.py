@@ -5,6 +5,11 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 sys.modules.setdefault("deepthought.harness", types.ModuleType("harness"))
+record_mod = types.ModuleType("record")
+class TraceEvent:
+    pass
+record_mod.TraceEvent = TraceEvent
+sys.modules.setdefault("deepthought.harness.record", record_mod)
 sys.modules.setdefault("deepthought.learn", types.ModuleType("learn"))
 sys.modules.setdefault("deepthought.modules", types.ModuleType("modules"))
 sys.modules.setdefault("deepthought.motivate", types.ModuleType("motivate"))
@@ -42,6 +47,8 @@ fake_ps = types.ModuleType("pydantic_settings")
 fake_ps.BaseSettings = object
 fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
+sys.modules.setdefault("faiss", types.ModuleType("faiss"))
+sys.modules.setdefault("numpy", types.ModuleType("numpy"))
 fake_prom = types.ModuleType("prometheus_client")
 
 class _Metric:
