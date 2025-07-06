@@ -47,6 +47,17 @@ After installing the project (`pip install dist/*.whl`), you can launch fine-tun
 ```bash
 dtrt finetune --model-path <model-id>
 ```
+You can also estimate the VRAM requirement before launching training:
+
+```bash
+dtrt finetune --estimate-vram
+```
+
+Enable sequence packing to reduce padding:
+
+```bash
+dtrt finetune --pack-sequences --max-seq-length 2048
+```
 
 Run ``dtrt finetune --help`` to see all available options.
 3.  **Hierarchical Memory Service:** combines `BasicMemory`, a planned Chroma-backed vector memory, and `KnowledgeGraphMemory` using Memgraph. These layers are orchestrated by the `MemoryService` to produce aggregated `MEMORY_RETRIEVED` events. See [docs/hierarchical_memory_service.md](docs/hierarchical_memory_service.md).
