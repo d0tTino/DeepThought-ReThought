@@ -1,8 +1,13 @@
-"""Minimal Memgraph connector using the :mod:`pymemgraph` driver."""
+"""Graph database connectors for Memgraph and Neo4j."""
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+
+try:  # pragma: no cover - optional dependency
+    from neo4j import GraphDatabase
+except Exception:  # pragma: no cover - driver not installed
+    GraphDatabase = None  # type: ignore[assignment]
 
 try:  # pragma: no cover - optional dependency
     from pymemgraph import Memgraph
@@ -74,3 +79,39 @@ class GraphConnector:
             return rows
         finally:
             cur.close()
+
+
+class Neo4jConnector:
+    """Connector using the :mod:`neo4j` driver."""
+
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 7687,
+        username: str = "neo4j",
+        password: str = "neo4j",
+    ) -> None:
+        self._uri = f"bolt://{host}:{port}"
+        self._auth = (username, password)
+        self._driver: Optional[Any] = None
+
+    def connect(self) -> Any:
+        if not self._driver:
+            if GraphDatabase is None:
+                raise ImportError("neo4j-driver is not installed")
+            self._driver = GraphDatabase.driver(self._uri, auth=self._auth)
+        return self._driver
+
+    def close(self) -> None:
+        if self._driver:
+            self._driver.close()
+        self._driver = None
+
+    def execute(self, query: str, params: Optional[Dict[str, Any]] = None) -> list:
+        driver = self.connect()
+        with driver.session() as session:
+            result = session.run(query, params or {})
+            try:
+                return [record.data() for record in result]
+            except Exception:  # pragma: no cover - defensive
+                return list(result)

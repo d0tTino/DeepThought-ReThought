@@ -49,3 +49,14 @@ def chroma_available(host: str | None = None, port: int | None = None) -> bool:
             return True
     except Exception:
         return False
+
+
+def neo4j_available(host: str | None = None, port: int | None = None) -> bool:
+    """Return ``True`` if a Neo4j server is reachable."""
+    host = host or os.getenv("NEO4J_HOST", "localhost")
+    port = int(port or os.getenv("NEO4J_PORT", 7687))
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except Exception:
+        return False

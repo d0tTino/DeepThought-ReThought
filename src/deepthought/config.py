@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     search_db: str | None = None
     vector_backend: str = "chroma"
     vector_use_gpu: bool = False
+    neo4j_host: str = "localhost"
+    neo4j_port: int = 7687
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "neo4j"
     reward: RewardThresholds = RewardThresholds()
     persona_descriptions: dict[str, str] = {
         "friendly": "You are a friendly assistant who responds warmly.",
