@@ -51,7 +51,7 @@ from deepthought.services import HierarchicalService
 service = HierarchicalService.from_chroma(
     DummyNATS(),
     DummyJS(),
-    graph_backend="memgraph",
+    graph_backend_name="memgraph",
     backend="faiss",
 )
 service.dump_graph("./graph_exports")
@@ -97,7 +97,7 @@ When using FAISS, ``DT_VECTOR_USE_GPU`` enables GPU acceleration if available.
 
 ### Graph Backend
 
-``HierarchicalService.from_chroma`` accepts a graph backend name such as
+``HierarchicalService.from_chroma`` takes a ``graph_backend_name`` string such as
 ``"memgraph"`` or ``"noop"``. The default connects to Memgraph using the
 environment variables ``MG_HOST``, ``MG_PORT``, ``MG_USER`` and
 ``MG_PASSWORD``. Pass ``"noop"`` to disable graph persistence during testing.

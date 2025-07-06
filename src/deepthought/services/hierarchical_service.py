@@ -14,7 +14,6 @@ from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
-
 from ..memory.tiered import TieredMemory
 from ..memory.vector_store import create_vector_store
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
@@ -61,7 +60,7 @@ class HierarchicalService:
         cls,
         nats_client: NATS,
         js_context: JetStreamContext,
-        graph_backend: str = "memgraph",
+        graph_backend_name: str = "memgraph",
         collection_name: str = "deepthought",
         persist_directory: Optional[str] = None,
         backend: str = "chroma",
@@ -79,7 +78,7 @@ class HierarchicalService:
         )
         from ..graph import create_graph_backend
 
-        backend_obj = create_graph_backend(graph_backend)
+        backend_obj = create_graph_backend(graph_backend_name)
 
         memory = TieredMemory(store, backend_obj, capacity=capacity, top_k=top_k)
         db_path = search_db or get_settings().search_db
