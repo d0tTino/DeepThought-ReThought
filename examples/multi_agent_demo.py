@@ -2,17 +2,14 @@ import asyncio
 import logging
 import os
 import uuid
+from typing import TypedDict
 
 import nats
+from langgraph.graph import StateGraph
 from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
 
-from deepthought.modules import (
-    BasicLLM,
-    BasicMemory,
-    InputHandler,
-    LLMStub,
-    OutputHandler,
-)
+from deepthought.modules import InputHandler, LLMStub, OutputHandler
+from deepthought.services import MemoryService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -42,44 +39,58 @@ async def main() -> None:
 
     await ensure_stream(js)
 
-    memory = BasicMemory(nc, js)
-    try:
-        llm = BasicLLM(nc, js)
-    except ImportError:
-        logger.warning("BasicLLM dependencies missing; falling back to LLMStub")
-        llm = LLMStub(nc, js)
+    memory_service = MemoryService(nc, js)
+    llm = LLMStub(nc, js)
 
+    global input_handlers, output_handlers
     input_handlers = [InputHandler(nc, js) for _ in range(3)]
-    done = asyncio.Event()
-    msg_count = 0
-
-    def make_callback(idx: int):
-        def cb(input_id: str, text: str) -> None:
-            nonlocal msg_count
-            logger.info("Agent %s says: %s", idx + 1, text)
-            msg_count += 1
-            next_idx = (idx + 1) % 3
-            if msg_count >= 3:
-                done.set()
-            else:
-                asyncio.create_task(input_handlers[next_idx].process_input(text))
-
-        return cb
-
-    output_handlers = [OutputHandler(nc, js, output_callback=make_callback(i)) for i in range(3)]
+    output_handlers = [OutputHandler(nc, js) for _ in range(3)]
 
     await asyncio.gather(
-        memory.start_listening(durable_name=f"mem_demo_{uuid.uuid4()}"),
+        memory_service.start(),
         llm.start_listening(durable_name=f"llm_demo_{uuid.uuid4()}"),
         *(oh.start_listening(durable_name=f"out_demo_{i}_{uuid.uuid4()}") for i, oh in enumerate(output_handlers)),
     )
 
     await asyncio.sleep(1.0)
-    await input_handlers[0].process_input("Hello from agent 1!")
 
-    await done.wait()
+    class AgentState(TypedDict):
+        text: str
+        idx: int
+        count: int
 
-    await memory.stop_listening()
+    async def send_receive(state: AgentState) -> AgentState:
+        idx = state["idx"]
+        event = asyncio.Event()
+
+        def cb(_id: str, text: str) -> None:
+            logger.info("Agent %s says: %s", idx + 1, text)
+            state["text"] = text
+            event.set()
+
+        output_handlers[idx]._output_callback = cb
+        await input_handlers[idx].process_input(state["text"])
+        await event.wait()
+        state["count"] += 1
+        return state
+
+    def rotate(state: AgentState) -> AgentState:
+        state["idx"] = (state["idx"] + 1) % 3
+        return state
+
+    graph = StateGraph(AgentState)
+    graph.add_node("talk", send_receive)
+    graph.add_node("next", rotate)
+    graph.set_entry_point("talk")
+    graph.add_edge("talk", "next")
+    graph.add_edge("next", "talk")
+    compiled = graph.compile()
+
+    state: AgentState = {"text": "Hello from agent 1!", "idx": 0, "count": 0}
+    while state["count"] < 3:
+        state = await compiled.ainvoke(state)
+
+    await memory_service.stop()
     await llm.stop_listening()
     await asyncio.gather(*(oh.stop_listening() for oh in output_handlers))
     await nc.drain()
