@@ -8,13 +8,8 @@ from fastapi.testclient import TestClient
 
 @pytest.mark.slow
 def test_generate_with_distilgpt2(monkeypatch):
-    try:
-        import torch  # noqa: F401
-        import transformers  # noqa: F401
-    except Exception:
-        pytest.skip("transformers or torch not installed")
-
-    import transformers as _tf
+    pytest.importorskip("torch")
+    _tf = pytest.importorskip("transformers")
 
     real_load = _tf.AutoModelForCausalLM.from_pretrained
 
