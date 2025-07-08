@@ -65,6 +65,30 @@ Run ``dtrt finetune --help`` to see all available options.
 5.  **Adaptive Code Generation:** (Future Goal) Exploring techniques like template engines or JIT compilation (e.g., using AsmJit) for dynamic code optimization.
 6.  **Neuromorphic Processing:** (Long-Term Research) Investigating brain-inspired computing principles via simulation (e.g., using Nengo). An experimental stub is provided in `deepthought.neuromorphic` with an example at `examples/neuromorphic_nats_demo.py`.
 
+### Creating a Service
+
+Scaffold a new bus service using the built-in template:
+
+```bash
+dtrt bus init service <name>
+```
+
+This command copies the files in `templates/bus_service` to
+`src/deepthought/services/<name>` and replaces `TemplateService` with
+`<Name>Service`.
+
+It also generates a `nats.env.example` next to the new `Dockerfile`
+containing environment variables for NATS credentials and mTLS setup:
+
+```bash
+NATS_URL=nats://localhost:4222
+NATS_USERNAME=example
+NATS_PASSWORD=secret
+NATS_TLS_CERT=/path/to/client-cert.pem
+NATS_TLS_KEY=/path/to/client-key.pem
+NATS_TLS_CA=/path/to/ca.pem
+```
+
 ## Current Status
 
 * The foundational EDA using NATS/JetStream is implemented and tested with the `BasicMemory` and `BasicLLM` reference modules.
