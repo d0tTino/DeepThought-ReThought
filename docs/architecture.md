@@ -111,7 +111,17 @@ dtrt bus init service <name>
 ```
 
 This variant also creates an `nats.env.example` file alongside the
-`Dockerfile` showing how to configure credentials and mTLS settings.
+`Dockerfile` showing how to configure credentials and mTLS settings. The
+`Publisher` and `Subscriber` helpers read the following variables:
+
+```
+NATS_URL=nats://localhost:4222
+NATS_TLS_CERT=/path/to/client-cert.pem
+NATS_TLS_KEY=/path/to/client-key.pem
+NATS_TLS_CA=/path/to/ca.pem
+NATS_USERNAME=example
+NATS_PASSWORD=secret
+```
 
 The command copies the template to `src/deepthought/services/<name>` and
 replaces `TemplateService` with a class named `<Name>Service`.
@@ -125,7 +135,7 @@ Customize the generated files to implement your service logic.
 ## Multi-Agent Demo
 
 A simple demonstration of multiple agents communicating over NATS is provided in `examples/multi_agent_demo.py`.
-Run `setup_jetstream.py` first to create the required JetStream stream:
+Start a local NATS server with `./scripts/start_nats.sh` and then run `setup_jetstream.py` to create the required JetStream stream:
 
 ```bash
 python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
