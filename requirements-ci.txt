@@ -20,3 +20,4 @@ PyYAML
 faiss-cpu
 prometheus-client
 setuptools
+streamlit

@@ -16,11 +16,11 @@ repos:
   - repo: local
     hooks:
       - id: flake8-local
-        name: flake8 on src and tests
+        name: flake8 on src, tests, examples, scripts, and ui
         entry: python -m flake8
         language: system
         pass_filenames: false
-        files: "^(src|tests|examples|scripts)/"
+        files: "^(src|tests|examples|scripts|ui)/"
       - id: pytest
         name: pytest
         entry: pytest
