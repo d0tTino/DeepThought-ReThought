@@ -8,11 +8,15 @@ from fastapi.testclient import TestClient
 
 @pytest.mark.slow
 def test_generate_with_distilgpt2(monkeypatch):
+    pytest.importorskip("torch")
+    pytest.importorskip("transformers")
+
+    import socket
+
     try:
-        import torch  # noqa: F401
-        import transformers  # noqa: F401
-    except Exception:
-        pytest.skip("transformers or torch not installed")
+        socket.create_connection(("huggingface.co", 443), timeout=3)
+    except OSError:
+        pytest.skip("huggingface.co unreachable")
 
     import transformers as _tf
 
