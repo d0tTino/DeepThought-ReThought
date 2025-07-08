@@ -78,7 +78,8 @@ This command copies the files in `templates/bus_service` to
 `<Name>Service`.
 
 It also generates a `nats.env.example` next to the new `Dockerfile`
-containing environment variables for NATS credentials and mTLS setup:
+containing environment variables for NATS credentials and mTLS setup.
+These variables are consumed by the `Publisher` and `Subscriber` helpers:
 
 ```bash
 NATS_URL=nats://localhost:4222
@@ -140,7 +141,8 @@ For instructions on compiling these scripts as part of your Unity project, see [
         contains the packages needed for testing and linting. The versions in
         this file are pinned so CI and local setups use exactly the same
         dependencies.
-4.  **Initialize JetStream:**
+4.  **Start NATS and Initialize JetStream:**
+    *   Launch a local server with `./scripts/start_nats.sh` or use your own deployment.
     *   Run the `setup_jetstream.py` script to create the necessary JetStream streams:
         ```bash
         python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
@@ -176,12 +178,18 @@ If unset, the default `memory.json` in the current directory is used.
 Settings can also be loaded from a configuration file by setting the `DT_CONFIG_FILE` environment variable.
 
 Specify the NATS server address with the `NATS_URL` environment variable. If not set,
-`nats://localhost:4222` is used by default:
+`nats://localhost:4222` is used by default. The `Publisher` and `Subscriber`
+helpers also read optional TLS and authentication variables:
 
 ```bash
 export NATS_URL=nats://my-nats:4222
+export NATS_TLS_CERT=/path/to/client-cert.pem
+export NATS_TLS_KEY=/path/to/client-key.pem
+export NATS_TLS_CA=/path/to/ca.pem
+export NATS_USERNAME=example
+export NATS_PASSWORD=secret
 ```
-Use `NATS_TLS_CERT` and `NATS_TLS_KEY` to provide a client certificate and key when connecting to a secure server. Optional variables `NATS_TLS_CA`, `NATS_USERNAME`, and `NATS_PASSWORD` can configure a custom certificate authority and basic authentication.
+Use these variables to enable TLS and basic authentication when connecting to a secure server.
 
 The optional offline search index used by `HierarchicalService` can be configured
 via `DT_SEARCH_DB`:
@@ -214,8 +222,15 @@ export DT_SCHEDULER_INTERVAL=120
 ## Running a Local NATS Server
 
 If you don't already have a NATS server running locally, you can start one easily.
+The helper script `./scripts/start_nats.sh` launches a Docker container with JetStream enabled:
 
-* **Using Docker** (recommended):
+```bash
+./scripts/start_nats.sh
+```
+
+Alternatively you can run the server yourself:
+
+* **Using Docker directly**:
   ```bash
   docker run --rm -p 4222:4222 -p 8222:8222 nats:latest -js
   ```
