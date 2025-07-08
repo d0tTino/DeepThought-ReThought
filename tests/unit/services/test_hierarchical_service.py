@@ -69,6 +69,7 @@ class _Metric:
 
 fake_prom.Counter = lambda *a, **k: _Metric()
 fake_prom.Histogram = lambda *a, **k: _Metric()
+fake_prom.REGISTRY = types.SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 
 from typing import List
@@ -268,3 +269,27 @@ def test_service_uses_public_memory_interface():
     assert service._vector_matches("hi") == ["v"]
     assert service._graph_facts() == ["g"]
     assert mem.calls == [("vector", "hi"), ("graph", None)]
+
+
+from unittest import mock
+
+
+def test_retrieve_context_delegates_to_memory():
+    mem = mock.MagicMock()
+    mem.retrieve_context.return_value = ["m1", "m2"]
+    service = HierarchicalService(DummyNATS(), DummyJS(), mem)
+    ctx = service.retrieve_context("hello")
+    mem.retrieve_context.assert_called_once_with("hello")
+    assert ctx == ["m1", "m2"]
+
+
+def test_retrieve_context_merges_search_results():
+    mem = mock.MagicMock()
+    mem.retrieve_context.return_value = ["m1", "dup"]
+    search = mock.MagicMock()
+    search.search.return_value = ["dup", "s2"]
+    service = HierarchicalService(DummyNATS(), DummyJS(), mem, search=search, top_k=2)
+    ctx = service.retrieve_context("question")
+    mem.retrieve_context.assert_called_once_with("question")
+    search.search.assert_called_once_with("question", limit=2)
+    assert ctx == ["m1", "dup", "s2"]

@@ -80,3 +80,47 @@ def test_init_service_demo_start_stop(tmp_path: Path) -> None:
     import asyncio
 
     asyncio.run(main())
+
+
+from deepthought.cli import _build_parser
+
+
+def test_parse_finetune_args():
+    parser = _build_parser()
+    args = parser.parse_args(
+        [
+            "finetune",
+            "--model-path",
+            "mp",
+            "--dataset-path",
+            "ds",
+            "--bits",
+            "8",
+            "--output-dir",
+            "/tmp/out",
+            "--max-seq-length",
+            "4096",
+            "--pack-sequences",
+            "--estimate-vram",
+        ]
+    )
+    assert args.command == "finetune"
+    assert args.model_path == "mp"
+    assert args.dataset_path == "ds"
+    assert args.bits == 8
+    assert args.output_dir == "/tmp/out"
+    assert args.max_seq_length == 4096
+    assert args.pack_sequences
+    assert args.estimate_vram
+    assert args.func.__name__ == "_cmd_finetune"
+
+
+def test_parse_bus_init_service():
+    parser = _build_parser()
+    args = parser.parse_args(["bus", "init", "service", "foo"])
+    assert args.command == "bus"
+    assert args.bus_cmd == "init"
+    assert args.target == "service"
+    assert args.name == "foo"
+    assert args.template == "bus_service"
+    assert args.func.__name__ == "_cmd_init_service"
