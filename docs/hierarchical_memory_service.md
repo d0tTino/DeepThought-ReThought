@@ -4,11 +4,13 @@ This document outlines the design of the experimental hierarchical memory system
 
 ## Memory Layers
 
-1. **BasicMemory** – stores recent messages in a JSON file on disk.
-2. **VectorMemory** – persists embeddings in a Chroma database for semantic search.
+1. **BasicMemory** – thin wrapper over `TieredMemory` using an in-memory vector store.
+2. **GraphMemory** – wraps `TieredMemory` with a file-backed graph database.
 3. **KnowledgeGraphMemory** – persists structured facts in Memgraph using the GraphDAL layer.
 
-The `MemoryService` coordinates these layers. When an `INPUT_RECEIVED` event arrives the service updates each layer and aggregates their retrieved facts into a single `MEMORY_RETRIEVED` event.
+The `MemoryService` coordinates these layers through a single `TieredMemory` instance.
+When an `INPUT_RECEIVED` event arrives the service stores the text and publishes a
+`MEMORY_RETRIEVED` event with the combined context.
 
 ## Running the Service
 

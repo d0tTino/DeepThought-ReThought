@@ -1,7 +1,5 @@
-import builtins
 import json
 import logging
-from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -30,10 +28,7 @@ class DummyPublisher:
 
 class FailingPublisher(DummyPublisher):
     async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
-        summary = str(payload)
-        if len(summary) > 50:
-            summary = summary[:47] + "..."
-        raise RuntimeError(f"Failed to publish to '{subject}' with payload {summary}")
+        raise RuntimeError("boom")
 
 
 class DummySubscriber:
@@ -60,16 +55,30 @@ class DummyMsg:
         self.nacked = True
 
 
-def create_memory(monkeypatch, memory_file, publisher_cls=DummyPublisher):
+class DummyMemory:
+    def __init__(self):
+        self.stored = []
+        self.prompts = []
+
+    def store_interaction(self, text):
+        self.stored.append(text)
+
+    def retrieve_context(self, prompt):
+        self.prompts.append(prompt)
+        return [prompt]
+
+
+def create_memory(monkeypatch, memory=None, publisher_cls=DummyPublisher):
     monkeypatch.setattr(memory_basic, "Publisher", publisher_cls)
     monkeypatch.setattr(memory_basic, "Subscriber", DummySubscriber)
-    return memory_basic.BasicMemory(DummyNATS(), DummyJS(), memory_file=memory_file)
+    mem = memory_basic.BasicMemory(DummyNATS(), DummyJS(), memory=memory)
+    return mem
 
 
 @pytest.mark.asyncio
-async def test_handle_input_success(tmp_path, monkeypatch):
-    mem_file = tmp_path / "mem.json"
-    mem = create_memory(monkeypatch, mem_file)
+async def test_handle_input_success(monkeypatch):
+    dummy = DummyMemory()
+    mem = create_memory(monkeypatch, dummy)
     payload = InputReceivedPayload(user_input="hello", input_id="42")
     msg = DummyMsg(payload.to_json())
     await mem._handle_input_event(msg)
@@ -80,17 +89,14 @@ async def test_handle_input_success(tmp_path, monkeypatch):
     subject, sent_payload = pub.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "42"
-    with open(mem_file, "r", encoding="utf-8") as f:
-        history = json.load(f)
-    assert history[-1]["user_input"] == "hello"
-    ts = sent_payload.timestamp
-    assert datetime.fromisoformat(ts).tzinfo == timezone.utc
+    assert dummy.stored == ["hello"]
+    assert dummy.prompts == ["hello"]
 
 
 @pytest.mark.asyncio
-async def test_handle_input_error(tmp_path, monkeypatch, caplog):
-    mem_file = tmp_path / "mem.json"
-    mem = create_memory(monkeypatch, mem_file, FailingPublisher)
+async def test_handle_input_error(monkeypatch, caplog):
+    dummy = DummyMemory()
+    mem = create_memory(monkeypatch, dummy, FailingPublisher)
     payload = InputReceivedPayload(user_input="boom", input_id="99")
     msg = DummyMsg(payload.to_json())
     with caplog.at_level(logging.ERROR):
@@ -98,17 +104,12 @@ async def test_handle_input_error(tmp_path, monkeypatch, caplog):
 
     assert msg.nacked
     assert not msg.acked
-    assert mem._publisher.published == []
-    with open(mem_file, "r", encoding="utf-8") as f:
-        history = json.load(f)
-    assert history[-1]["user_input"] == "boom"
-    assert any("Failed to publish to 'dtr.memory.retrieved'" in r.getMessage() for r in caplog.records)
+    assert dummy.stored == ["boom"]
 
 
 @pytest.mark.asyncio
-async def test_handle_input_invalid_payload(tmp_path, monkeypatch):
-    mem_file = tmp_path / "mem.json"
-    mem = create_memory(monkeypatch, mem_file)
+async def test_handle_input_invalid_payload(monkeypatch):
+    mem = create_memory(monkeypatch, DummyMemory())
     msg = DummyMsg("not json")
     await mem._handle_input_event(msg)
 
@@ -117,9 +118,8 @@ async def test_handle_input_invalid_payload(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_input_missing_fields(tmp_path, monkeypatch):
-    mem_file = tmp_path / "mem.json"
-    mem = create_memory(monkeypatch, mem_file)
+async def test_handle_input_missing_fields(monkeypatch):
+    mem = create_memory(monkeypatch, DummyMemory())
     msg = DummyMsg(json.dumps({"input_id": "1"}))
     await mem._handle_input_event(msg)
 
@@ -127,58 +127,9 @@ async def test_handle_input_missing_fields(tmp_path, monkeypatch):
     assert not msg.acked
 
 
-def test_read_memory_invalid_json_logs_error(tmp_path, monkeypatch, caplog):
-    mem_file = tmp_path / "mem.json"
-    mem_file.write_text("{ invalid json")
-    mem = create_memory(monkeypatch, mem_file)
-
-    with caplog.at_level(logging.ERROR):
-        data = mem._read_memory()
-
-    assert data == []
-    assert any("Failed to read memory file" in record.getMessage() for record in caplog.records)
-
-
-def test_init_creates_directory(tmp_path, monkeypatch):
-    mem_file = tmp_path / "newdir" / "mem.json"
-    create_memory(monkeypatch, mem_file)
-    assert mem_file.parent.is_dir()
-    assert mem_file.exists()
-    with open(mem_file, "r", encoding="utf-8") as f:
-        assert json.load(f) == []
-
-
-def test_write_memory_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
-    mem_file = tmp_path / "mem.json"
-    mem = create_memory(monkeypatch, mem_file)
-
-    def fail_open(*args, **kwargs):
-        raise IOError("fail")
-
-    monkeypatch.setattr(builtins, "open", fail_open)
-    with caplog.at_level(logging.ERROR), pytest.raises(IOError):
-        mem._write_memory([{"test": 1}])
-
-    assert any("Failed to write memory file" in r.getMessage() for r in caplog.records)
-
-
-def test_init_write_failure_logs_and_raises(tmp_path, monkeypatch, caplog):
-    mem_file = tmp_path / "mem.json"
-
-    def fail_open(*args, **kwargs):
-        raise IOError("fail")
-
-    monkeypatch.setattr(builtins, "open", fail_open)
-    with caplog.at_level(logging.ERROR), pytest.raises(IOError):
-        memory_basic.BasicMemory(DummyNATS(), DummyJS(), memory_file=mem_file)
-
-    assert any("Failed to initialize memory file" in r.getMessage() for r in caplog.records)
-
-
 @pytest.mark.asyncio
-async def test_start_listening_no_subscriber(tmp_path, monkeypatch, caplog):
-    mem_file = tmp_path / "mem.json"
-    mem = create_memory(monkeypatch, mem_file)
+async def test_start_listening_no_subscriber(monkeypatch, caplog):
+    mem = create_memory(monkeypatch, DummyMemory())
     mem._subscriber = None
     with caplog.at_level(logging.ERROR):
         result = await mem.start_listening()

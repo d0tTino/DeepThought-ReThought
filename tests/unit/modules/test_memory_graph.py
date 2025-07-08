@@ -1,12 +1,11 @@
-import builtins
 import json
 import logging
 from types import SimpleNamespace
 
-import networkx as nx
 import pytest
 
 import deepthought.modules.memory_graph as memory_graph
+from deepthought.eda.events import EventSubjects, InputReceivedPayload
 
 
 class DummyNATS:
@@ -51,94 +50,48 @@ class DummyMsg:
         self.nacked = True
 
 
-def create_memory(monkeypatch, graph_file):
+class DummyMemory:
+    def __init__(self):
+        self.stored = []
+        self.prompts = []
+
+    def store_interaction(self, text):
+        self.stored.append(text)
+
+    def retrieve_context(self, prompt):
+        self.prompts.append(prompt)
+        return [prompt]
+
+
+def create_memory(monkeypatch, memory=None):
     monkeypatch.setattr(memory_graph, "Publisher", DummyPublisher)
     monkeypatch.setattr(memory_graph, "Subscriber", DummySubscriber)
-    return memory_graph.GraphMemory(DummyNATS(), DummyJS(), graph_file=graph_file)
-
-
-def test_read_graph_invalid_json(tmp_path, monkeypatch, caplog):
-    graph_file = tmp_path / "graph.json"
-    graph_file.write_text("{ invalid json")
-
-    caplog.set_level(logging.ERROR)
-    mem = create_memory(monkeypatch, graph_file)
-
-    assert isinstance(mem._graph, nx.DiGraph)
-    assert len(mem._graph.nodes) == 0
-    assert mem.repaired
-    assert isinstance(mem.last_read_error, Exception)
-    error_logs = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert any("Failed to read graph file" in r.getMessage() for r in error_logs)
-
-
-def test_invalid_json_rewritten_and_readable(tmp_path, monkeypatch, caplog):
-    graph_file = tmp_path / "graph.json"
-    graph_file.write_text("{ invalid json")
-
-    caplog.set_level(logging.ERROR)
-    mem = create_memory(monkeypatch, graph_file)
-    first_mtime = graph_file.stat().st_mtime
-    assert mem.repaired
-    assert mem.last_read_error is not None
-
-    error_logs = [r for r in caplog.records if "Failed to read graph file" in r.getMessage()]
-    assert len(error_logs) == 1
-
-    with open(graph_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    assert data == nx.readwrite.json_graph.node_link_data(nx.DiGraph())
-
-    caplog.clear()
-    mem2 = create_memory(monkeypatch, graph_file)
-    second_mtime = graph_file.stat().st_mtime
-
-    assert not mem2.repaired
-    assert mem2.last_read_error is None
-    assert first_mtime == second_mtime
-    assert not any("Failed to read graph file" in r.getMessage() for r in caplog.records)
-
-
-def test_init_creates_directory(tmp_path, monkeypatch):
-    graph_file = tmp_path / "newdir" / "graph.json"
-    mem = create_memory(monkeypatch, graph_file)
-    assert graph_file.parent.is_dir()
-    assert graph_file.exists()
-    assert isinstance(mem._graph, nx.DiGraph)
-    assert mem.last_read_error is None
-    with open(graph_file, "r", encoding="utf-8") as f:
-        assert isinstance(json.load(f), dict)
+    return memory_graph.GraphMemory(DummyNATS(), DummyJS(), memory=memory)
 
 
 @pytest.mark.asyncio
-async def test_handle_input_invalid_payload(tmp_path, monkeypatch):
-    graph_file = tmp_path / "graph.json"
-    mem = create_memory(monkeypatch, graph_file)
+async def test_handle_input_invalid_payload(monkeypatch):
+    mem = create_memory(monkeypatch, DummyMemory())
     msg = DummyMsg("not json")
     await mem._handle_input_event(msg)
-
     assert msg.nacked
     assert not msg.acked
 
 
 @pytest.mark.asyncio
-async def test_handle_input_missing_fields(tmp_path, monkeypatch):
-    graph_file = tmp_path / "graph.json"
-    mem = create_memory(monkeypatch, graph_file)
+async def test_handle_input_missing_fields(monkeypatch):
+    mem = create_memory(monkeypatch, DummyMemory())
     msg = DummyMsg(json.dumps({"user_input": "hi"}))
     await mem._handle_input_event(msg)
-
     assert msg.nacked
     assert not msg.acked
 
 
 @pytest.mark.asyncio
-async def test_start_listening_no_subscriber(tmp_path, monkeypatch, caplog):
-    graph_file = tmp_path / "graph.json"
-    mem = create_memory(monkeypatch, graph_file)
+async def test_start_listening_no_subscriber(monkeypatch, caplog):
+    mem = create_memory(monkeypatch, DummyMemory())
     mem._subscriber = None
     with caplog.at_level(logging.ERROR):
         result = await mem.start_listening()
-
     assert result is False
     assert any("Subscriber not initialized for GraphMemory." in r.getMessage() for r in caplog.records)

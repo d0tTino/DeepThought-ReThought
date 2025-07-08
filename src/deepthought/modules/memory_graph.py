@@ -1,11 +1,9 @@
 import json
 import logging
-import os
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
 import nats
-import networkx as nx
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -13,85 +11,34 @@ from nats.js.client import JetStreamContext
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from ..memory.tiered import TieredMemory
+from ..memory.vector_store import create_vector_store
+from ..services.file_graph_dal import FileGraphBackend
 
 logger = logging.getLogger(__name__)
 
 
 class GraphMemory:
-    """Graph-based memory using NetworkX persisted to a JSON file."""
+    """File-based graph memory backed by :class:`TieredMemory`."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, graph_file: str = "graph_memory.json"):
+    def __init__(
+        self,
+        nats_client: NATS,
+        js_context: JetStreamContext,
+        *,
+        memory: Optional[TieredMemory] = None,
+        graph_file: str = "graph_memory.json",
+        capacity: int = 100,
+        top_k: int = 3,
+    ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._graph_file = graph_file
-        self.repaired = False
-        self._last_read_error: Optional[Exception] = None
-
-        dir_path = os.path.dirname(self._graph_file)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-
-        if os.path.exists(self._graph_file):
-            self._graph, valid = self._read_graph()
-            if not valid:
-                self.repaired = True
-                try:
-                    self._write_graph()
-                except Exception:
-                    # _write_graph already logs the error
-                    raise
-
-        else:
-            self._graph = nx.DiGraph()
-            try:
-                self._write_graph()
-            except Exception:
-                # _write_graph already logs the error
-                raise
-        logger.info("GraphMemory initialized with file %s", self._graph_file)
-
-    def _read_graph(self) -> tuple[nx.DiGraph, bool]:
-
-        try:
-            with open(self._graph_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self._last_read_error = None
-            return nx.readwrite.json_graph.node_link_graph(data), True
-        except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
-            self._last_read_error = e
-            logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
-            return nx.DiGraph(), False
-
-        except Exception as e:  # fallback
-            self._last_read_error = e
-            logger.error("Unexpected error reading graph file %s: %s", self._graph_file, e, exc_info=True)
-            return nx.DiGraph(), False
-
-    def _write_graph(self) -> None:
-        data = nx.readwrite.json_graph.node_link_data(self._graph)
-        try:
-            with open(self._graph_file, "w", encoding="utf-8") as f:
-                json.dump(data, f)
-        except Exception as e:
-            logger.error("Failed to write graph file %s: %s", self._graph_file, e, exc_info=True)
-            raise
-
-    def _add_interaction(self, user_input: str) -> str:
-        timestamp = datetime.now(timezone.utc).isoformat()
-        node_id = timestamp
-        self._graph.add_node(node_id, user_input=user_input, timestamp=timestamp)
-        # Link to previous node if any
-        nodes = list(self._graph.nodes(data=True))
-        if len(nodes) > 1:
-            prev_id = nodes[-2][0]
-            self._graph.add_edge(prev_id, node_id, relation="next")
-        self._write_graph()
-        return node_id
-
-    def _get_recent_facts(self, count: int = 3) -> List[str]:
-        nodes = sorted(self._graph.nodes(data=True), key=lambda n: n[1].get("timestamp", ""))
-        recent = nodes[-count:]
-        return [n[1].get("user_input", "") for n in recent]
+        if memory is None:
+            store = create_vector_store()
+            backend = FileGraphBackend(graph_file)
+            memory = TieredMemory(store, backend, capacity=capacity, top_k=top_k)
+        self._memory = memory
+        logger.info("GraphMemory initialized using TieredMemory with %s", graph_file)
 
     async def _handle_input_event(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -105,15 +52,20 @@ class GraphMemory:
                 raise ValueError("Invalid input payload fields")
             logger.info("GraphMemory received input event ID %s", input_id)
 
-            self._add_interaction(user_input)
-            facts = self._get_recent_facts()
+            self._memory.store_interaction(user_input)
+            facts = self._memory.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "graph_memory"},
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
 
-            await self._publisher.publish(EventSubjects.MEMORY_RETRIEVED, payload, use_jetstream=True, timeout=10.0)
+            await self._publisher.publish(
+                EventSubjects.MEMORY_RETRIEVED,
+                payload,
+                use_jetstream=True,
+                timeout=10.0,
+            )
             logger.info("GraphMemory published memory event ID %s", input_id)
             await msg.ack()
         except (json.JSONDecodeError, ValueError) as e:
@@ -168,8 +120,3 @@ class GraphMemory:
             logger.info("GraphMemory stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
-
-    @property
-    def last_read_error(self) -> Optional[Exception]:
-        """Return the exception from the last failed graph read, if any."""
-        return self._last_read_error
