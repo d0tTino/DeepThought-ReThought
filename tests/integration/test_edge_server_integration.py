@@ -9,16 +9,8 @@ from fastapi.testclient import TestClient
 @pytest.mark.slow
 def test_generate_with_distilgpt2(monkeypatch):
     pytest.importorskip("torch")
-    pytest.importorskip("transformers")
+    _tf = pytest.importorskip("transformers")
 
-    import socket
-
-    try:
-        socket.create_connection(("huggingface.co", 443), timeout=3)
-    except OSError:
-        pytest.skip("huggingface.co unreachable")
-
-    import transformers as _tf
 
     real_load = _tf.AutoModelForCausalLM.from_pretrained
 
