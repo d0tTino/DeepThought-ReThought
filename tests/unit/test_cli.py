@@ -27,12 +27,14 @@ def test_init_service_demo(tmp_path: Path) -> None:
     assert result.returncode == 0
     service_dir = tmp_path / "src" / "deepthought" / "services" / "demo"
     assert service_dir.is_dir()
+    assert (service_dir / "__init__.py").exists()
 
 
 def test_init_service_demo_start_stop(tmp_path: Path) -> None:
     result = _run_dtrt(tmp_path, "init", "service", "demo")
     assert result.returncode == 0
     service_dir = tmp_path / "src" / "deepthought" / "services" / "demo"
+    assert (service_dir / "__init__.py").exists()
     svc_file = service_dir / "service.py"
 
     import importlib.util
