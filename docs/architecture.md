@@ -141,11 +141,18 @@ Customize the generated files to implement your service logic.
 
 ## Multi-Agent Demo
 
-A simple demonstration of multiple agents communicating over NATS is provided in `examples/multi_agent_demo.py`.
-Start a local NATS server with `./scripts/start_nats.sh` and then run `setup_jetstream.py` to create the required JetStream stream:
+The repository includes a demonstration of three lightweight agents exchanging messages using the `MemoryService` and `LLMStub`. The agents are coordinated with a small LangGraph state machine and live in `examples/multi_agent_demo.py`.
+
+Start a local NATS server with `./scripts/start_nats.sh` and create the JetStream stream:
 
 ```bash
 python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
+```
+
+Install the optional dependency used by the demo:
+
+```bash
+pip install langgraph
 ```
 
 Then launch the demo:
@@ -154,5 +161,12 @@ Then launch the demo:
 python examples/multi_agent_demo.py
 ```
 
-This script spins up three agents that forward responses to each other in a round-robin fashion using the existing `InputHandler`, `BasicMemory`, `BasicLLM` (or `LLMStub`), and `OutputHandler` modules.
+You should see log lines similar to the following as the message circulates between agents:
+
+```text
+Agent 1 says: Hello from agent 1!
+Agent 2 says: Based on: ..., this is a stub response...
+Agent 3 says: Based on: ..., this is a stub response...
+```
+
 Ensure a NATS server is running on `localhost:4222` or set the `NATS_URL` environment variable accordingly.
