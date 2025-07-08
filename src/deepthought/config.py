@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     search_db: str | None = None
     vector_backend: str = "chroma"
     vector_use_gpu: bool = False
+    graph_backend: str = "memgraph"
     neo4j_host: str = "localhost"
     neo4j_port: int = 7687
     neo4j_user: str = "neo4j"

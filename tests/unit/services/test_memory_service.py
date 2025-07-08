@@ -137,3 +137,39 @@ async def test_handle_input_updates_graph_and_publishes(monkeypatch):
     assert "hello" in sent_payload.retrieved_knowledge["facts"]
     ts = sent_payload.timestamp
     assert datetime.fromisoformat(ts).tzinfo == timezone.utc
+
+
+def test_init_from_settings(monkeypatch):
+    calls = {}
+    import deepthought.services.memory_service as ms
+
+    def fake_create_vector_store(backend, collection_name, persist_directory=None, use_gpu=False, embedding_function=None):
+        calls["vector"] = (backend, use_gpu)
+        return object()
+
+    def fake_create_graph_backend(name):
+        calls["graph"] = name
+        return object()
+
+    class DummyTiered:
+        def __init__(self, store, backend, capacity=100, top_k=3):
+            calls["tiered"] = (store, backend, capacity, top_k)
+
+    monkeypatch.setattr(ms, "create_vector_store", fake_create_vector_store)
+    monkeypatch.setattr(ms, "create_graph_backend", fake_create_graph_backend)
+    monkeypatch.setattr(ms, "TieredMemory", DummyTiered)
+
+    import deepthought.config as config
+
+    config._settings_cache = None
+    fake_settings = SimpleNamespace(
+        vector_backend="faiss", vector_use_gpu=True, graph_backend="noop"
+    )
+    monkeypatch.setattr(config, "get_settings", lambda: fake_settings)
+    monkeypatch.setattr(ms, "get_settings", lambda: fake_settings)
+
+    ms.MemoryService(DummyNATS(), DummyJS())
+
+    assert calls["vector"] == ("faiss", True)
+    assert calls["graph"] == "noop"
+    assert calls["tiered"][2:] == (100, 3)

@@ -206,6 +206,13 @@ export DT_VECTOR_BACKEND=faiss
 export DT_VECTOR_USE_GPU=true
 ```
 
+Configure the knowledge graph backend with `DT_GRAPH_BACKEND` (`memgraph`,
+`neo4j` or `noop`):
+
+```bash
+export DT_GRAPH_BACKEND=memgraph
+```
+
 `SchedulerService` runs periodic summarization and reminder tasks. Adjust the interval
 between summaries with `DT_SCHEDULER_INTERVAL` (seconds):
 
