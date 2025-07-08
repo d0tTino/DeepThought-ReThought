@@ -4,6 +4,8 @@ import os
 from datetime import datetime, timezone
 from typing import List
 
+from ..graph import GraphBackend
+
 import networkx as nx
 
 logger = logging.getLogger(__name__)
@@ -53,3 +55,18 @@ class FileGraphDAL:
         nodes = sorted(self._graph.nodes(data=True), key=lambda n: n[1].get("timestamp", ""))
         recent = nodes[-count:]
         return [n[1].get("user_input", "") for n in recent]
+
+
+class FileGraphBackend(GraphBackend):
+    """Adapter exposing :class:`FileGraphDAL` via the :class:`GraphBackend` interface."""
+
+    def __init__(self, graph_file: str = "graph_memory.json") -> None:
+        self._dal = FileGraphDAL(graph_file)
+
+    def query_subgraph(self, query: str, params: dict) -> List[dict]:
+        limit = int(params.get("limit", 3))
+        facts = self._dal.get_recent_facts(limit)
+        return [{"fact": f} for f in facts]
+
+    def merge_entity(self, name: str) -> None:
+        self._dal.add_interaction(name)

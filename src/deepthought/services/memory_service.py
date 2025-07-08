@@ -14,7 +14,6 @@ from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ..memory.tiered import TieredMemory
-from ..memory.vector_store import create_vector_store
 from ..graph import create_graph_backend
 from ..config import get_settings
 
@@ -42,16 +41,18 @@ class MemoryService:
         self._subscriber = Subscriber(nats_client, js_context)
         if memory is None:
             settings = get_settings()
-            store = create_vector_store(
-                backend=vector_backend or settings.vector_backend,
-                collection_name=collection_name,
-                persist_directory=persist_directory,
-                use_gpu=use_gpu if use_gpu is not None else settings.vector_use_gpu,
-            )
             backend_obj = create_graph_backend(
                 graph_backend_name or settings.graph_backend
             )
-            memory = TieredMemory(store, backend_obj, capacity=capacity, top_k=top_k)
+            memory = TieredMemory.from_chroma(
+                backend_obj,
+                collection_name=collection_name,
+                persist_directory=persist_directory,
+                backend=vector_backend or settings.vector_backend,
+                use_gpu=use_gpu if use_gpu is not None else settings.vector_use_gpu,
+                capacity=capacity,
+                top_k=top_k,
+            )
         self._memory = memory
 
     async def _handle_input(self, msg: Msg) -> None:

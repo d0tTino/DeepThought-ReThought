@@ -1,66 +1,42 @@
 import json
 import logging
-import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from ..memory.tiered import TieredMemory
+from ..memory.vector_store import create_vector_store
+from ..graph import NoOpGraphBackend
 
 logger = logging.getLogger(__name__)
 
 
 class BasicMemory:
-    """File-backed memory module storing past inputs."""
+    """Simple memory module backed by :class:`TieredMemory`."""
 
     def __init__(
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
-        memory_file: Optional[str] = None,
+        memory: Optional[TieredMemory] = None,
+        *,
+        capacity: int = 100,
+        top_k: int = 3,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._memory_file = memory_file or get_settings().memory_file
-
-        dir_path = os.path.dirname(self._memory_file)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-
-        if not os.path.exists(self._memory_file):
-            try:
-                with open(self._memory_file, "w", encoding="utf-8") as f:
-                    json.dump([], f)
-            except Exception as e:
-                logger.error("Failed to initialize memory file %s: %s", self._memory_file, e, exc_info=True)
-                raise
-        logger.info("BasicMemory initialized with file %s", self._memory_file)
-
-    def _read_memory(self) -> List[Dict[str, Any]]:
-        try:
-            with open(self._memory_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError) as e:
-            logger.error("Failed to read memory file: %s", e)
-            return []
-        except Exception as e:  # fallback
-            logger.error("Unexpected error reading memory file: %s", e, exc_info=True)
-            return []
-
-    def _write_memory(self, data: List[Dict[str, Any]]) -> None:
-        try:
-            with open(self._memory_file, "w", encoding="utf-8") as f:
-                json.dump(data, f)
-        except Exception as e:
-            logger.error("Failed to write memory file %s: %s", self._memory_file, e, exc_info=True)
-            raise
+        if memory is None:
+            store = create_vector_store()
+            memory = TieredMemory(store, NoOpGraphBackend(), capacity=capacity, top_k=top_k)
+        self._memory = memory
+        logger.info("BasicMemory initialized using TieredMemory")
 
     async def _handle_input_event(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -74,19 +50,20 @@ class BasicMemory:
                 raise ValueError("Invalid input payload fields")
             logger.info("BasicMemory received input event ID %s", input_id)
 
-            history = self._read_memory()
-            history.append({"timestamp": datetime.now(timezone.utc).isoformat(), "user_input": user_input})
-            self._write_memory(history)
-
-            last_entries = history[-3:]
-            facts = [entry["user_input"] for entry in last_entries]
+            self._memory.store_interaction(user_input)
+            facts = self._memory.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "basic_memory"},
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
 
-            await self._publisher.publish(EventSubjects.MEMORY_RETRIEVED, payload, use_jetstream=True, timeout=10.0)
+            await self._publisher.publish(
+                EventSubjects.MEMORY_RETRIEVED,
+                payload,
+                use_jetstream=True,
+                timeout=10.0,
+            )
             logger.info("BasicMemory published memory event ID %s", input_id)
             await msg.ack()
         except (json.JSONDecodeError, ValueError) as e:
