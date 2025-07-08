@@ -11,9 +11,10 @@ A few integration tests require additional optional dependencies. These tests ar
 - `chromadb` for `test_chroma_service.py` (requires a running Chroma service)
 - `pymemgraph` for `test_memgraph_service.py` (requires a Memgraph instance)
 - `deepthought.motivate` for `test_motivation.py` and `test_reward_manager.py`
+- `torch` and `transformers` for `integration/test_edge_server_integration.py` (needs access to `huggingface.co`)
 
 Install these extras if you want to run the entire suite:
 
 ```bash
-pip install chromadb pymemgraph deepthought-motivate
+pip install chromadb pymemgraph deepthought-motivate torch transformers
 ```
