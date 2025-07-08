@@ -95,6 +95,11 @@ search_db: wiki.db
 Set ``DT_VECTOR_BACKEND`` to ``faiss`` to use the in-memory FAISS store instead of Chroma.
 When using FAISS, ``DT_VECTOR_USE_GPU`` enables GPU acceleration if available.
 
+``DT_GRAPH_BACKEND`` selects the knowledge graph backend. Supported values include
+``memgraph``, ``neo4j`` and ``noop``. These variables are read by both
+``HierarchicalService.from_chroma`` and ``MemoryService`` when initializing the
+backends.
+
 ### Graph Backend
 
 ``HierarchicalService.from_chroma`` takes a ``graph_backend_name`` string such as

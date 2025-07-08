@@ -16,6 +16,7 @@ from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ..memory.tiered import TieredMemory
 from ..memory.vector_store import create_vector_store
 from ..graph import create_graph_backend
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,24 +30,27 @@ class MemoryService:
         js_context: JetStreamContext,
         memory: Optional[TieredMemory] = None,
         *,
-        graph_backend_name: str = "memgraph",
+        graph_backend_name: str | None = None,
         collection_name: str = "deepthought",
         persist_directory: str | None = None,
-        vector_backend: str = "chroma",
-        use_gpu: bool = False,
+        vector_backend: str | None = None,
+        use_gpu: bool | None = None,
         capacity: int = 100,
         top_k: int = 3,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         if memory is None:
+            settings = get_settings()
             store = create_vector_store(
-                backend=vector_backend,
+                backend=vector_backend or settings.vector_backend,
                 collection_name=collection_name,
                 persist_directory=persist_directory,
-                use_gpu=use_gpu,
+                use_gpu=use_gpu if use_gpu is not None else settings.vector_use_gpu,
             )
-            backend_obj = create_graph_backend(graph_backend_name)
+            backend_obj = create_graph_backend(
+                graph_backend_name or settings.graph_backend
+            )
             memory = TieredMemory(store, backend_obj, capacity=capacity, top_k=top_k)
         self._memory = memory
 
