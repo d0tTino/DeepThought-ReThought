@@ -29,6 +29,11 @@ class TieredMemory:
         self._counter = 0
         self._lru: OrderedDict[str, str] = OrderedDict()
 
+    @property
+    def graph_backend(self) -> GraphBackend:
+        """Return the underlying graph backend."""
+        return self._graph
+
     @classmethod
     def from_chroma(
         cls,
@@ -55,9 +60,7 @@ class TieredMemory:
             try:
                 self._store.collection.delete([doc_id])
             except Exception:  # pragma: no cover - defensive
-                logger.error(
-                    "Failed to delete %s from vector store", doc_id, exc_info=True
-                )
+                logger.error("Failed to delete %s from vector store", doc_id, exc_info=True)
 
     def _add_to_vector(self, text: str) -> None:
         if text in self._lru:

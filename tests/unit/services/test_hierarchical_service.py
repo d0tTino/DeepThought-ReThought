@@ -6,8 +6,12 @@ from types import SimpleNamespace
 
 sys.modules.setdefault("deepthought.harness", types.ModuleType("harness"))
 record_mod = types.ModuleType("record")
+
+
 class TraceEvent:
     pass
+
+
 record_mod.TraceEvent = TraceEvent
 sys.modules.setdefault("deepthought.harness.record", record_mod)
 sys.modules.setdefault("deepthought.learn", types.ModuleType("learn"))
@@ -51,6 +55,7 @@ sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
 fake_prom = types.ModuleType("prometheus_client")
 
+
 class _Metric:
     def labels(self, **kwargs):
         return self
@@ -71,10 +76,10 @@ from typing import List
 import pytest
 
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
+from deepthought.graph.backend import GraphDALBackend
 from deepthought.memory.tiered import TieredMemory
 from deepthought.search import OfflineSearch
 from deepthought.services.hierarchical_service import HierarchicalService
-from deepthought.graph.backend import GraphDALBackend
 
 
 class DummyNATS:
@@ -187,6 +192,10 @@ class DummyMemory:
     def __init__(self, backend):
         self._graph = backend
 
+    @property
+    def graph_backend(self):
+        return self._graph
+
 
 def test_dump_graph(tmp_path):
     dal = DummyGraphDAL()
@@ -233,6 +242,7 @@ def test_retrieve_context_from_config(monkeypatch, tmp_path):
     config._settings_cache = None
     monkeypatch.setattr(config, "get_settings", lambda: types.SimpleNamespace(search_db=str(db)))
     import deepthought.services.hierarchical_service as hs
+
     monkeypatch.setattr(hs, "get_settings", lambda: types.SimpleNamespace(search_db=str(db)))
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     ctx = service.retrieve_context("config")

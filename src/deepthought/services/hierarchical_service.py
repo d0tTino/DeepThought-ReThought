@@ -209,7 +209,7 @@ class HierarchicalService:
         os.makedirs(path, exist_ok=True)
         dot_path = os.path.join(path, "graph.dot")
 
-        rows = self._memory._graph.query_subgraph(
+        rows = self._memory.graph_backend.query_subgraph(
             (
                 "MATCH (a)-[r]->(b) RETURN id(a) AS src_id, "
                 "coalesce(a.name, '') AS src, type(r) AS rel, "
