@@ -27,3 +27,4 @@ def test_entrypoint_init_service_foo(tmp_path: Path) -> None:
     assert result.returncode == 0
     dest = tmp_path / "src" / "deepthought" / "services" / "foo"
     assert dest.is_dir()
+    assert (dest / "__init__.py").exists()

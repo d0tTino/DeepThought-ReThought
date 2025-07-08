@@ -29,7 +29,9 @@ def test_dtrt_init_service_from_wheel(tmp_path: Path) -> None:
             env=env,
         )
         subprocess.run([str(dtrt), "init", "service", "demo"], cwd=tmp_path, check=True, env=env)
-        assert (tmp_path / "src" / "deepthought" / "services" / "demo" / "service.py").exists()
+        service_dir = tmp_path / "src" / "deepthought" / "services" / "demo"
+        assert (service_dir / "__init__.py").exists()
+        assert (service_dir / "service.py").exists()
 
         # verify the generated service can be imported and started
         script = """

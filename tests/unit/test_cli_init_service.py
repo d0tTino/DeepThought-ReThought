@@ -19,6 +19,7 @@ def test_cli_init_service(tmp_path):
     )
     dest = tmp_path / "src" / "deepthought" / "services" / service_name
     assert dest.is_dir()
+    assert (dest / "__init__.py").exists()
     assert (dest / "publisher.py").exists()
     assert (dest / "subscriber.py").exists()
     assert (dest / "Dockerfile").exists()
