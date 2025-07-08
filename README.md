@@ -60,6 +60,19 @@ dtrt finetune --pack-sequences --max-seq-length 2048
 ```
 
 Run ``dtrt finetune --help`` to see all available options.
+
+The CLI is also available as ``dtrt-finetune`` for convenience.
+
+### Docker Finetune
+
+Build and run the CUDA-enabled image:
+
+```bash
+docker build -f docker/Dockerfile.finetune -t dtrt-finetune .
+docker run --gpus all dtrt-finetune \
+    --dataset-path databricks/databricks-dolly-15k \
+    --model-path meta-llama/Llama-3.2-3B-Instruct
+```
 3.  **Hierarchical Memory Service:** combines `BasicMemory`, a planned Chroma-backed vector memory, and `KnowledgeGraphMemory` using Memgraph. These layers are orchestrated by the `MemoryService` to produce aggregated `MEMORY_RETRIEVED` events. See [docs/hierarchical_memory_service.md](docs/hierarchical_memory_service.md).
 4.  **Reward Manager:** publishes user feedback as `RewardEvent` messages via JetStream, enabling future reinforcement or preference-based training. See [docs/reward_manager.md](docs/reward_manager.md).
 5.  **Adaptive Code Generation:** (Future Goal) Exploring techniques like template engines or JIT compilation (e.g., using AsmJit) for dynamic code optimization.

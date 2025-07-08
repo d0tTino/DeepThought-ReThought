@@ -13,6 +13,8 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
+  push:
+    tags: ['*']
 
 permissions:
   contents: read
@@ -117,3 +119,11 @@ jobs:
       - name: Cleanup NATS container
         if: always()
         run: docker rm -f dtr_nats
+
+  docker_finetune_image:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build finetune image
+        run: docker build -f docker/Dockerfile.finetune -t dtrt-finetune .
