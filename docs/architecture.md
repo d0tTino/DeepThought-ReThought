@@ -123,6 +123,13 @@ NATS_USERNAME=example
 NATS_PASSWORD=secret
 ```
 
+These TLS variables are commented out in the generated `nats.env.example` file.
+Uncomment them and provide the paths to your certificates to enable mTLS.
+
+The generated `subscriber.py` includes a simple `rate_limit` decorator. Apply
+it to your message handler to throttle processing, e.g. `@rate_limit(10, 1)`
+will allow up to ten messages per second.
+
 The command copies the template to `src/deepthought/services/<name>` and
 replaces `TemplateService` with a class named `<Name>Service`.
 

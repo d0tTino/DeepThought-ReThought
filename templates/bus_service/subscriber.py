@@ -1,3 +1,37 @@
+import asyncio
+import time
+from typing import Any, Awaitable, Callable
+
+
+def rate_limit(
+    capacity: int, refill_interval: float
+) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
+    """Simple token bucket rate limiter."""
+
+    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+        tokens = capacity
+        last = time.monotonic()
+        lock = asyncio.Lock()
+
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            nonlocal tokens, last
+            async with lock:
+                now = time.monotonic()
+                tokens = min(capacity, tokens + (now - last) / refill_interval)
+                last = now
+                if tokens < 1:
+                    await asyncio.sleep((1 - tokens) * refill_interval)
+                    now = time.monotonic()
+                    tokens = min(capacity, tokens + (now - last) / refill_interval)
+                    last = now
+                tokens -= 1
+            return await func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 class TemplateServiceSubscriber:
     """Example subscriber using JetStream persistence."""
 
@@ -14,5 +48,6 @@ class TemplateServiceSubscriber:
             durable="template",
         )
 
+    @rate_limit(10, 1)  # 10 messages per second
     async def _handle(self, msg):
         await msg.ack()
