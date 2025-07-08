@@ -30,6 +30,7 @@ setup(
     entry_points={
         "console_scripts": [
             "dtrt=deepthought.cli:main",
+            "dtrt-finetune=deepthought.cli.finetune:main",
         ]
     },
     description="DeepThought reThought - experimental AI framework",
