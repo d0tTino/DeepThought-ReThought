@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import time
 from typing import Any, Dict, Optional
 
 try:  # pragma: no cover - optional dependency
@@ -20,17 +22,22 @@ class GraphConnector:
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 7687,
-        username: str = "",
-        password: str = "",
+        host: str | None = None,
+        port: int | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        *,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
     ) -> None:
         self._params = {
-            "host": host,
-            "port": port,
-            "username": username,
-            "password": password,
+            "host": host or os.getenv("MG_HOST", "localhost"),
+            "port": int(port or os.getenv("MG_PORT", 7687)),
+            "username": username or os.getenv("MG_USER", ""),
+            "password": password or os.getenv("MG_PASSWORD", ""),
         }
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
         self._connection: Optional[Any] = None
 
     def connect(self) -> Any:
@@ -38,7 +45,16 @@ class GraphConnector:
         if not self._connection:
             if Memgraph is None:
                 raise ImportError("pymemgraph is not installed")
-            self._connection = Memgraph(**self._params)
+            last_error: Exception | None = None
+            for _ in range(max(1, self._max_retries)):
+                try:
+                    self._connection = Memgraph(**self._params)
+                    break
+                except Exception as exc:  # pragma: no cover - defensive
+                    last_error = exc
+                    time.sleep(self._retry_delay)
+            if self._connection is None and last_error is not None:
+                raise last_error
         return self._connection
 
     def close(self) -> None:
@@ -86,20 +102,38 @@ class Neo4jConnector:
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 7687,
-        username: str = "neo4j",
-        password: str = "neo4j",
+        host: str | None = None,
+        port: int | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        *,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
     ) -> None:
+        host = host or os.getenv("NEO4J_HOST", "localhost")
+        port = int(port or os.getenv("NEO4J_PORT", 7687))
+        username = username or os.getenv("NEO4J_USER", "neo4j")
+        password = password or os.getenv("NEO4J_PASSWORD", "neo4j")
         self._uri = f"bolt://{host}:{port}"
         self._auth = (username, password)
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
         self._driver: Optional[Any] = None
 
     def connect(self) -> Any:
         if not self._driver:
             if GraphDatabase is None:
                 raise ImportError("neo4j-driver is not installed")
-            self._driver = GraphDatabase.driver(self._uri, auth=self._auth)
+            last_error: Exception | None = None
+            for _ in range(max(1, self._max_retries)):
+                try:
+                    self._driver = GraphDatabase.driver(self._uri, auth=self._auth)
+                    break
+                except Exception as exc:  # pragma: no cover - defensive
+                    last_error = exc
+                    time.sleep(self._retry_delay)
+            if self._driver is None and last_error is not None:
+                raise last_error
         return self._driver
 
     def close(self) -> None:
