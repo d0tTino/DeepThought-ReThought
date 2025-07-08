@@ -86,7 +86,7 @@ Scaffold a new bus service using the built-in template:
 dtrt bus init service <name>
 ```
 
-This command copies the files in `templates/bus_service` to
+This command copies the files from the packaged `bus_service` template to
 `src/deepthought/services/<name>` and replaces `TemplateService` with
 `<Name>Service`.
 
@@ -101,6 +101,14 @@ NATS_PASSWORD=secret
 NATS_TLS_CERT=/path/to/client-cert.pem
 NATS_TLS_KEY=/path/to/client-key.pem
 NATS_TLS_CA=/path/to/ca.pem
+```
+
+### DTRT Bus Template
+
+Quick start example for scaffolding a bus service:
+
+```bash
+dtrt bus init service mysvc
 ```
 
 ## Current Status

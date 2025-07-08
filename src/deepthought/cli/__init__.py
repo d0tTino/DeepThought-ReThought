@@ -14,11 +14,23 @@ def init_service(name: str, *, template_name: str = "service") -> None:
     dest = Path("src/deepthought/services") / name
     if dest.exists():
         raise SystemExit(f"Service '{name}' already exists")
-    # templates live under ``templates/<template_name>`` during development
-    template = Path(__file__).resolve().parents[3] / "templates" / template_name
-    if not template.exists():
-        # fallback to package data when installed from a wheel
-        template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
+
+    template = None
+    try:
+        templ_res = resources.files("deepthought.templates").joinpath(template_name)
+        with resources.as_file(templ_res) as path:
+            if path.exists():
+                template = Path(path)
+    except ModuleNotFoundError:
+        template = None
+    if template is None or not template.exists():
+        # templates live under ``templates/<template_name>`` during development
+        candidate = Path(__file__).resolve().parents[3] / "templates" / template_name
+        if candidate.exists():
+            template = candidate
+        else:
+            # fallback to package data when installed from a wheel
+            template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
 
     shutil.copytree(template, dest)
     class_name = _to_camel(name) + "Service"
