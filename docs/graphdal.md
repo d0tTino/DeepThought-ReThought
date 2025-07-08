@@ -59,6 +59,13 @@ Alternatively, run the example script directly:
 python examples/memgraph_memory_service.py
 ```
 
+Another demo using a Neo4j backend is available:
+
+```bash
+python examples/graph_memory_demo.py
+```
+
+
 ## Hierarchical Memory Wrapper
 
 `HierarchicalMemory` combines vector search (using a store like Chroma) with
