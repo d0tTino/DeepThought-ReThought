@@ -79,3 +79,11 @@ def test_public_vector_and_graph_methods():
     assert mem.vector_matches("whatever") == ["v1"]
     assert mem.graph_facts() == ["g1"]
     assert mem.graph_facts(2) == ["g1", "g2"]
+
+
+def test_graph_backend_accessor():
+    vec = DummyVector()
+    dal = DummyDAL()
+    mem = TieredMemory(vec, dal)
+
+    assert mem.graph_backend is dal
