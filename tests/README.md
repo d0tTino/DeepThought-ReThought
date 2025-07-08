@@ -13,6 +13,7 @@ A few integration tests require additional optional dependencies. These tests ar
 - `deepthought.motivate` for `test_motivation.py` and `test_reward_manager.py`
 - `torch` and `transformers` for `test_edge_server_integration.py` (for language model integration)
 
+
 Install these extras if you want to run the entire suite:
 
 ```bash

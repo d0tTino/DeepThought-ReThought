@@ -11,6 +11,7 @@ def test_generate_with_distilgpt2(monkeypatch):
     pytest.importorskip("torch")
     _tf = pytest.importorskip("transformers")
 
+
     real_load = _tf.AutoModelForCausalLM.from_pretrained
 
     def load_model(model_name, *args, **kwargs):
