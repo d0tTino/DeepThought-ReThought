@@ -87,7 +87,14 @@ def test_memory_query_reads_cache(client):
     cache = server.app.state.memory_cache
     cache._cache["abc"] = {"facts": ["f1"], "source": "test"}
 
-    resp = client.get("/memory/query", params={"input_id": "abc"})
+    resp = client.post("/memory/query", json={"query": "f1"})
     assert resp.status_code == 200
-    assert resp.json()["retrieved_knowledge"] == {"facts": ["f1"], "source": "test"}
+    assert resp.json()["results"] == [
+        {"input_id": "abc", "retrieved_knowledge": {"facts": ["f1"], "source": "test"}}
+    ]
+
+def test_memory_query_no_match(client):
+    resp = client.post("/memory/query", json={"query": "nomatch"})
+    assert resp.status_code == 200
+    assert resp.json()["results"] == []
 
