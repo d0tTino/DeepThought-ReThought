@@ -10,6 +10,8 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from ..config import get_settings
+
 logger = logging.getLogger(__name__)
 MessageHandlerType = Callable[[Msg], Awaitable[None]]
 
@@ -60,10 +62,16 @@ class Subscriber:
             self._subscriptions.append(sub)  # Store subscription object for cleanup
 
         except nats.errors.Error as e:
-            logger.error(f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}", exc_info=True)
+            logger.error(
+                f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}",
+                exc_info=True,
+            )
             raise e
         except Exception as e:
-            logger.error(f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}", exc_info=True)
+            logger.error(
+                f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}",
+                exc_info=True,
+            )
             raise e
 
     async def unsubscribe_all(self) -> None:
@@ -107,12 +115,13 @@ async def connect(
 ) -> "Subscriber":
     """Create a :class:`Subscriber` connected to ``nats_url`` with optional TLS."""
 
-    nats_url = nats_url or os.getenv("NATS_URL", "nats://localhost:4222")
-    tls_cert = tls_cert or os.getenv("NATS_TLS_CERT")
-    tls_key = tls_key or os.getenv("NATS_TLS_KEY")
-    tls_ca = tls_ca or os.getenv("NATS_TLS_CA")
-    user = user or os.getenv("NATS_USERNAME")
-    password = password or os.getenv("NATS_PASSWORD")
+    settings = get_settings()
+    nats_url = nats_url or settings.nats_url
+    tls_cert = tls_cert or settings.nats_tls_cert
+    tls_key = tls_key or settings.nats_tls_key
+    tls_ca = tls_ca or settings.nats_tls_ca
+    user = user or settings.nats_username
+    password = password or settings.nats_password
 
     ssl_ctx = None
     if tls_cert and tls_key:

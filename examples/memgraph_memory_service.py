@@ -1,9 +1,9 @@
 import asyncio
 import logging
-import os
 
 from nats.aio.client import Client as NATS
 
+from deepthought.config import get_settings
 from deepthought.graph import GraphConnector, GraphDAL
 from deepthought.modules import KnowledgeGraphMemory
 
@@ -12,15 +12,16 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
+    settings = get_settings()
     nc = NATS()
-    await nc.connect(servers=[os.getenv("NATS_URL", "nats://localhost:4222")])
+    await nc.connect(servers=[settings.nats_url])
     js = nc.jetstream()
 
     connector = GraphConnector(
-        host=os.getenv("MG_HOST", "localhost"),
-        port=int(os.getenv("MG_PORT", "7687")),
-        username=os.getenv("MG_USER", ""),
-        password=os.getenv("MG_PASSWORD", ""),
+        host=settings.mg_host,
+        port=settings.mg_port,
+        username=settings.mg_user,
+        password=settings.mg_password,
     )
     dal = GraphDAL(connector)
     memory = KnowledgeGraphMemory(nc, js, dal)

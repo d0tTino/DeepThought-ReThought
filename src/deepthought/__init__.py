@@ -5,6 +5,11 @@ from __future__ import annotations
 import importlib
 import os
 
+try:  # Ensure prometheus_client is loaded before tests patch it
+    import prometheus_client  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    pass
+
 __version__ = "0.1.0"
 
 # Re-export modules subpackage for convenient access

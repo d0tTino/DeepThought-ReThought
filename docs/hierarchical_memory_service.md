@@ -28,13 +28,13 @@ docker run --rm -p 8000:8000 chromadb/chroma
 docker run --rm -p 7687:7687 memgraph/memgraph
 ```
 
-Set the environment variables used by GraphDAL when connecting to Memgraph:
+Set the configuration keys used by GraphDAL when connecting to Memgraph:
 
 ```bash
-export MG_HOST=localhost
-export MG_PORT=7687
-export MG_USER=memgraph
-export MG_PASSWORD=memgraph
+export DT_MG_HOST=localhost
+export DT_MG_PORT=7687
+export DT_MG_USER=memgraph
+export DT_MG_PASSWORD=memgraph
 ```
 
 With these services running you can start your application and the memory service will connect automatically as long as it receives the proper NATS events.
@@ -106,8 +106,8 @@ backends.
 
 ``HierarchicalService.from_chroma`` takes a ``graph_backend_name`` string such as
 ``"memgraph"`` or ``"noop"``. The default connects to Memgraph using the
-environment variables ``MG_HOST``, ``MG_PORT``, ``MG_USER`` and
-``MG_PASSWORD``. Pass ``"noop"`` to disable graph persistence during testing.
+configuration keys ``DT_MG_HOST``, ``DT_MG_PORT``, ``DT_MG_USER`` and
+``DT_MG_PASSWORD``. Pass ``"noop"`` to disable graph persistence during testing.
 
 ### Running with Neo4j
 
@@ -120,10 +120,10 @@ docker run --rm -p 7687:7687 -e NEO4J_AUTH=neo4j/test neo4j:5
 Set the corresponding variables so ``create_graph_backend("neo4j")`` can connect:
 
 ```bash
-export NEO4J_HOST=localhost
-export NEO4J_PORT=7687
-export NEO4J_USER=neo4j
-export NEO4J_PASSWORD=test
+export DT_NEO4J_HOST=localhost
+export DT_NEO4J_PORT=7687
+export DT_NEO4J_USER=neo4j
+export DT_NEO4J_PASSWORD=test
 ```
 
 Then pass ``graph_backend_name="neo4j"`` to ``HierarchicalService.from_chroma``.

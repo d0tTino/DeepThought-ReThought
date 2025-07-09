@@ -26,7 +26,6 @@ from deepthought.services.file_graph_dal import FileGraphDAL
 from deepthought.services.moderation import is_allowed
 from deepthought.services.scheduler import SchedulerService
 
-
 try:
     import discord
 except Exception:  # pragma: no cover - optional dependency
@@ -100,7 +99,10 @@ except Exception:  # pragma: no cover - optional dependency
     from types import SimpleNamespace
 
     def get_settings():
-        return SimpleNamespace(nats_url="nats://localhost:4222")
+        return SimpleNamespace(
+            nats_url="nats://localhost:4222",
+            social_graph_db="social_graph.db",
+        )
 
     class EventSubjects(SimpleNamespace):
         INPUT_RECEIVED = "dtr.input.received"
@@ -123,7 +125,7 @@ except Exception:  # pragma: no cover - optional dependency
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
+DB_PATH = get_settings().social_graph_db
 CURRENT_DB_PATH = DB_PATH
 
 
@@ -131,7 +133,7 @@ CURRENT_DB_PATH = DB_PATH
 PRISM_ENDPOINT = os.getenv("PRISM_ENDPOINT", "http://localhost:5000/receive_data")
 
 # NATS configuration for publishing events
-NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
+NATS_URL = get_settings().nats_url
 _nats_client: nats.aio.client.Client | None = None
 _js_context: JetStreamContext | None = None
 _input_publisher: Publisher | None = None

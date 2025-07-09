@@ -7,8 +7,10 @@ import os
 
 import aiosqlite
 
+from ..config import get_settings
+
 # Default database path used when none is provided.
-DB_PATH = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
+DB_PATH = get_settings().social_graph_db
 
 # Limits used when validating input sizes
 MAX_MEMORY_LENGTH = 1000

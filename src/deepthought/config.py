@@ -40,19 +40,34 @@ class RewardThresholds(BaseSettings):
 class Settings(BaseSettings):
     """Application wide settings."""
 
-    nats_url: str = "nats://localhost:4222"
+    nats_url: str = os.getenv("NATS_URL", "nats://localhost:4222")
     nats_stream_name: str = "deepthought_events"
+    nats_tls_cert: str | None = os.getenv("NATS_TLS_CERT")
+    nats_tls_key: str | None = os.getenv("NATS_TLS_KEY")
+    nats_tls_ca: str | None = os.getenv("NATS_TLS_CA")
+    nats_username: str | None = os.getenv("NATS_USERNAME")
+    nats_password: str | None = os.getenv("NATS_PASSWORD")
+
     db: DatabaseSettings = DatabaseSettings()
     model_path: str = "distilgpt2"
     memory_file: str = "memory.json"
     search_db: str | None = None
+    social_graph_db: str = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
+
     vector_backend: str = "chroma"
     vector_use_gpu: bool = False
+
     graph_backend: str = "memgraph"
-    neo4j_host: str = "localhost"
-    neo4j_port: int = 7687
-    neo4j_user: str = "neo4j"
-    neo4j_password: str = "neo4j"
+    mg_host: str = os.getenv("MG_HOST", "localhost")
+    mg_port: int = int(os.getenv("MG_PORT", 7687))
+    mg_user: str = os.getenv("MG_USER", "memgraph")
+    mg_password: str = os.getenv("MG_PASSWORD", "memgraph")
+
+    neo4j_host: str = os.getenv("NEO4J_HOST", "localhost")
+    neo4j_port: int = int(os.getenv("NEO4J_PORT", 7687))
+    neo4j_user: str = os.getenv("NEO4J_USER", "neo4j")
+    neo4j_password: str = os.getenv("NEO4J_PASSWORD", "neo4j")
+
     reward: RewardThresholds = RewardThresholds()
     persona_descriptions: dict[str, str] = {
         "friendly": "You are a friendly assistant who responds warmly.",
