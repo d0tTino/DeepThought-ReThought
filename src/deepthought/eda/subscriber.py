@@ -35,8 +35,11 @@ class Subscriber:
         queue: str = "",
         use_jetstream: bool = False,  # Flag to control behavior
         durable: str = "",
-    ) -> None:
-        """Subscribe using basic NATS or JetStream."""
+    ) -> bool:
+        """Subscribe using basic NATS or JetStream.
+
+        Returns ``True`` on success and ``False`` if an error occurred.
+        """
         try:
             if use_jetstream:
                 if not self._js:
@@ -60,19 +63,20 @@ class Subscriber:
                 logger.info(f"Basic NATS subscription created for '{subject}'")
 
             self._subscriptions.append(sub)  # Store subscription object for cleanup
+            return True
 
         except nats.errors.Error as e:
             logger.error(
                 f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}",
                 exc_info=True,
             )
-            raise e
+            return False
         except Exception as e:
             logger.error(
                 f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}",
                 exc_info=True,
             )
-            raise e
+            return False
 
     async def unsubscribe_all(self) -> None:
         """Unsubscribe from all active subscriptions."""
