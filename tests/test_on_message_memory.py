@@ -2,8 +2,11 @@ import asyncio
 import logging
 import random
 
-import aiosqlite
 import pytest
+pytest.importorskip("discord")
+pytest.importorskip("aiosqlite")
+pytest.importorskip("nats")
+import aiosqlite
 
 import examples.social_graph_bot as sg
 from deepthought.services import DBManager

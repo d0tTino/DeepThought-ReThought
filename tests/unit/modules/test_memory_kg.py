@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+pytest.importorskip("nats")
 
 import deepthought.modules.memory_kg as memory_kg
 from deepthought.eda.events import InputReceivedPayload

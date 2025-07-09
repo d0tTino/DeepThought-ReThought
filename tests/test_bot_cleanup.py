@@ -1,9 +1,11 @@
 import asyncio
 
-import discord
 import pytest
+pytest.importorskip("discord")
+import discord
 
 import examples.social_graph_bot as sg
+pytest.importorskip("nats")
 from deepthought.services import DBManager
 
 

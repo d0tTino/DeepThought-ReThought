@@ -9,6 +9,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 # Avoid importing heavy optional dependencies during test collection.
 os.environ.setdefault("DEEPTHOUGHT_LIGHT_IMPORT", "1")
 
+# Ensure the real prometheus_client package is loaded before tests
+# possibly insert a stub using sys.modules.setdefault.
+try:  # pragma: no cover - optional dependency may be missing
+    import prometheus_client  # noqa: F401
+except Exception:
+    pass
+
+# Ensure the real networkx package is loaded before tests may
+# insert a stub using ``sys.modules.setdefault``.
+try:  # pragma: no cover - optional dependency may be missing
+    import networkx  # noqa: F401
+except Exception:
+    pass
+
 import pytest
 
 # Provide a lightweight stub of the social_graph_bot module. This allows tests
@@ -115,3 +129,19 @@ def input_events(monkeypatch):
 
     monkeypatch.setattr(sg, "publish_input_received", fake_publish)
     return calls
+
+
+def pytest_collection_modifyitems(config, items):
+    import importlib.util
+
+    try:
+        spec = importlib.util.find_spec("nats")
+    except Exception:
+        spec = None
+
+    if spec is not None:
+        return
+    skip = pytest.mark.skip(reason="nats not installed")
+    for item in items:
+        if "nats" in item.keywords:
+            item.add_marker(skip)

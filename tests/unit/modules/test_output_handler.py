@@ -2,6 +2,7 @@ import json
 import logging
 
 import pytest
+pytest.importorskip("nats")
 
 import deepthought.modules.output_handler as output_handler
 from deepthought.eda.events import ResponseGeneratedPayload

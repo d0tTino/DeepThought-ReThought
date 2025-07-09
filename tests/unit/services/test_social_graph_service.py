@@ -1,4 +1,5 @@
 import pytest
+pytest.importorskip("nats")
 
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.services.social_graph_service import SocialGraphService

@@ -1,8 +1,10 @@
 import sys
 import types
 
-import aiosqlite
 import pytest
+pytest.importorskip("aiosqlite")
+pytest.importorskip("nats")
+import aiosqlite
 
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 

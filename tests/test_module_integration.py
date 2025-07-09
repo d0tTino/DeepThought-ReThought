@@ -11,6 +11,7 @@ import sys
 import tempfile
 
 import pytest
+pytest.importorskip("nats")
 from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
 from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig

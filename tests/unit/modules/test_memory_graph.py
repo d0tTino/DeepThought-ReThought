@@ -3,6 +3,7 @@ import logging
 from types import SimpleNamespace
 
 import pytest
+pytest.importorskip("nats")
 
 import deepthought.modules.memory_graph as memory_graph
 from deepthought.eda.events import EventSubjects, InputReceivedPayload

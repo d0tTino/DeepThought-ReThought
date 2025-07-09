@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+pytest.importorskip("nats")
 
 from deepthought.eda.events import EventSubjects
 from deepthought.modules.input_handler import InputHandler

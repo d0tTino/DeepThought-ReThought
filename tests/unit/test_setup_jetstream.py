@@ -2,6 +2,13 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+import importlib.util
+try:
+    spec = importlib.util.find_spec("nats")
+except Exception:
+    spec = None
+if spec is None:
+    pytest.skip("nats not installed", allow_module_level=True)
 
 import setup_jetstream as sj
 

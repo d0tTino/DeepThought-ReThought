@@ -1,6 +1,8 @@
 import sys
 
 sys.modules.pop("numpy", None)
+import pytest
+pytest.importorskip("numpy")
 import numpy as np
 
 from deepthought.memory import vector_store

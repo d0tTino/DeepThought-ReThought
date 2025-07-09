@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+import importlib.util
+if importlib.util.find_spec("nats") is None:
+    pytest.skip("nats not installed", allow_module_level=True)
 
 from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload
 

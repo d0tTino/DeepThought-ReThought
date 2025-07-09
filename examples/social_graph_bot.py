@@ -40,6 +40,12 @@ except Exception:  # pragma: no cover - optional dependency
             return dt_datetime.now(dt_timezone.utc)
 
     class Client:
+        def __init__(self, *args, **kwargs):  # pragma: no cover - stub
+            pass
+
+        async def close(self):  # pragma: no cover - stub
+            return None
+
         async def wait_until_ready(self) -> None:  # pragma: no cover - stub
             return None
 

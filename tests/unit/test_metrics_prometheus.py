@@ -1,3 +1,5 @@
+import pytest
+pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from deepthought.metrics.prometheus import INPUTS_TOTAL
