@@ -33,7 +33,7 @@ dtrt finetune --help
 
 The system is built upon an **Event-Driven Architecture (EDA)** using NATS/JetStream for asynchronous communication between components.
 
-For a diagram of the service interactions and setup instructions for optional components such as the FAISS vector store, FastAPI endpoints and the metrics system, see [docs/architecture.md](docs/architecture.md).
+For a diagram of the service interactions and setup instructions for optional components such as the FAISS vector store, FastAPI endpoints and the metrics system, see [docs/architecture.md](docs/architecture.md). GraphDAL setup for Memgraph or Neo4j is covered in [docs/graphdal.md](docs/graphdal.md).
 
 Key planned/in-progress components include:
 
@@ -73,7 +73,7 @@ docker run --gpus all dtrt-finetune \
     --dataset-path databricks/databricks-dolly-15k \
     --model-path meta-llama/Llama-3.2-3B-Instruct
 ```
-3.  **Hierarchical Memory Service:** combines `BasicMemory`, a planned Chroma-backed vector memory, and `KnowledgeGraphMemory` using Memgraph. These layers are orchestrated by the `MemoryService` to produce aggregated `MEMORY_RETRIEVED` events. See [docs/hierarchical_memory_service.md](docs/hierarchical_memory_service.md).
+3.  **Hierarchical Memory Service:** combines `BasicMemory`, a planned Chroma-backed vector memory, and `KnowledgeGraphMemory` using Memgraph. These layers are orchestrated by the `MemoryService` to produce aggregated `MEMORY_RETRIEVED` events. See [docs/hierarchical_memory_service.md](docs/hierarchical_memory_service.md) and [docs/graphdal.md](docs/graphdal.md).
 4.  **Reward Manager:** publishes user feedback as `RewardEvent` messages via JetStream, enabling future reinforcement or preference-based training. See [docs/reward_manager.md](docs/reward_manager.md).
 5.  **Adaptive Code Generation:** (Future Goal) Exploring techniques like template engines or JIT compilation (e.g., using AsmJit) for dynamic code optimization.
 6.  **Neuromorphic Processing:** (Long-Term Research) Investigating brain-inspired computing principles via simulation (e.g., using Nengo). An experimental stub is provided in `deepthought.neuromorphic` with an example at `examples/neuromorphic_nats_demo.py`.
@@ -177,7 +177,7 @@ For instructions on compiling these scripts as part of your Unity project, see [
         ```bash
         docker run --rm -p 7687:7687 memgraph/memgraph
         ```
-    Set the GraphDAL environment variables as shown in [docs/hierarchical_memory_service.md](docs/hierarchical_memory_service.md).
+    Set the GraphDAL environment variables (see [docs/graphdal.md](docs/graphdal.md)).
 6.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
 7.  **CI-style setup:** A helper script mirrors the project\'s continuous integration workflow.
     It installs dependencies, starts a temporary NATS server, initializes JetStream, and runs
@@ -186,6 +186,10 @@ For instructions on compiling these scripts as part of your Unity project, see [
     ./scripts/codex_setup.sh
     ```
 
+
+### GraphDAL Configuration
+
+See [docs/graphdal.md](docs/graphdal.md) for Memgraph/Neo4j setup using GraphDAL.
 
 ### Configuration
 
