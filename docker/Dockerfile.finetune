@@ -1,9 +1,18 @@
+FROM python:3.11-slim AS edge
+
+# Minimal environment to fetch the edge server script
+RUN apt-get update && \
+    apt-get install -y git gcc && \
+    rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir fastapi uvicorn[standard] transformers bitsandbytes
+WORKDIR /edge
+COPY tools/edge_server.py /edge/edge_server.py
+
 FROM pytorch/pytorch:2.2.1-cuda11.8-cudnn8-runtime
-
 WORKDIR /app
-
 COPY . /app
-
+# keep the edge server script for reference/inference
+COPY --from=edge /edge/edge_server.py tools/edge_server.py
 RUN pip install --no-cache-dir .
 
 ENTRYPOINT ["dtrt", "finetune"]

@@ -1,6 +1,7 @@
 import importlib
 import sys
 import types
+import pytest
 
 if "datasets" not in sys.modules:
     datasets_stub = types.ModuleType("datasets")
@@ -21,6 +22,7 @@ if "peft" not in sys.modules:
 
 
 def test_estimate_vram_simple():
+    pytest.importorskip("torch")
     train = importlib.import_module("deepthought.train")
     from transformers import AutoModelForCausalLM, GPT2Config
 
