@@ -101,6 +101,7 @@ def test_parse_finetune_args():
             "--max-seq-length",
             "4096",
             "--pack-sequences",
+            "auto",
             "--estimate-vram",
         ]
     )
@@ -110,7 +111,7 @@ def test_parse_finetune_args():
     assert args.bits == 8
     assert args.output_dir == "/tmp/out"
     assert args.max_seq_length == 4096
-    assert args.pack_sequences
+    assert args.pack_sequences == "auto"
     assert args.estimate_vram
     assert args.func.__name__ == "_cmd_finetune"
 

@@ -59,9 +59,11 @@ def _cmd_finetune(args: argparse.Namespace) -> int:
     ]
     if args.model_path:
         argv[0:0] = ["--model-path", args.model_path]
-    if args.pack_sequences:
-        argv.append("--pack-sequences")
-    if args.estimate_vram:
+    if args.pack_sequences != "off":
+        argv.extend(["--pack-sequences", args.pack_sequences])
+    if args.estimate_only:
+        argv.append("--estimate-only")
+    elif args.estimate_vram:
         argv.append("--estimate-vram")
     if args.resume:
         argv.append("--resume")
@@ -99,13 +101,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     finetune_p.add_argument(
         "--pack-sequences",
+        choices=["on", "off", "auto"],
+        default="off",
+        help="Sequence packing mode. 'auto' uses heuristics to reduce padding",
+    )
+    finetune_p.add_argument(
+        "--estimate-only",
         action="store_true",
-        help="Pack multiple sequences to reduce padding",
+        help="Estimate VRAM and exit without loading the dataset",
     )
     finetune_p.add_argument(
         "--estimate-vram",
         action="store_true",
-        help="Estimate VRAM requirements and exit",
+        help="Print VRAM estimate before training",
     )
     finetune_p.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint")
     finetune_p.set_defaults(func=_cmd_finetune)

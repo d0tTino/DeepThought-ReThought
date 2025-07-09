@@ -16,4 +16,5 @@ def test_finetune_cli_help(tmp_path):
     )
     assert "usage" in result.stdout.lower()
     assert "--estimate-vram" in result.stdout
+    assert "--estimate-only" in result.stdout
     assert "--pack-sequences" in result.stdout
