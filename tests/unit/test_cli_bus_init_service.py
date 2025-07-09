@@ -20,12 +20,17 @@ def test_bus_init_service(tmp_path: Path) -> None:
     assert (dest / "__init__.py").exists()
     assert (dest / "publisher.py").exists()
     assert (dest / "subscriber.py").exists()
+    assert (dest / "service.py").exists()
     assert (dest / "Dockerfile").exists()
 
     for py_file in dest.glob("*.py"):
-        subprocess.run([
-            sys.executable,
-            "-m",
-            "py_compile",
-            str(py_file),
-        ], check=True, env=env)
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "py_compile",
+                str(py_file),
+            ],
+            check=True,
+            env=env,
+        )
