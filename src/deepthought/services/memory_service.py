@@ -13,7 +13,7 @@ from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
-from ..graph import create_graph_backend
+from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 
@@ -42,12 +42,11 @@ class MemoryService:
         self._nc = nats_client
         if memory is None:
             settings = get_settings()
-            backend_obj = create_graph_backend(graph_backend_name or settings.graph_backend)
-            memory = TieredMemory.from_chroma(
-                backend_obj,
+            memory = create_memory_backend(
+                graph_backend_name=graph_backend_name or settings.graph_backend,
                 collection_name=collection_name,
                 persist_directory=persist_directory,
-                backend=vector_backend or settings.vector_backend,
+                vector_backend=vector_backend or settings.vector_backend,
                 use_gpu=use_gpu if use_gpu is not None else settings.vector_use_gpu,
                 capacity=capacity,
                 top_k=top_k,

@@ -14,8 +14,8 @@ from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
-from ..memory.vector_store import create_vector_store
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ..search import OfflineSearch
 
@@ -71,17 +71,15 @@ class HierarchicalService:
         search_db: Optional[str] = None,
     ) -> "HierarchicalService":
         """Instantiate with a new :class:`TieredMemory` using the chosen backend."""
-        store = create_vector_store(
-            backend=backend,
+        memory = create_memory_backend(
+            graph_backend_name=graph_backend_name,
             collection_name=collection_name,
             persist_directory=persist_directory,
+            vector_backend=backend,
             use_gpu=use_gpu,
+            capacity=capacity,
+            top_k=top_k,
         )
-        from ..graph import create_graph_backend
-
-        backend_obj = create_graph_backend(graph_backend_name)
-
-        memory = TieredMemory(store, backend_obj, capacity=capacity, top_k=top_k)
         db_path = search_db or get_settings().search_db
         if db_path:
             if not os.path.exists(db_path):

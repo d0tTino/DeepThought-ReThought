@@ -8,8 +8,12 @@ import pytest
 
 sys.modules.setdefault("deepthought.harness", types.ModuleType("harness"))
 record_mod = types.ModuleType("record")
+
+
 class TraceEvent:
     pass
+
+
 record_mod.TraceEvent = TraceEvent
 sys.modules.setdefault("deepthought.harness.record", record_mod)
 fake_nx = types.ModuleType("networkx")
@@ -49,6 +53,7 @@ sys.modules.setdefault("nats.js", fake_nats.js)
 sys.modules.setdefault("nats.js.client", fake_js_client_mod)
 sys.modules.setdefault("nats.errors", fake_errors_mod)
 fake_prom = types.ModuleType("prometheus_client")
+
 
 class _Metric:
     def labels(self, **kwargs):
@@ -143,53 +148,27 @@ def test_init_from_settings(monkeypatch):
     calls = {}
     import deepthought.services.memory_service as ms
 
-    def fake_create_vector_store(backend, collection_name, persist_directory=None, use_gpu=False, embedding_function=None):
-        calls["vector"] = (backend, use_gpu)
+    def fake_create_memory_backend(**kwargs):
+        calls.update(kwargs)
         return object()
 
-    def fake_create_graph_backend(name):
-        calls["graph"] = name
-        return object()
-
-    class DummyTiered:
-        def __init__(self, store, backend, capacity=100, top_k=3):
-            calls["tiered"] = (store, backend, capacity, top_k)
-
-        @classmethod
-        def from_chroma(
-            cls,
-            graph_backend,
-            collection_name="deepthought",
-            persist_directory=None,
-            backend="faiss",
-            use_gpu=False,
-            capacity=100,
-            top_k=3,
-        ):
-            vs.create_vector_store(
-                backend=backend,
-                collection_name=collection_name,
-                persist_directory=persist_directory,
-                use_gpu=use_gpu,
-            )
-            return cls(object(), graph_backend, capacity=capacity, top_k=top_k)
-
-    import deepthought.memory.vector_store as vs
-    monkeypatch.setattr(vs, "create_vector_store", fake_create_vector_store)
-    monkeypatch.setattr(ms, "create_graph_backend", fake_create_graph_backend)
-    monkeypatch.setattr(ms, "TieredMemory", DummyTiered)
+    monkeypatch.setattr(ms, "create_memory_backend", fake_create_memory_backend)
 
     import deepthought.config as config
 
     config._settings_cache = None
-    fake_settings = SimpleNamespace(
-        vector_backend="faiss", vector_use_gpu=True, graph_backend="noop"
-    )
+    fake_settings = SimpleNamespace(vector_backend="faiss", vector_use_gpu=True, graph_backend="noop")
     monkeypatch.setattr(config, "get_settings", lambda: fake_settings)
     monkeypatch.setattr(ms, "get_settings", lambda: fake_settings)
 
     ms.MemoryService(DummyNATS(), DummyJS())
 
-    assert calls["vector"] == ("faiss", True)
-    assert calls["graph"] == "noop"
-    assert calls["tiered"][2:] == (100, 3)
+    assert calls == {
+        "graph_backend_name": "noop",
+        "collection_name": "deepthought",
+        "persist_directory": None,
+        "vector_backend": "faiss",
+        "use_gpu": True,
+        "capacity": 100,
+        "top_k": 3,
+    }
