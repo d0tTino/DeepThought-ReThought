@@ -66,7 +66,7 @@ def load_dataset(
     dataset_path: str,
     tokenizer: AutoTokenizer,
     max_seq_length: int = 2048,
-    pack_sequences: bool = False,
+    pack_sequences: str | bool = "off",
 ):
     """Load and tokenize the dataset used for fine-tuning."""
     raw_dataset = load_dataset(dataset_path)
@@ -89,6 +89,14 @@ def load_dataset(
         return {"text": prompt}
 
     formatted_dataset = raw_dataset["train"].map(format_prompt)
+
+    if pack_sequences == "auto":
+        sample = formatted_dataset.select(range(min(1000, len(formatted_dataset))))
+        tokenized = tokenizer(sample["text"])
+        avg_len = sum(len(ids) for ids in tokenized["input_ids"]) / len(tokenized["input_ids"])
+        pack_sequences = avg_len < 0.7 * max_seq_length
+    elif isinstance(pack_sequences, str):
+        pack_sequences = pack_sequences == "on"
 
     def tokenize_function(examples):
         return tokenizer(
@@ -231,13 +239,19 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--pack-sequences",
+        choices=["on", "off", "auto"],
+        default="off",
+        help="Sequence packing mode. 'auto' uses heuristics to reduce padding",
+    )
+    parser.add_argument(
+        "--estimate-only",
         action="store_true",
-        help="Pack multiple sequences to reduce padding",
+        help="Estimate VRAM and exit without loading the dataset",
     )
     parser.add_argument(
         "--estimate-vram",
         action="store_true",
-        help="Estimate VRAM requirements and exit",
+        help="Print VRAM estimate before training",
     )
     parser.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint")
     return parser.parse_args(args)
@@ -245,7 +259,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    if args.estimate_vram:
+    if args.estimate_vram or args.estimate_only:
         model, _ = load_model(args.model_path, args.bits)
         vram = estimate_vram(
             model,
@@ -255,7 +269,8 @@ def main(argv: list[str] | None = None) -> int:
             bits=args.bits,
         )
         print(f"Estimated VRAM requirement: {vram:.2f} GB")
-        return 0
+        if args.estimate_only:
+            return 0
     return run(args)
 
 

@@ -53,11 +53,21 @@ You can also estimate the VRAM requirement before launching training:
 dtrt finetune --estimate-vram
 ```
 
+Estimate VRAM without loading the dataset:
+
+```bash
+dtrt finetune --estimate-only
+```
+
 Enable sequence packing to reduce padding:
 
 ```bash
-dtrt finetune --pack-sequences --max-seq-length 2048
+dtrt finetune --pack-sequences auto --max-seq-length 2048
 ```
+
+The `auto` mode samples a small portion of the dataset and enables packing when
+the average sequence length is under 70% of the maximum, mirroring the
+heuristics used by Predibase.
 
 Run ``dtrt finetune --help`` to see all available options.
 
