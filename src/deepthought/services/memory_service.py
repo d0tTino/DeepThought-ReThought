@@ -9,13 +9,13 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
-from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
-from ..memory.tiered import TieredMemory
 from ..graph import create_graph_backend
-from ..config import get_settings
+from ..memory.tiered import TieredMemory
+from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +39,10 @@ class MemoryService:
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
+        self._nc = nats_client
         if memory is None:
             settings = get_settings()
-            backend_obj = create_graph_backend(
-                graph_backend_name or settings.graph_backend
-            )
+            backend_obj = create_graph_backend(graph_backend_name or settings.graph_backend)
             memory = TieredMemory.from_chroma(
                 backend_obj,
                 collection_name=collection_name,
@@ -136,3 +135,5 @@ class MemoryService:
             logger.info("MemoryService stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
+        if getattr(self, "_nc", None) and self._nc.is_connected:
+            await self._nc.drain()

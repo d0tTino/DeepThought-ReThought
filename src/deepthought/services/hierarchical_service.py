@@ -35,6 +35,7 @@ class HierarchicalService:
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
+        self._nc = nats_client
         self._memory = memory
         if search is None:
             settings = get_settings()
@@ -198,6 +199,8 @@ class HierarchicalService:
             logger.info("HierarchicalService stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
+        if getattr(self, "_nc", None) and self._nc.is_connected:
+            await self._nc.drain()
 
     def dump_graph(self, path: str) -> str:
         """Write the underlying graph to ``path`` in DOT format."""

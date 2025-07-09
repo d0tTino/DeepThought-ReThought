@@ -33,6 +33,7 @@ class GraphMemory:
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
+        self._nc = nats_client
         if memory is None:
             store = create_vector_store()
             backend = FileGraphBackend(graph_file)
@@ -120,3 +121,5 @@ class GraphMemory:
             logger.info("GraphMemory stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
+        if getattr(self, "_nc", None) and self._nc.is_connected:
+            await self._nc.drain()
