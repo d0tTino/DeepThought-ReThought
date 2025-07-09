@@ -16,10 +16,10 @@ Set the following variables so the memory service can reach Memgraph:
 
 | Variable       | Description           | Default     |
 | -------------- | -------------------- | ----------- |
-| `MG_HOST`      | Memgraph host name   | `localhost` |
-| `MG_PORT`      | Memgraph port number | `7687`      |
-| `MG_USER`      | Username (optional)  | *(empty)*   |
-| `MG_PASSWORD`  | Password (optional)  | *(empty)*   |
+| `DT_MG_HOST`      | Memgraph host name   | `localhost` |
+| `DT_MG_PORT`      | Memgraph port number | `7687`      |
+| `DT_MG_USER`      | Username (optional)  | `memgraph`  |
+| `DT_MG_PASSWORD`  | Password (optional)  | `memgraph`  |
 
 ## Starting Neo4j
 
@@ -33,10 +33,10 @@ Set these variables so ``create_graph_backend("neo4j")`` can connect:
 
 | Variable         | Description           | Default     |
 | ---------------- | -------------------- | ----------- |
-| `NEO4J_HOST`     | Neo4j host name      | `localhost` |
-| `NEO4J_PORT`     | Neo4j port number    | `7687`      |
-| `NEO4J_USER`     | Username             | `neo4j`     |
-| `NEO4J_PASSWORD` | Password             | `neo4j`     |
+| `DT_NEO4J_HOST`     | Neo4j host name      | `localhost` |
+| `DT_NEO4J_PORT`     | Neo4j port number    | `7687`      |
+| `DT_NEO4J_USER`     | Username             | `neo4j`     |
+| `DT_NEO4J_PASSWORD` | Password             | `neo4j`     |
 
 Both connectors read these environment variables automatically when no
 explicit parameters are provided and will retry connecting a few times
@@ -48,10 +48,14 @@ The snippet below starts `KnowledgeGraphMemory` which listens for `INPUT_RECEIVE
 
 ```bash
 python - <<'PY'
-import asyncio, os
+import asyncio
+import os
+
 from nats.aio.client import Client as NATS
+
 from deepthought.graph import GraphConnector, GraphDAL
 from deepthought.modules import KnowledgeGraphMemory
+
 
 async def main():
     nc = NATS()
@@ -89,9 +93,10 @@ graph lookups through `GraphDAL`. Instantiate it with a vector store and an
 existing `GraphDAL` instance:
 
 ```python
-from deepthought.memory.hierarchical import HierarchicalMemory
-from deepthought.graph import GraphConnector, GraphDAL
 import chromadb
+
+from deepthought.graph import GraphConnector, GraphDAL
+from deepthought.memory.hierarchical import HierarchicalMemory
 
 # Initialize vector store and graph connection
 client = chromadb.Client()

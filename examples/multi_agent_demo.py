@@ -33,8 +33,10 @@ async def ensure_stream(js):
 
 
 async def main() -> None:
-    url = os.getenv("NATS_URL", "nats://localhost:4222")
-    nc = await nats.connect(url)
+    from deepthought.config import get_settings
+
+    settings = get_settings()
+    nc = await nats.connect(settings.nats_url)
     js = nc.jetstream()
 
     await ensure_stream(js)
