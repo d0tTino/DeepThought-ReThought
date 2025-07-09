@@ -38,7 +38,7 @@ For a diagram of the service interactions and setup instructions for optional co
 Key planned/in-progress components include:
 
 1.  **Core EDA Framework:** (Functional) Publishers, Subscribers, and Event definitions using NATS.
-2.  **Optimized Language Model:** (In Progress) Utilizing small, open-source LLMs (< 3B parameters, e.g., Llama 3.2 3B Instruct) fine-tuned using Parameter-Efficient Fine-Tuning (PEFT) techniques like QLoRA and further optimized with post-training quantization (e.g., AWQ). The `train_script.py` is provided for LLM fine-tuning. Running this script requires a suitable environment with a GPU and necessary CUDA libraries. It can be used to replicate the fine-tuning process described in `LLM_Fine_Tuning_Report.md`.
+2.  **Optimized Language Model:** (In Progress) Utilizing small, open-source LLMs (< 3B parameters, e.g., Llama 3.2 3B Instruct) fine-tuned using Parameter-Efficient Fine-Tuning (PEFT) techniques like QLoRA and further optimized with post-training quantization (e.g., AWQ). Fine-tuning is handled by the `deepthought.train` module and exposed via the ``dtrt finetune`` command. This requires a suitable GPU environment and can replicate the process described in `LLM_Fine_Tuning_Report.md`.
 
 ### CLI Usage
 

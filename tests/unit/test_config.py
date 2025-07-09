@@ -1,6 +1,7 @@
 import json
 
 import pytest
+pytest.importorskip("yaml")
 import yaml
 
 from deepthought.config import (

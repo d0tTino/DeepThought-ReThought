@@ -1,6 +1,10 @@
 from datetime import datetime
+import importlib
+import sys
 
-import deepthought.harness.record as record
+sys.modules.pop("deepthought.harness.record", None)
+record = importlib.import_module("deepthought.harness.record")
+record = importlib.reload(record)
 from deepthought.harness.record import TraceEvent, record_event
 
 

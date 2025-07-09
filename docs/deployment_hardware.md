@@ -21,7 +21,7 @@ Hardware requirements for the Language Model component vary significantly betwee
     *   **CPU (Possible):** CPU-based inference is possible but will be significantly slower and may not be suitable for real-time applications. Requires a CPU with good single-core performance and sufficient RAM to hold model weights.
     *   **RAM:** Besides VRAM for the model on GPU, ensure sufficient system RAM (e.g., 16GB+) for the OS and other processes.
 
-*   **Fine-tuning (`train_script.py`):**
+*   **Fine-tuning (`dtrt finetune`):**
     *   **GPU (Necessary):** A powerful GPU is essential for fine-tuning. Examples include NVIDIA RTX 30xx/40xx series, A-series data center GPUs, or equivalent AMD GPUs with good ROCm support.
     *   **VRAM:** Substantial VRAM is critical.
         *   **12GB+ VRAM:** Recommended as a minimum for models like Llama 3.2 3B with QLoRA.

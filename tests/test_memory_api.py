@@ -3,9 +3,12 @@ import shutil
 import socket
 import subprocess
 import time
+import pytest
+pytest.importorskip("aiohttp")
+pytest.importorskip("httpx")
+pytest.importorskip("pytest_asyncio")
 from aiohttp import web
 import httpx
-import pytest
 import pytest_asyncio
 
 from tests.helpers import nats_server_available

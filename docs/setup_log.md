@@ -10,7 +10,7 @@ Think of this as a personal or collaborative scratchpad. For example, you might 
 *   Python virtual environment commands particular to your system.
 *   Workarounds for unexpected errors or dependency conflicts.
 *   Configuration tweaks you made for your NATS server.
-*   Steps taken to get `train_script.py` running on your specific hardware.
+*   Steps taken to get the fine-tuning CLI running on your specific hardware.
 
 By sharing these notes (if you choose to commit them to your fork or a PR), you might help others who encounter similar situations. However, there's no obligation to use this file.
 

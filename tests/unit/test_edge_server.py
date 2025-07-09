@@ -3,6 +3,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 

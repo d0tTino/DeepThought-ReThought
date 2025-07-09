@@ -8,6 +8,8 @@ import logging
 import os
 
 import pytest
+pytest.importorskip("pytest_asyncio")
+pytest.importorskip("nats")
 import pytest_asyncio
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout

@@ -1,8 +1,9 @@
 import asyncio
 import logging
 
-import aiohttp
 import pytest
+pytest.importorskip("aiohttp")
+import aiohttp
 
 import examples.social_graph_bot as sg
 

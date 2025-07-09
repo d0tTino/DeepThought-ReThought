@@ -4,11 +4,19 @@ import types
 
 import pytest
 
+import importlib.util
 import examples.social_graph_bot as sg
+
+textblob_available = importlib.util.find_spec("textblob") is not None
+vader_available = importlib.util.find_spec("vaderSentiment") is not None
 
 
 @pytest.mark.parametrize("backend", [None, "vader"])
 def test_sentiment_backend(monkeypatch, backend):
+    if backend == "vader" and not vader_available:
+        pytest.skip("vaderSentiment not installed")
+    if not textblob_available:
+        pytest.skip("textblob not installed")
     if backend is None:
         monkeypatch.delenv("SENTIMENT_BACKEND", raising=False)
     else:
@@ -25,6 +33,8 @@ def test_sentiment_backend(monkeypatch, backend):
 
 
 def test_invalid_backend_defaults_to_textblob(monkeypatch):
+    if not textblob_available:
+        pytest.skip("textblob not installed")
     monkeypatch.setenv("SENTIMENT_BACKEND", "unknown")
 
     class Dummy:

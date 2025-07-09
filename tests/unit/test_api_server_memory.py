@@ -8,6 +8,7 @@ sys.modules.setdefault("networkx", fake_nx)
 from types import SimpleNamespace
 
 import pytest
+pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 import deepthought.api.server as server

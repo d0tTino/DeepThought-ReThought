@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+pytest.importorskip("nats")
 
 import deepthought.modules.memory_stub as memory_stub
 from deepthought.eda.events import EventSubjects, InputReceivedPayload

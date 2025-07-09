@@ -1,10 +1,12 @@
 import asyncio
 import os
 
-import aiosqlite
 import pytest
+pytest.importorskip("aiosqlite")
+import aiosqlite
 
 import examples.social_graph_bot as sg
+pytest.importorskip("nats")
 from deepthought.services import DBManager
 
 

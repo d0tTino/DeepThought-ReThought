@@ -24,6 +24,8 @@ __all__ = [
     "create_trainer",
     "run",
     "estimate_vram",
+    "parse_args",
+    "main",
 ]
 
 
@@ -196,3 +198,66 @@ def run(args: argparse.Namespace) -> int:
     trainer.save_model()
     trainer.save_state()
     return 0
+
+
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
+    """Parse command line options for fine-tuning."""
+    parser = argparse.ArgumentParser(
+        description="Fine-tune a language model with LoRA"
+    )
+    parser.add_argument("--model-path", default=None, help="Model ID or local path to the base model")
+    parser.add_argument(
+        "--dataset-path",
+        default="databricks/databricks-dolly-15k",
+        help="Dataset path or HF dataset identifier",
+    )
+    parser.add_argument(
+        "--bits",
+        type=int,
+        default=4,
+        choices=[4, 8],
+        help="Quantization bits for loading the model",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="./results/lora-adapter",
+        help="Directory to save results",
+    )
+    parser.add_argument(
+        "--max-seq-length",
+        type=int,
+        default=2048,
+        help="Maximum sequence length",
+    )
+    parser.add_argument(
+        "--pack-sequences",
+        action="store_true",
+        help="Pack multiple sequences to reduce padding",
+    )
+    parser.add_argument(
+        "--estimate-vram",
+        action="store_true",
+        help="Estimate VRAM requirements and exit",
+    )
+    parser.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint")
+    return parser.parse_args(args)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    if args.estimate_vram:
+        model, _ = load_model(args.model_path, args.bits)
+        vram = estimate_vram(
+            model,
+            batch_size=2,
+            seq_length=args.max_seq_length,
+            gradient_accumulation_steps=8,
+            bits=args.bits,
+        )
+        print(f"Estimated VRAM requirement: {vram:.2f} GB")
+        return 0
+    return run(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

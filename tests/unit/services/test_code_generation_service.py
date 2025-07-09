@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+pytest.importorskip("nats")
 
 from deepthought.eda.events import CodeTemplatePayload, EventSubjects
 from deepthought.services.code_generation_service import CodeGenerationService

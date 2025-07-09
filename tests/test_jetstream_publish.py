@@ -2,8 +2,9 @@ import asyncio
 import logging
 import uuid
 
-import nats
 import pytest
+pytest.importorskip("nats")
+import nats
 
 from tests.helpers import nats_server_available
 

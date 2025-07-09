@@ -4,7 +4,7 @@ This document lists actionable tasks derived from the project documentation and 
 
 ## LLM Fine-Tuning
 - [x] Set up a CUDA-enabled environment and install dependencies from `requirements.txt`.
-- [x] Run `train_script.py` to fine-tune `meta-llama/Llama-3.2-3B-Instruct` on `databricks/databricks-dolly-15k` using QLoRA.
+- [x] Run `dtrt finetune` to fine-tune `meta-llama/Llama-3.2-3B-Instruct` on `databricks/databricks-dolly-15k` using QLoRA.
 - [x] Monitor training metrics (loss, evaluation metrics) and GPU utilization.
 - [x] Evaluate the resulting adapter on a held-out test set and save metrics.
 

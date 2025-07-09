@@ -47,18 +47,25 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
 
 def _cmd_finetune(args: argparse.Namespace) -> int:
     training = import_module("deepthought.train")
+    argv = [
+        "--dataset-path",
+        args.dataset_path,
+        "--bits",
+        str(args.bits),
+        "--output-dir",
+        args.output_dir,
+        "--max-seq-length",
+        str(args.max_seq_length),
+    ]
+    if args.model_path:
+        argv[0:0] = ["--model-path", args.model_path]
+    if args.pack_sequences:
+        argv.append("--pack-sequences")
     if args.estimate_vram:
-        model, _ = training.load_model(args.model_path, args.bits)
-        vram = training.estimate_vram(
-            model,
-            batch_size=2,
-            seq_length=args.max_seq_length,
-            gradient_accumulation_steps=8,
-            bits=args.bits,
-        )
-        print(f"Estimated VRAM requirement: {vram:.2f} GB")
-        return 0
-    return training.run(args)
+        argv.append("--estimate-vram")
+    if args.resume:
+        argv.append("--resume")
+    return training.main(argv)
 
 
 def _build_parser() -> argparse.ArgumentParser:
