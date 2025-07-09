@@ -34,7 +34,10 @@ class FileGraphDAL:
             return nx.readwrite.json_graph.node_link_graph(data)
         except Exception as e:
             logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
-            return nx.DiGraph()
+            # If the file is corrupt, reset it so future loads succeed
+            self._graph = nx.DiGraph()
+            self._write_graph()
+            return self._graph
 
     def _write_graph(self) -> None:
         data = nx.readwrite.json_graph.node_link_data(self._graph)
