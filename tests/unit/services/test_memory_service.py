@@ -155,7 +155,27 @@ def test_init_from_settings(monkeypatch):
         def __init__(self, store, backend, capacity=100, top_k=3):
             calls["tiered"] = (store, backend, capacity, top_k)
 
-    monkeypatch.setattr(ms, "create_vector_store", fake_create_vector_store)
+        @classmethod
+        def from_chroma(
+            cls,
+            graph_backend,
+            collection_name="deepthought",
+            persist_directory=None,
+            backend="faiss",
+            use_gpu=False,
+            capacity=100,
+            top_k=3,
+        ):
+            vs.create_vector_store(
+                backend=backend,
+                collection_name=collection_name,
+                persist_directory=persist_directory,
+                use_gpu=use_gpu,
+            )
+            return cls(object(), graph_backend, capacity=capacity, top_k=top_k)
+
+    import deepthought.memory.vector_store as vs
+    monkeypatch.setattr(vs, "create_vector_store", fake_create_vector_store)
     monkeypatch.setattr(ms, "create_graph_backend", fake_create_graph_backend)
     monkeypatch.setattr(ms, "TieredMemory", DummyTiered)
 
