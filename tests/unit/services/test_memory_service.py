@@ -172,6 +172,21 @@ def test_init_from_settings(monkeypatch):
     }
 
 
+def test_from_config(monkeypatch):
+    import deepthought.services.memory_service as ms
+
+    dummy = object()
+
+    def fake_create_memory_backend():
+        return dummy
+
+    monkeypatch.setattr(ms, "create_memory_backend", fake_create_memory_backend)
+
+    service = ms.MemoryService.from_config(DummyNATS(), DummyJS())
+
+    assert service._memory is dummy
+
+
 class ClosedNATS(DummyNATS):
     def __init__(self):
         super().__init__()

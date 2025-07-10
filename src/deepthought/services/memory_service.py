@@ -51,6 +51,13 @@ class MemoryService:
             )
         self._memory = memory
 
+    @classmethod
+    def from_config(cls, nats_client: NATS, js_context: JetStreamContext) -> "MemoryService":
+        """Return a service with backends configured from environment variables."""
+
+        memory = create_memory_backend()
+        return cls(nats_client, js_context, memory)
+
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
         start = time.perf_counter()
