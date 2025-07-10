@@ -44,27 +44,26 @@ before failing.
 
 ## Example Memory Service
 
-The snippet below starts `KnowledgeGraphMemory` which listens for `INPUT_RECEIVED` events and stores them in Memgraph via GraphDAL:
+Start the unified `MemoryService` which configures its backends from environment variables:
 
 ```bash
 python - <<'PY'
 import asyncio
-import os
 
 from nats.aio.client import Client as NATS
 
-from deepthought.graph import GraphConnector, GraphDAL
-from deepthought.modules import KnowledgeGraphMemory
+from deepthought.config import get_settings
+from deepthought.services import MemoryService
 
 
 async def main():
+    settings = get_settings()
     nc = NATS()
-    await nc.connect(servers=[os.getenv("NATS_URL", "nats://localhost:4222")])
+    await nc.connect(servers=[settings.nats_url])
     js = nc.jetstream()
-    connector = GraphConnector()  # reads MG_* variables by default
-    dal = GraphDAL(connector)
-    memory = KnowledgeGraphMemory(nc, js, dal)
-    await memory.start_listening()
+
+    service = MemoryService.from_config(nc, js)
+    await service.start()
     await asyncio.Event().wait()
 
 asyncio.run(main())
