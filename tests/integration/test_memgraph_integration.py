@@ -94,3 +94,63 @@ def test_graphdal_live(memgraph_server):
         assert row[0] == "Alice" and row[1] == "Bob"
     else:
         assert row.get("src") == "Alice" and row.get("dst") == "Bob"
+
+
+def test_connector_requires_host(monkeypatch):
+    import types
+
+    ns = types.SimpleNamespace(
+        mg_host="",
+        mg_port=MG_PORT,
+        mg_user=MG_USER,
+        mg_password=MG_PASSWORD,
+    )
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: ns)
+
+    with pytest.raises(ValueError, match="host"):
+        GraphConnector()
+
+
+def test_connector_requires_port(monkeypatch):
+    import types
+
+    ns = types.SimpleNamespace(
+        mg_host=MG_HOST,
+        mg_port=0,
+        mg_user=MG_USER,
+        mg_password=MG_PASSWORD,
+    )
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: ns)
+
+    with pytest.raises(ValueError, match="port"):
+        GraphConnector()
+
+
+def test_connector_port_must_be_positive(monkeypatch):
+    import types
+
+    ns = types.SimpleNamespace(
+        mg_host=MG_HOST,
+        mg_port=-1,
+        mg_user=MG_USER,
+        mg_password=MG_PASSWORD,
+    )
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: ns)
+
+    with pytest.raises(ValueError, match="positive"):
+        GraphConnector()
+
+
+def test_connector_port_must_be_int(monkeypatch):
+    import types
+
+    ns = types.SimpleNamespace(
+        mg_host=MG_HOST,
+        mg_port="abc",
+        mg_user=MG_USER,
+        mg_password=MG_PASSWORD,
+    )
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: ns)
+
+    with pytest.raises(ValueError, match="integer"):
+        GraphConnector()

@@ -33,9 +33,25 @@ class GraphConnector:
         from ..config import get_settings
 
         settings = get_settings()
+
+        host = host or settings.mg_host
+        port = port or settings.mg_port
+
+        if not host:
+            raise ValueError("Memgraph host is required")
+        if port in (None, ""):
+            raise ValueError("Memgraph port is required")
+
+        try:
+            port_int = int(port)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Memgraph port must be an integer") from exc
+        if port_int <= 0:
+            raise ValueError("Memgraph port must be positive")
+
         self._params = {
-            "host": host or settings.mg_host,
-            "port": int(port or settings.mg_port),
+            "host": host,
+            "port": port_int,
             "username": username or settings.mg_user,
             "password": password or settings.mg_password,
         }
