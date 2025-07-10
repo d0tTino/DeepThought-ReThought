@@ -14,6 +14,7 @@ on:
       - 'docs/**'
       - '**/*.md'
   push:
+    branches: ['**']
     tags: ['*']
 
 permissions:
@@ -127,3 +128,17 @@ jobs:
       - uses: actions/checkout@v3
       - name: Build finetune image
         run: docker build -f docker/Dockerfile.finetune -t dtrt-finetune .
+
+  docker_images_on_push:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - edge
+          - finetune
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build ${{ matrix.image }} image
+        run: docker build -f docker/Dockerfile.${{ matrix.image }} -t dtrt-${{ matrix.image }} .
