@@ -3,6 +3,9 @@
 This guide shows how to generate test certificates and run a container built from
 the `bus_service` template.
 
+`dtrt bus init service` can optionally set the JetStream stream name and TLS
+paths when creating a new service.
+
 ## Generate Certificates
 
 Use `openssl` to create a simple CA and client certificate pair:
@@ -35,6 +38,20 @@ The container copies certificates from the `certs/` directory and sets
 `NATS_TLS_CERT`, `NATS_TLS_KEY` and `NATS_TLS_CA` automatically. Ensure your NATS
 server is started with the same certificate files.
 
+### CLI Options
+
+`dtrt bus init service` accepts extra flags to customise the generated files:
+
+```bash
+dtrt bus init service mysvc \
+  --stream-name deepthought_events \
+  --tls-cert certs/client-cert.pem \
+  --tls-key certs/client-key.pem \
+  --tls-ca certs/ca.pem
+```
+
+The values supplied are interpolated into `nats.env.example` and the Dockerfile.
+
 ## Generated Files
 
 Running `dtrt bus init service <name>` creates a service directory with several
@@ -59,6 +76,7 @@ both the publisher and subscriber helpers:
 | `NATS_URL` | URL of the NATS server | `nats://localhost:4222` |
 | `NATS_USERNAME` | Username for authentication | `example` |
 | `NATS_PASSWORD` | Password for authentication | `secret` |
+| `NATS_STREAM` | JetStream stream name | `deepthought_events` |
 | `NATS_TLS_CERT` | Path to the client certificate (optional) | *(unset)* |
 | `NATS_TLS_KEY` | Path to the client key (optional) | *(unset)* |
 | `NATS_TLS_CA` | Path to the CA certificate (optional) | *(unset)* |

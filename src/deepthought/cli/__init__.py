@@ -10,7 +10,15 @@ def _to_camel(name: str) -> str:
     return "".join(part.capitalize() for part in name.split("_"))
 
 
-def init_service(name: str, *, template_name: str = "service") -> None:
+def init_service(
+    name: str,
+    *,
+    template_name: str = "service",
+    stream_name: str | None = None,
+    tls_cert: str | None = None,
+    tls_key: str | None = None,
+    tls_ca: str | None = None,
+) -> None:
     dest = Path("src/deepthought/services") / name
     if dest.exists():
         raise SystemExit(f"Service '{name}' already exists")
@@ -38,11 +46,50 @@ def init_service(name: str, *, template_name: str = "service") -> None:
         text = path.read_text(encoding="utf-8")
         text = text.replace("TemplateService", class_name)
         text = text.replace("template_service", name)
+        if stream_name:
+            text = text.replace("template_stream", stream_name)
+        if tls_cert:
+            text = text.replace("template_tls_cert", tls_cert)
+        if tls_key:
+            text = text.replace("template_tls_key", tls_key)
+        if tls_ca:
+            text = text.replace("template_tls_ca", tls_ca)
         path.write_text(text, encoding="utf-8")
+
+    env_file = dest / "nats.env.example"
+    if env_file.exists():
+        text = env_file.read_text(encoding="utf-8")
+        if stream_name:
+            text = text.replace("deepthought_events", stream_name)
+        if tls_cert is not None:
+            text = text.replace("NATS_TLS_CERT=", f"NATS_TLS_CERT={tls_cert}")
+        if tls_key is not None:
+            text = text.replace("NATS_TLS_KEY=", f"NATS_TLS_KEY={tls_key}")
+        if tls_ca is not None:
+            text = text.replace("NATS_TLS_CA=", f"NATS_TLS_CA={tls_ca}")
+        env_file.write_text(text, encoding="utf-8")
+
+    docker_file = dest / "Dockerfile"
+    if docker_file.exists():
+        text = docker_file.read_text(encoding="utf-8")
+        if tls_cert is not None:
+            text = text.replace("NATS_TLS_CERT=", f"NATS_TLS_CERT={tls_cert}")
+        if tls_key is not None:
+            text = text.replace("NATS_TLS_KEY=", f"NATS_TLS_KEY={tls_key}")
+        if tls_ca is not None:
+            text = text.replace("NATS_TLS_CA=", f"NATS_TLS_CA={tls_ca}")
+        docker_file.write_text(text, encoding="utf-8")
 
 
 def _cmd_init_service(args: argparse.Namespace) -> None:
-    init_service(args.name, template_name=args.template)
+    init_service(
+        args.name,
+        template_name=args.template,
+        stream_name=getattr(args, "stream_name", None),
+        tls_cert=getattr(args, "tls_cert", None),
+        tls_key=getattr(args, "tls_key", None),
+        tls_ca=getattr(args, "tls_ca", None),
+    )
 
 
 def _cmd_finetune(args: argparse.Namespace) -> int:
@@ -133,6 +180,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     bus_svc = bus_init_sub.add_parser("service")
     bus_svc.add_argument("name")
+    bus_svc.add_argument(
+        "--stream-name",
+        default="deepthought_events",
+        help="JetStream stream name to use",
+    )
+    bus_svc.add_argument("--tls-cert", default="", help="Path to the client certificate")
+    bus_svc.add_argument("--tls-key", default="", help="Path to the client key")
+    bus_svc.add_argument("--tls-ca", default="", help="Path to the CA certificate")
     bus_svc.set_defaults(func=_cmd_init_service, template="bus_service")
 
     return parser
