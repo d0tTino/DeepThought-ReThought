@@ -3,8 +3,9 @@
 This guide shows how to generate test certificates and run a container built from
 the `bus_service` template.
 
-`dtrt bus init service` can optionally set the JetStream stream name and TLS
-paths when creating a new service.
+`dtrt bus init service` can optionally set the JetStream stream name, storage
+backend and TLS paths when creating a new service. It also allows configuring
+the maximum number of messages retained per subject.
 
 ## Generate Certificates
 
@@ -47,7 +48,9 @@ dtrt bus init service mysvc \
   --stream-name deepthought_events \
   --tls-cert certs/client-cert.pem \
   --tls-key certs/client-key.pem \
-  --tls-ca certs/ca.pem
+  --tls-ca certs/ca.pem \
+  --js-storage file \
+  --max-msgs 5000
 ```
 
 The values supplied are interpolated into `nats.env.example` and the Dockerfile.
@@ -80,6 +83,8 @@ both the publisher and subscriber helpers:
 | `NATS_TLS_CERT` | Path to the client certificate (optional) | *(unset)* |
 | `NATS_TLS_KEY` | Path to the client key (optional) | *(unset)* |
 | `NATS_TLS_CA` | Path to the CA certificate (optional) | *(unset)* |
+| `NATS_JS_STORAGE` | JetStream storage backend | `memory` |
+| `NATS_MAX_MSGS` | Max messages per subject | `10000` |
 
 ### Rate Limit Decorator
 

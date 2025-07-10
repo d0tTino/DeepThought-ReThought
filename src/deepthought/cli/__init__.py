@@ -18,6 +18,8 @@ def init_service(
     tls_cert: str | None = None,
     tls_key: str | None = None,
     tls_ca: str | None = None,
+    js_storage: str | None = None,
+    max_msgs: int | None = None,
 ) -> None:
     dest = Path("src/deepthought/services") / name
     if dest.exists():
@@ -67,6 +69,10 @@ def init_service(
             text = text.replace("NATS_TLS_KEY=", f"NATS_TLS_KEY={tls_key}")
         if tls_ca is not None:
             text = text.replace("NATS_TLS_CA=", f"NATS_TLS_CA={tls_ca}")
+        if js_storage is not None:
+            text = text.replace("NATS_JS_STORAGE=memory", f"NATS_JS_STORAGE={js_storage}")
+        if max_msgs is not None:
+            text = text.replace("NATS_MAX_MSGS=10000", f"NATS_MAX_MSGS={max_msgs}")
         env_file.write_text(text, encoding="utf-8")
 
     docker_file = dest / "Dockerfile"
@@ -78,6 +84,10 @@ def init_service(
             text = text.replace("NATS_TLS_KEY=", f"NATS_TLS_KEY={tls_key}")
         if tls_ca is not None:
             text = text.replace("NATS_TLS_CA=", f"NATS_TLS_CA={tls_ca}")
+        if js_storage is not None:
+            text = text.replace("NATS_JS_STORAGE=memory", f"NATS_JS_STORAGE={js_storage}")
+        if max_msgs is not None:
+            text = text.replace("NATS_MAX_MSGS=10000", f"NATS_MAX_MSGS={max_msgs}")
         docker_file.write_text(text, encoding="utf-8")
 
 
@@ -89,6 +99,8 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
         tls_cert=getattr(args, "tls_cert", None),
         tls_key=getattr(args, "tls_key", None),
         tls_ca=getattr(args, "tls_ca", None),
+        js_storage=getattr(args, "js_storage", None),
+        max_msgs=getattr(args, "max_msgs", None),
     )
 
 
@@ -188,6 +200,18 @@ def _build_parser() -> argparse.ArgumentParser:
     bus_svc.add_argument("--tls-cert", default="", help="Path to the client certificate")
     bus_svc.add_argument("--tls-key", default="", help="Path to the client key")
     bus_svc.add_argument("--tls-ca", default="", help="Path to the CA certificate")
+    bus_svc.add_argument(
+        "--js-storage",
+        choices=["memory", "file"],
+        default="memory",
+        help="JetStream storage backend",
+    )
+    bus_svc.add_argument(
+        "--max-msgs",
+        type=int,
+        default=10000,
+        help="Maximum messages per subject",
+    )
     bus_svc.set_defaults(func=_cmd_init_service, template="bus_service")
 
     return parser
