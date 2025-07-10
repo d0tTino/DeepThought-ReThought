@@ -24,6 +24,7 @@ except Exception as exc:  # pragma: no cover - optional dependency may be missin
             raise ImportError("KnowledgeGraphMemory requires optional dependency mgclient") from _missing_kg_err
 
 
+from .llm_remote import RemoteLLM
 from .llm_stub import LLMStub
 
 # ProductionLLM depends on additional optional packages (transformers, torch, peft)
@@ -66,4 +67,5 @@ __all__ = [
     "KnowledgeGraphMemory",
     "BasicLLM",
     "ProductionLLM",
+    "RemoteLLM",
 ]
