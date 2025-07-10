@@ -1,0 +1,5 @@
+[
+    {"title": "Python", "content": "Python is a programming language."},
+    {"title": "JavaScript", "content": "JavaScript is often used for web development."},
+    {"title": "SQLite", "content": "SQLite provides a lightweight database."}
+]
