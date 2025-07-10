@@ -87,3 +87,20 @@ def test_graph_backend_accessor():
     mem = TieredMemory(vec, dal)
 
     assert mem.graph_backend is dal
+
+
+def test_eviction_cleanup_on_delete_failure(monkeypatch):
+    vec = DummyVector()
+    dal = DummyDAL()
+    mem = TieredMemory(vec, dal, capacity=1, top_k=1)
+
+    def fail_delete(self, ids):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(DummyVector.Collection, "delete", fail_delete)
+
+    mem.store_interaction("a")
+    mem.store_interaction("b")
+
+    assert list(mem._lru.keys()) == ["b"]
+    assert list(vec.docs.values()) == ["a", "b"]
