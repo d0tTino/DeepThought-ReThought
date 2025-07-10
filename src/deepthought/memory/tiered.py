@@ -56,11 +56,13 @@ class TieredMemory:
     # internal helpers
     def _evict_if_needed(self) -> None:
         while len(self._lru) > self._capacity:
-            text, doc_id = self._lru.popitem(last=False)
+            text, doc_id = next(iter(self._lru.items()))
             try:
                 self._store.collection.delete([doc_id])
             except Exception:  # pragma: no cover - defensive
                 logger.error("Failed to delete %s from vector store", doc_id, exc_info=True)
+            finally:
+                self._lru.pop(text, None)
 
     def _add_to_vector(self, text: str) -> None:
         if text in self._lru:
