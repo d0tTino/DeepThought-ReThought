@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import json
 import sys
@@ -105,12 +106,13 @@ class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
         self.acked = False
+        self.nacked = False
 
     async def ack(self):
         self.acked = True
 
     async def nak(self):
-        pass
+        self.nacked = True
 
 
 @pytest.mark.asyncio
@@ -134,3 +136,71 @@ async def test_handle_memory_event_publishes(monkeypatch):
     assert subject == EventSubjects.RESPONSE_GENERATED
     assert sent_payload.final_response == "answer"
     assert sent_payload.input_id == "42"
+
+
+@pytest.mark.asyncio
+async def test_generate_timeout(monkeypatch):
+    class TimeoutSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, json=None):
+            raise asyncio.TimeoutError
+
+    llm = create_llm(monkeypatch, TimeoutSession())
+
+    with pytest.raises(asyncio.TimeoutError):
+        await llm._generate("hello")
+
+
+@pytest.mark.asyncio
+async def test_generate_malformed_json(monkeypatch):
+    class BadJSONResponse(DummyResponse):
+        async def json(self):
+            raise ValueError("bad json")
+
+    resp = BadJSONResponse()
+    session = DummySession(resp)
+    llm = create_llm(monkeypatch, session)
+
+    with pytest.raises(ValueError):
+        await llm._generate("hello")
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_timeout(monkeypatch):
+    llm = create_llm(monkeypatch)
+
+    async def fake_generate(self, prompt):
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
+
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="99")
+    msg = DummyMsg(payload.to_json())
+
+    await llm._handle_memory_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_bad_json(monkeypatch):
+    llm = create_llm(monkeypatch)
+
+    async def fake_generate(self, prompt):
+        raise ValueError("bad json")
+
+    monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
+
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="88")
+    msg = DummyMsg(payload.to_json())
+
+    await llm._handle_memory_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked
