@@ -10,7 +10,11 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-from ..config import get_settings
+# Imported lazily in ``connect`` to avoid mandatory dependencies
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - for type checking only
+    from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 MessageHandlerType = Callable[[Msg], Awaitable[None]]
@@ -71,6 +75,8 @@ class Subscriber:
                 exc_info=True,
             )
             return False
+        except ValueError:
+            raise
         except Exception as e:
             logger.error(
                 f"Failed to subscribe to '{subject}' (JetStream={use_jetstream}): {e}",
@@ -118,6 +124,8 @@ async def connect(
     name: str = "dtrt_subscriber",
 ) -> "Subscriber":
     """Create a :class:`Subscriber` connected to ``nats_url`` with optional TLS."""
+
+    from ..config import get_settings
 
     settings = get_settings()
     nats_url = nats_url or settings.nats_url

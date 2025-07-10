@@ -125,6 +125,8 @@ NATS_PASSWORD=secret
 
 These TLS variables are commented out in the generated `nats.env.example` file.
 Uncomment them and provide the paths to your certificates to enable mTLS.
+See [bus_template.md](bus_template.md) for instructions on creating test
+certificates and running the Docker image.
 
 The generated `subscriber.py` includes a simple `rate_limit` decorator. Apply
 it to your message handler to throttle processing, e.g. `@rate_limit(10, 1)`

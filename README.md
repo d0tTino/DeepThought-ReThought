@@ -113,6 +113,9 @@ NATS_TLS_KEY=/path/to/client-key.pem
 NATS_TLS_CA=/path/to/ca.pem
 ```
 
+See [docs/bus_template.md](docs/bus_template.md) for a quick guide on
+generating test certificates and running the container.
+
 ### DTRT Bus Template
 
 Quick start example for scaffolding a bus service:
