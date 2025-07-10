@@ -73,6 +73,7 @@ fake_prom.REGISTRY = types.SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 
 from typing import List
+from pathlib import Path
 
 import pytest
 
@@ -248,6 +249,23 @@ def test_retrieve_context_from_config(monkeypatch, tmp_path):
     service = HierarchicalService(DummyNATS(), DummyJS(), memory)
     ctx = service.retrieve_context("config")
     assert "via config" in ctx
+
+
+def test_retrieve_context_with_example_corpus(tmp_path):
+    data_path = (
+        Path(__file__).resolve().parents[3]
+        / "examples"
+        / "data"
+        / "sample_docs.json"
+    )
+    docs = json.loads(data_path.read_text())
+    search = OfflineSearch.create_index(
+        str(tmp_path / "example.db"),
+        [(d["title"], d["content"]) for d in docs],
+    )
+    service = HierarchicalService(DummyNATS(), DummyJS(), None, search=search)
+    ctx = service.retrieve_context("web")
+    assert any("web development" in c for c in ctx)
 
 
 def test_service_uses_public_memory_interface():
