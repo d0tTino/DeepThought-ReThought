@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deepthought-rethought"
+description = "DeepThought reThought - experimental AI framework"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [{name = "Tino Tonitini"}]
+urls = {Homepage = "https://github.com/d0tTino/DeepThought-ReThought"}
+dynamic = ["version", "dependencies"]
+
+[project.scripts]
+dtrt = "deepthought.cli:main"
+dtrt-finetune = "deepthought.train:main"
+
+[tool.setuptools.package-data]
+"tools" = ["template_service/*"]
+"deepthought.templates" = ["bus_service/*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "deepthought.__init__.__version__"}
+dependencies = {file = ["requirements.txt"]}

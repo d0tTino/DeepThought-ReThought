@@ -8,7 +8,17 @@ The project is hosted on GitHub: [https://github.com/d0tTino/DeepThought-ReThoug
 
 ## Installation
 
-Build a wheel and install it with pip:
+Install the package from PyPI:
+
+```bash
+pip install deepthought-rethought
+```
+
+This exposes the `dtrt` CLI (also available as `dtrt-finetune`).
+
+### Build from source
+
+Create a wheel and install it with pip:
 
 ```bash
 python -m build
@@ -19,6 +29,15 @@ After installation, the `dtrt` CLI is available. View its commands with:
 
 ```bash
 dtrt finetune --help
+```
+
+### Publishing to PyPI
+
+Create a wheel and upload it using `twine`:
+
+```bash
+python -m build --wheel
+twine upload dist/*
 ```
 
 ## Goals
