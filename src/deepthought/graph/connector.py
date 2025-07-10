@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 try:  # pragma: no cover - optional dependency
     from neo4j import GraphDatabase
@@ -37,8 +37,8 @@ class GraphConnector:
 
         settings = get_settings()
 
-        host = host or settings.mg_host
-        port = port or settings.mg_port
+        host = settings.mg_host if host is None else host
+        port = settings.mg_port if port is None else port
 
         if not host:
             raise ValueError("Memgraph host is required")
@@ -57,7 +57,6 @@ class GraphConnector:
             "port": port_int,
             "username": username or settings.mg_user,
             "password": password or settings.mg_password,
-
         }
         self._max_retries = max_retries
         self._retry_delay = retry_delay
@@ -133,11 +132,22 @@ class Neo4jConnector:
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> None:
-        host = host or os.getenv("NEO4J_HOST", "localhost")
-        port = int(port or os.getenv("NEO4J_PORT", 7687))
+        host = os.getenv("NEO4J_HOST", "localhost") if host is None else host
+        port = os.getenv("NEO4J_PORT", 7687) if port is None else port
+
+        if not host:
+            raise ValueError("Neo4j host is required")
+
+        try:
+            port_int = int(port)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Neo4j port must be an integer") from exc
+        if port_int <= 0:
+            raise ValueError("Neo4j port must be positive")
+
         username = username or os.getenv("NEO4J_USER", "neo4j")
         password = password or os.getenv("NEO4J_PASSWORD", "neo4j")
-        self._uri = f"bolt://{host}:{port}"
+        self._uri = f"bolt://{host}:{port_int}"
         self._auth = (username, password)
         self._max_retries = max_retries
         self._retry_delay = retry_delay
