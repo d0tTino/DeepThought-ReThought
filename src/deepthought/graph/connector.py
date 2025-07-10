@@ -33,11 +33,31 @@ class GraphConnector:
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> None:
+        from ..config import get_settings
+
+        settings = get_settings()
+
+        host = host or settings.mg_host
+        port = port or settings.mg_port
+
+        if not host:
+            raise ValueError("Memgraph host is required")
+        if port in (None, ""):
+            raise ValueError("Memgraph port is required")
+
+        try:
+            port_int = int(port)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Memgraph port must be an integer") from exc
+        if port_int <= 0:
+            raise ValueError("Memgraph port must be positive")
+
         self._params = {
-            "host": host or os.getenv("MG_HOST", "localhost"),
-            "port": int(port or os.getenv("MG_PORT", 7687)),
-            "username": username or os.getenv("MG_USER", "memgraph"),
-            "password": password or os.getenv("MG_PASSWORD", "memgraph"),
+            "host": host,
+            "port": port_int,
+            "username": username or settings.mg_user,
+            "password": password or settings.mg_password,
+
         }
         self._max_retries = max_retries
         self._retry_delay = retry_delay

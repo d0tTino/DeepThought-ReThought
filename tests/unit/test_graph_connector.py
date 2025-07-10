@@ -71,10 +71,16 @@ def test_execute_direct_execute_commits(monkeypatch):
 
 
 def test_env_defaults(monkeypatch):
-    monkeypatch.setenv("MG_HOST", "envhost")
-    monkeypatch.setenv("MG_PORT", "9999")
-    monkeypatch.setenv("MG_USER", "user")
-    monkeypatch.setenv("MG_PASSWORD", "pass")
+    import types
+
+    fake = types.SimpleNamespace(
+        mg_host="envhost",
+        mg_port=9999,
+        mg_user="user",
+        mg_password="pass",
+    )
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: fake)
+
     connector = GraphConnector()
     assert connector._params == {
         "host": "envhost",
@@ -99,3 +105,43 @@ def test_connect_retries(monkeypatch):
     conn = connector.connect()
     assert isinstance(conn, FailOnce)
     assert len(calls) == 2
+
+
+def test_init_requires_host(monkeypatch):
+    import types
+
+    ns = types.SimpleNamespace(mg_host="", mg_port=7687, mg_user="u", mg_password="p")
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: ns)
+
+    with pytest.raises(ValueError, match="host"):
+        GraphConnector()
+
+
+def test_init_requires_port(monkeypatch):
+    import types
+
+    ns = types.SimpleNamespace(mg_host="h", mg_port=0, mg_user="u", mg_password="p")
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: ns)
+
+    with pytest.raises(ValueError, match="port"):
+        GraphConnector()
+
+
+def test_init_port_must_be_positive(monkeypatch):
+    import types
+
+    ns = types.SimpleNamespace(mg_host="h", mg_port=-1, mg_user="u", mg_password="p")
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: ns)
+
+    with pytest.raises(ValueError, match="positive"):
+        GraphConnector()
+
+
+def test_init_port_must_be_int(monkeypatch):
+    import types
+
+    ns = types.SimpleNamespace(mg_host="h", mg_port="abc", mg_user="u", mg_password="p")
+    monkeypatch.setattr("deepthought.config.get_settings", lambda: ns)
+
+    with pytest.raises(ValueError, match="integer"):
+        GraphConnector()
