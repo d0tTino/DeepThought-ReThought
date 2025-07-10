@@ -143,13 +143,32 @@ def test_parse_finetune_args():
 
 def test_parse_bus_init_service():
     parser = _build_parser()
-    args = parser.parse_args(["bus", "init", "service", "foo"])
+    args = parser.parse_args(
+        [
+            "bus",
+            "init",
+            "service",
+            "foo",
+            "--stream-name",
+            "bar",
+            "--tls-cert",
+            "c.pem",
+            "--tls-key",
+            "k.pem",
+            "--tls-ca",
+            "ca.pem",
+        ]
+    )
     assert args.command == "bus"
     assert args.bus_cmd == "init"
     assert args.target == "service"
     assert args.name == "foo"
     assert args.template == "bus_service"
     assert args.func.__name__ == "_cmd_init_service"
+    assert args.stream_name == "bar"
+    assert args.tls_cert == "c.pem"
+    assert args.tls_key == "k.pem"
+    assert args.tls_ca == "ca.pem"
 
 
 def test_finetune_estimate_vram(tmp_path: Path, monkeypatch) -> None:
