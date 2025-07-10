@@ -5,8 +5,10 @@ import subprocess
 import uuid
 from pathlib import Path
 
-import nats
 import pytest
+
+pytest.importorskip("nats")
+import nats
 from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
 
 from deepthought.modules import BasicMemory, InputHandler, LLMStub, OutputHandler

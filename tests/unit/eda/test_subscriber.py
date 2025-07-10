@@ -1,7 +1,9 @@
 import logging
 
-import nats
 import pytest
+
+pytest.importorskip("nats")
+import nats
 
 from deepthought.eda.subscriber import Subscriber
 
