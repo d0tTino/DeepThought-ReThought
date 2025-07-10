@@ -154,21 +154,18 @@ def test_init_from_settings(monkeypatch):
 
     monkeypatch.setattr(ms, "create_memory_backend", fake_create_memory_backend)
 
-    import deepthought.config as config
-
-    config._settings_cache = None
     fake_settings = SimpleNamespace(vector_backend="faiss", vector_use_gpu=True, graph_backend="noop")
-    monkeypatch.setattr(config, "get_settings", lambda: fake_settings)
-    monkeypatch.setattr(ms, "get_settings", lambda: fake_settings)
+    import deepthought.memory as memory
+    monkeypatch.setattr(memory, "load_memory_settings", lambda: fake_settings)
 
     ms.MemoryService(DummyNATS(), DummyJS())
 
     assert calls == {
-        "graph_backend_name": "noop",
+        "graph_backend_name": None,
         "collection_name": "deepthought",
         "persist_directory": None,
-        "vector_backend": "faiss",
-        "use_gpu": True,
+        "vector_backend": None,
+        "use_gpu": None,
         "capacity": 100,
         "top_k": 3,
     }

@@ -1,5 +1,7 @@
 """Memory utilities."""
 
+from dataclasses import dataclass
+
 from ..config import get_settings
 from ..graph import create_graph_backend
 from .faiss_vector_store import FaissVectorStore
@@ -22,7 +24,28 @@ __all__ = [
     "SimpleEmbeddingFunction",
     "TieredMemory",
     "create_memory_backend",
+    "load_memory_settings",
 ]
+
+
+@dataclass
+class MemorySettings:
+    """Subset of configuration relevant for memory backends."""
+
+    vector_backend: str
+    vector_use_gpu: bool
+    graph_backend: str
+
+
+def load_memory_settings() -> MemorySettings:
+    """Return memory backend configuration from the environment."""
+
+    settings = get_settings()
+    return MemorySettings(
+        vector_backend=settings.vector_backend,
+        vector_use_gpu=settings.vector_use_gpu,
+        graph_backend=settings.graph_backend,
+    )
 
 
 def create_memory_backend(
@@ -37,7 +60,7 @@ def create_memory_backend(
 ) -> TieredMemory:
     """Return :class:`TieredMemory` configured from environment variables."""
 
-    settings = get_settings()
+    settings = load_memory_settings()
 
     store = create_vector_store(
         backend=vector_backend or settings.vector_backend,

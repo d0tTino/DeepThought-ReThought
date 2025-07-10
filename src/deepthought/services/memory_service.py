@@ -9,7 +9,6 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-from ..config import get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -41,13 +40,12 @@ class MemoryService:
         self._subscriber = Subscriber(nats_client, js_context)
         self._nc = nats_client
         if memory is None:
-            settings = get_settings()
             memory = create_memory_backend(
-                graph_backend_name=graph_backend_name or settings.graph_backend,
+                graph_backend_name=graph_backend_name,
                 collection_name=collection_name,
                 persist_directory=persist_directory,
-                vector_backend=vector_backend or settings.vector_backend,
-                use_gpu=use_gpu if use_gpu is not None else settings.vector_use_gpu,
+                vector_backend=vector_backend,
+                use_gpu=use_gpu,
                 capacity=capacity,
                 top_k=top_k,
             )
