@@ -132,5 +132,5 @@ class MemoryService:
             logger.info("MemoryService stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
-        if getattr(self, "_nc", None) and self._nc.is_connected:
+        if getattr(self, "_nc", None) and getattr(self._nc, "is_connected", False):
             await self._nc.drain()

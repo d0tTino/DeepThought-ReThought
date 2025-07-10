@@ -156,6 +156,7 @@ def test_init_from_settings(monkeypatch):
 
     fake_settings = SimpleNamespace(vector_backend="faiss", vector_use_gpu=True, graph_backend="noop")
     import deepthought.memory as memory
+
     monkeypatch.setattr(memory, "load_memory_settings", lambda: fake_settings)
 
     ms.MemoryService(DummyNATS(), DummyJS())
@@ -169,3 +170,25 @@ def test_init_from_settings(monkeypatch):
         "capacity": 100,
         "top_k": 3,
     }
+
+
+class ClosedNATS(DummyNATS):
+    def __init__(self):
+        super().__init__()
+        self.is_connected = False
+        self.drain_called = False
+
+    async def drain(self):
+        self.drain_called = True
+
+
+@pytest.mark.asyncio
+async def test_stop_skips_drain_when_not_connected():
+    service = MemoryService(DummyNATS(), DummyJS(), DummyMemory())
+    service._subscriber = DummySubscriber()
+    service._publisher = DummyPublisher()
+    service._nc = ClosedNATS()
+
+    await service.stop()
+
+    assert not service._nc.drain_called

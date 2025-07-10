@@ -72,8 +72,8 @@ fake_prom.Histogram = lambda *a, **k: _Metric()
 fake_prom.REGISTRY = types.SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 
-from typing import List
 from pathlib import Path
+from typing import List
 
 import pytest
 
@@ -252,12 +252,7 @@ def test_retrieve_context_from_config(monkeypatch, tmp_path):
 
 
 def test_retrieve_context_with_example_corpus(tmp_path):
-    data_path = (
-        Path(__file__).resolve().parents[3]
-        / "examples"
-        / "data"
-        / "sample_docs.json"
-    )
+    data_path = Path(__file__).resolve().parents[3] / "examples" / "data" / "sample_docs.json"
     docs = json.loads(data_path.read_text())
     search = OfflineSearch.create_index(
         str(tmp_path / "example.db"),
@@ -311,3 +306,25 @@ def test_retrieve_context_merges_search_results():
     mem.retrieve_context.assert_called_once_with("question")
     search.search.assert_called_once_with("question", limit=2)
     assert ctx == ["m1", "dup", "s2"]
+
+
+class ClosedNATS(DummyNATS):
+    def __init__(self):
+        super().__init__()
+        self.is_connected = False
+        self.drain_called = False
+
+    async def drain(self):
+        self.drain_called = True
+
+
+@pytest.mark.asyncio
+async def test_stop_skips_drain_when_not_connected():
+    service = HierarchicalService(DummyNATS(), DummyJS(), None)
+    service._subscriber = DummySubscriber()
+    service._publisher = DummyPublisher()
+    service._nc = ClosedNATS()
+
+    await service.stop()
+
+    assert not service._nc.drain_called
