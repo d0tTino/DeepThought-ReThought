@@ -65,12 +65,12 @@ class RemoteLLM:
             )
             await msg.ack()
         except Exception as exc:  # pragma: no cover - runtime network or parse errors
-            logger.error("RemoteLLM failed: %s", exc, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
                 except Exception:
                     logger.error("Failed to NAK message", exc_info=True)
+            logger.exception("RemoteLLM failed: %s", exc)
 
     async def start_listening(self, durable_name: str = "remote_llm_listener") -> bool:
         if not self._subscriber:
