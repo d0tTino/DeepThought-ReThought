@@ -1,14 +1,18 @@
 import asyncio
 import logging
 import os
+import subprocess
+import sys
 import uuid
+from pathlib import Path
 from typing import TypedDict
 
 import nats
 from langgraph.graph import StateGraph
 from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
 
-from deepthought.modules import InputHandler, LLMStub, OutputHandler
+from deepthought.modules import InputHandler, OutputHandler
+from deepthought.modules.llm_remote import RemoteLLM
 from deepthought.services import MemoryService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -41,8 +45,15 @@ async def main() -> None:
 
     await ensure_stream(js)
 
+    model_proc = None
+    if os.getenv("MODEL_PATH"):
+        script = Path(__file__).resolve().parents[1] / "tools" / "edge_server.py"
+        logger.info("Starting edge model from %s", script)
+        model_proc = await asyncio.create_subprocess_exec(sys.executable, str(script))
+        await asyncio.sleep(2.0)
+
     memory_service = MemoryService(nc, js)
-    llm = LLMStub(nc, js)
+    llm = RemoteLLM(nc, js)
 
     global input_handlers, output_handlers
     input_handlers = [InputHandler(nc, js) for _ in range(3)]
@@ -96,6 +107,9 @@ async def main() -> None:
     await llm.stop_listening()
     await asyncio.gather(*(oh.stop_listening() for oh in output_handlers))
     await nc.drain()
+    if model_proc:
+        model_proc.terminate()
+        await model_proc.wait()
 
 
 if __name__ == "__main__":

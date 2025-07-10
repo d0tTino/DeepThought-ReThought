@@ -143,7 +143,7 @@ Customize the generated files to implement your service logic.
 
 ## Multi-Agent Demo
 
-The repository includes a demonstration of three lightweight agents exchanging messages using the `MemoryService` and `LLMStub`. The agents are coordinated with a small LangGraph state machine and live in `examples/multi_agent_demo.py`.
+The repository includes a demonstration of three lightweight agents exchanging messages using the `MemoryService` and a small HTTP LLM module. The agents are coordinated with a LangGraph state machine and live in `examples/multi_agent_demo.py`.
 
 Start a local NATS server with `./scripts/start_nats.sh` and create the JetStream stream:
 
@@ -157,7 +157,7 @@ Install the optional dependency used by the demo:
 pip install langgraph
 ```
 
-Then launch the demo:
+Set `MODEL_PATH` to start the quantized edge model locally or set `LLM_ENDPOINT` to an existing `/generate` endpoint. Then launch the demo:
 
 ```bash
 python examples/multi_agent_demo.py
@@ -167,8 +167,8 @@ You should see log lines similar to the following as the message circulates betw
 
 ```text
 Agent 1 says: Hello from agent 1!
-Agent 2 says: Based on: ..., this is a stub response...
-Agent 3 says: Based on: ..., this is a stub response...
+Agent 2 says: <generated reply>
+Agent 3 says: <generated reply>
 ```
 
 Ensure a NATS server is running on `localhost:4222` or set the `NATS_URL` environment variable accordingly.
