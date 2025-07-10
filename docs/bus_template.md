@@ -34,3 +34,47 @@ docker run --env-file nats.env.example mysvc
 The container copies certificates from the `certs/` directory and sets
 `NATS_TLS_CERT`, `NATS_TLS_KEY` and `NATS_TLS_CA` automatically. Ensure your NATS
 server is started with the same certificate files.
+
+## Generated Files
+
+Running `dtrt bus init service <name>` creates a service directory with several
+pre-populated files:
+
+| File | Purpose |
+| ---- | ------- |
+| `Dockerfile` | Minimal image that installs the `deepthought` package and loads TLS certificates. |
+| `nats.env.example` | Example environment file containing connection settings for NATS. |
+| `service.py` | Skeleton service that forwards messages from `dtr.template.input` to `dtr.template.output`. |
+| `publisher.py` | Thin wrapper around `deepthought.eda.Publisher` for publishing events. |
+| `subscriber.py` | Example subscriber showing how to apply a rate limit to message handling. |
+| `__init__.py` | Empty module marker so Python treats the directory as a package. |
+
+### Environment Variables
+
+The `nats.env.example` file defines credentials and optional mTLS paths used by
+both the publisher and subscriber helpers:
+
+| Variable | Description | Default |
+| -------- | ----------- | ------- |
+| `NATS_URL` | URL of the NATS server | `nats://localhost:4222` |
+| `NATS_USERNAME` | Username for authentication | `example` |
+| `NATS_PASSWORD` | Password for authentication | `secret` |
+| `NATS_TLS_CERT` | Path to the client certificate (optional) | *(unset)* |
+| `NATS_TLS_KEY` | Path to the client key (optional) | *(unset)* |
+| `NATS_TLS_CA` | Path to the CA certificate (optional) | *(unset)* |
+
+### Rate Limit Decorator
+
+`subscriber.py` defines a `rate_limit` decorator implementing a simple token
+bucket algorithm. Apply it to a handler to limit how many messages are processed
+per time interval:
+
+```python
+@rate_limit(10, 1)  # 10 messages per second
+async def _handle(self, msg):
+    await msg.ack()
+```
+
+The first argument is the bucket capacity and the second is the refill interval
+in seconds. When the bucket is empty, the wrapper waits until enough tokens are
+available before calling the original handler.
