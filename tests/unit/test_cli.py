@@ -157,6 +157,10 @@ def test_parse_bus_init_service():
             "k.pem",
             "--tls-ca",
             "ca.pem",
+            "--js-storage",
+            "file",
+            "--max-msgs",
+            "123",
         ]
     )
     assert args.command == "bus"
@@ -169,6 +173,8 @@ def test_parse_bus_init_service():
     assert args.tls_cert == "c.pem"
     assert args.tls_key == "k.pem"
     assert args.tls_ca == "ca.pem"
+    assert args.js_storage == "file"
+    assert args.max_msgs == 123
 
 
 def test_finetune_estimate_vram(tmp_path: Path, monkeypatch) -> None:
