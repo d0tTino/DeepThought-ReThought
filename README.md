@@ -118,7 +118,9 @@ generating test certificates and running the container.
 
 ### DTRT Bus Template
 
-Quick start example for scaffolding a bus service:
+Quick start example for scaffolding a bus service. See
+[docs/bus_template.md](docs/bus_template.md) for details on the files created by
+the template and environment configuration.
 
 ```bash
 dtrt bus init service mysvc
