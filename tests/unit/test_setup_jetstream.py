@@ -23,15 +23,18 @@ class DummyJetStream:
         self.add_called = False
         self.update_called = False
         self.add_error = add_error
+        self.last_config = None
 
     async def add_stream(self, config):
         self.add_called = True
+        self.last_config = config
         if self.add_error:
             raise Exception("exists")
         return DummyStream(config=config)
 
     async def update_stream(self, config):
         self.update_called = True
+        self.last_config = config
         return DummyStream(config=config)
 
 
@@ -71,6 +74,20 @@ async def test_setup_creates_stream(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_setup_creates_stream_config(monkeypatch):
+    js = DummyJetStream()
+    nats = DummyNATS(js)
+    monkeypatch.setattr(sj, "check_nats_server_running", lambda url=sj.NATS_URL: True)
+    monkeypatch.setattr(sj, "NATS", lambda: nats)
+
+    await sj.setup_jetstream()
+
+    assert js.last_config is not None
+    assert js.last_config.name == "deepthought_events"
+    assert js.last_config.subjects == ["dtr.>"]
+
+
+@pytest.mark.asyncio
 async def test_setup_updates_existing_stream(monkeypatch):
     js = DummyJetStream(add_error=True)
     nats = DummyNATS(js)
@@ -82,6 +99,20 @@ async def test_setup_updates_existing_stream(monkeypatch):
     assert js.add_called
     assert js.update_called
     assert nats.drain_called
+
+
+@pytest.mark.asyncio
+async def test_setup_updates_stream_config(monkeypatch):
+    js = DummyJetStream(add_error=True)
+    nats = DummyNATS(js)
+    monkeypatch.setattr(sj, "check_nats_server_running", lambda url=sj.NATS_URL: True)
+    monkeypatch.setattr(sj, "NATS", lambda: nats)
+
+    await sj.setup_jetstream()
+
+    assert js.last_config is not None
+    assert js.last_config.name == "deepthought_events"
+    assert js.last_config.subjects == ["dtr.>"]
 
 
 @pytest.mark.asyncio
@@ -119,3 +150,16 @@ async def test_setup_stream_creation_failure(monkeypatch):
         await sj.setup_jetstream()
 
     assert isinstance(excinfo.value.__cause__, Exception)
+
+
+@pytest.mark.asyncio
+async def test_setup_jetstream_unavailable(monkeypatch):
+    monkeypatch.setattr(sj, "check_nats_server_running", lambda url=sj.NATS_URL: False)
+
+    def fail():
+        raise AssertionError("NATS() should not be called")
+
+    monkeypatch.setattr(sj, "NATS", fail)
+
+    with pytest.raises(sj.JetStreamSetupError):
+        await sj.setup_jetstream()
