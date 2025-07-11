@@ -97,6 +97,10 @@ search_db: wiki.db
 Set ``DT_VECTOR_BACKEND`` to ``faiss`` to use the in-memory FAISS store instead of Chroma.
 When using FAISS, ``DT_VECTOR_USE_GPU`` enables GPU acceleration if available.
 
+These environment variables correspond to the ``vector_backend``, ``vector_use_gpu``
+and ``graph_backend`` fields of ``deepthought.config.Settings``. They may also be
+set in a configuration file.
+
 ``DT_GRAPH_BACKEND`` selects the knowledge graph backend. Supported values include
 ``memgraph``, ``neo4j`` and ``noop``. These variables are read by both
 ``HierarchicalService.from_chroma`` and ``MemoryService`` when initializing the
