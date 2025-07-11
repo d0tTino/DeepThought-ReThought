@@ -10,6 +10,7 @@ from typing import Deque, Optional
 import aiohttp
 import numpy as np
 from nats.aio.msg import Msg
+
 try:  # pragma: no cover - optional heavy dependency
     from sentence_transformers import SentenceTransformer, util
 except Exception:  # pragma: no cover - fallback when package missing
@@ -53,9 +54,7 @@ class RewardManager:
             self._model = model
         else:
             if SentenceTransformer is None:  # pragma: no cover - optional dep
-                raise ImportError(
-                    "sentence-transformers is required unless a model is provided"
-                )
+                raise ImportError("sentence-transformers is required unless a model is provided")
             self._model = SentenceTransformer("all-MiniLM-L6-v2")
 
     async def start_listening(self, durable_name: str = "reward_listener") -> bool:

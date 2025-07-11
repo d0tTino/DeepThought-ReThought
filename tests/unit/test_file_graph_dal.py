@@ -1,7 +1,8 @@
 import json
-import networkx as nx
 import sys
 import types
+
+import networkx as nx
 
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 nats = types.ModuleType("nats")

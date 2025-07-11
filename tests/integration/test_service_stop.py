@@ -37,6 +37,7 @@ fake_prom.REGISTRY = types.SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 
 import pytest
+
 pytest.importorskip("nats")
 from nats.aio.client import Client as NATS
 from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig

@@ -7,6 +7,7 @@ from typing import Any
 
 try:  # pragma: no cover - optional dependency may be missing
     import nengo  # type: ignore
+
     _HAVE_NENGO = True
 except Exception:  # pragma: no cover - optional dependency may be missing
     nengo = None  # type: ignore

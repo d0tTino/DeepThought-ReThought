@@ -1,4 +1,5 @@
 import pytest
+
 pytest.importorskip("nats")
 
 from setup_jetstream import JetStreamSetupError, check_nats_server_running, setup_jetstream

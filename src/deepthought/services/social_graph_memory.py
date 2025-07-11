@@ -14,9 +14,7 @@ class SocialGraphMemory:
     def __init__(self, dal: Optional[UserGraphDAL] = None) -> None:
         self._dal = dal or UserGraphDAL()
 
-    def record_message(
-        self, source: str, text: str, target: Optional[str] = None
-    ) -> None:
+    def record_message(self, source: str, text: str, target: Optional[str] = None) -> None:
         """Analyze sentiment of ``text`` and store the interaction."""
         try:
             score = float(TextBlob(text).sentiment.polarity)

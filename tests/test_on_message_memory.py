@@ -3,6 +3,7 @@ import logging
 import random
 
 import pytest
+
 pytest.importorskip("discord")
 pytest.importorskip("aiosqlite")
 pytest.importorskip("nats")

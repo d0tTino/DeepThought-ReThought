@@ -3,6 +3,7 @@ import logging
 import uuid
 
 import pytest
+
 pytest.importorskip("nats")
 import nats
 

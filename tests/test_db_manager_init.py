@@ -2,6 +2,7 @@ import sys
 import types
 
 import pytest
+
 pytest.importorskip("aiosqlite")
 pytest.importorskip("nats")
 import aiosqlite

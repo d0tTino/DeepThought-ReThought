@@ -1,5 +1,5 @@
-from examples.social_graph_bot import run
 from deepthought.config import load_bot_env
+from examples.social_graph_bot import run
 
 
 def main() -> None:

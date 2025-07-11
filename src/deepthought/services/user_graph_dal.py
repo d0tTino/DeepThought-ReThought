@@ -28,9 +28,7 @@ class UserGraphDAL(FileGraphDAL):
             self._graph.add_node(target, affinity=self.get_affinity(target))
             data = self._graph.get_edge_data(source, target, default={})
             count = data.get("interaction_count", 0) + 1
-            sentiment_sum = data.get("sentiment_sum", 0.0) + float(
-                sentiment_score or 0.0
-            )
+            sentiment_sum = data.get("sentiment_sum", 0.0) + float(sentiment_score or 0.0)
             self._graph.add_edge(
                 source,
                 target,
@@ -48,9 +46,7 @@ class UserGraphDAL(FileGraphDAL):
         data = self._graph.get_edge_data(source, target)
         if not data:
             return 0, 0.0
-        return int(data.get("interaction_count", 0)), float(
-            data.get("sentiment_sum", 0.0)
-        )
+        return int(data.get("interaction_count", 0)), float(data.get("sentiment_sum", 0.0))
 
     def _avg_sentiment(self, source: str, target: str) -> float:
         count, ssum = self.get_relationship(source, target)

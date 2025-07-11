@@ -4,7 +4,9 @@ class SentenceTransformer:
 
     def encode(self, text, convert_to_numpy=True):
         import numpy as np
+
         return np.array([len(text)], dtype=float)
+
 
 class util:
     @staticmethod

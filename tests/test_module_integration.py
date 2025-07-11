@@ -38,9 +38,7 @@ from src.deepthought.modules import (
 )
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -138,20 +136,14 @@ async def test_full_module_flow(monkeypatch):
 
         # --- Define output callback ---
         def output_callback(input_id, response):
-            logger.info(
-                f"Output callback received response for input_id={input_id}: {response}"
-            )
+            logger.info(f"Output callback received response for input_id={input_id}: {response}")
             responses[input_id] = response
             # Only set event if it matches the ID we sent for this test run
             if input_id == test_input_id:
-                logger.info(
-                    f"Correct final response received via callback for ID {input_id}. Setting event."
-                )
+                logger.info(f"Correct final response received via callback for ID {input_id}. Setting event.")
                 final_response_received_event.set()
             else:
-                logger.warning(
-                    f"Callback received response for unexpected ID {input_id}, expected {test_input_id}"
-                )
+                logger.warning(f"Callback received response for unexpected ID {input_id}, expected {test_input_id}")
 
         # --- Instantiate module stubs ---
         logger.info("Initializing modules...")
@@ -214,20 +206,14 @@ async def test_full_module_flow(monkeypatch):
             pytest.fail("Timeout: Final response was not received within 20 seconds.")
 
         # --- Assertions ---
-        assert (
-            final_response_received_event.is_set()
-        ), "Final response signal was not received via callback"
-        assert (
-            test_input_id in responses
-        ), f"OutputHandler did not record response for input_id {test_input_id}"
+        assert final_response_received_event.is_set(), "Final response signal was not received via callback"
+        assert test_input_id in responses, f"OutputHandler did not record response for input_id {test_input_id}"
         assert responses[test_input_id] is not None, "Response content is None"
 
         logger.info("Full module flow test completed successfully.")
 
     except Exception as e:
-        logger.error(
-            f"An unexpected error occurred during the test: {e}", exc_info=True
-        )
+        logger.error(f"An unexpected error occurred during the test: {e}", exc_info=True)
         pytest.fail(f"Test failed due to unexpected error: {e}")
     finally:
         # --- Cleanup ---

@@ -2,14 +2,13 @@
 import logging
 import os
 import ssl
-from typing import Any, Dict, Optional, Union
+
+# Imported lazily in ``connect`` to avoid mandatory dependencies
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
-
-# Imported lazily in ``connect`` to avoid mandatory dependencies
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - for type checking only
     from ..config import get_settings

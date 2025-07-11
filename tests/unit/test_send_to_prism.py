@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 import pytest
+
 pytest.importorskip("aiohttp")
 import aiohttp
 

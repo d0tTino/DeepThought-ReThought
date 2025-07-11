@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from .db_manager import DBManager
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -11,6 +10,7 @@ from nats.js.client import JetStreamContext
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from .db_manager import DBManager
 
 logger = logging.getLogger(__name__)
 

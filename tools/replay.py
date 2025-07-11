@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 from deepthought.harness.record import TraceEvent
-from deepthought.metrics import (actions_per_second, average_latency, bleu,
-                                 rouge_l)
+from deepthought.metrics import actions_per_second, average_latency, bleu, rouge_l
 
 
 def _load_trace(path: Path) -> List[TraceEvent]:

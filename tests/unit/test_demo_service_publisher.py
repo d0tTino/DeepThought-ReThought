@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Stub out heavy dependencies
 fake_nats = types.ModuleType("nats")
 fake_nats.errors = types.SimpleNamespace(TimeoutError=Exception)

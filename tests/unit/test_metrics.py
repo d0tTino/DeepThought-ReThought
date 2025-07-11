@@ -1,8 +1,9 @@
-import pytest
 from datetime import datetime
 
-from deepthought.metrics import bleu, rouge_l, average_latency, actions_per_second
+import pytest
+
 from deepthought.harness.record import TraceEvent
+from deepthought.metrics import actions_per_second, average_latency, bleu, rouge_l
 
 
 def _event(latency: float) -> TraceEvent:

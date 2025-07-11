@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from deepthought.graph import Neo4jConnector, GraphDAL
+from deepthought.graph import GraphDAL, Neo4jConnector
 from tests.helpers import neo4j_available
 
 try:  # optional dependency
