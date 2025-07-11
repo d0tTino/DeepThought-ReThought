@@ -1,0 +1,27 @@
+name: Conda Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          python-version: '3.10'
+          auto-update-conda: true
+      - name: Install conda-build and anaconda-client
+        shell: bash -l {0}
+        run: conda install -y conda-build anaconda-client
+      - name: Build package
+        shell: bash -l {0}
+        run: conda-build conda
+      - name: Upload package
+        if: secrets.ANACONDA_TOKEN != ''
+        shell: bash -l {0}
+        run: |
+          anaconda --token ${{ secrets.ANACONDA_TOKEN }} upload $(conda-build conda --output) --user ${{ secrets.ANACONDA_USER }} --label main
