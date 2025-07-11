@@ -48,7 +48,15 @@ fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
 sys.modules.setdefault("pydantic", fake_pyd)
 fake_ps = types.ModuleType("pydantic_settings")
-fake_ps.BaseSettings = object
+
+
+class DummyBase:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+fake_ps.BaseSettings = DummyBase
 fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
@@ -77,6 +85,7 @@ from typing import List
 
 import pytest
 
+from deepthought.config import Settings
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.graph.backend import GraphDALBackend
 from deepthought.memory.tiered import TieredMemory
@@ -147,7 +156,7 @@ async def test_handle_input_publishes_combined_context(monkeypatch):
     vec = DummyVector()
     dal = DummyDAL()
     memory = TieredMemory(vec, GraphDALBackend(dal), top_k=3)
-    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), memory)
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
 
@@ -170,14 +179,14 @@ def test_retrieve_context_merges():
     vec = DummyVector()
     dal = DummyDAL()
     memory = TieredMemory(vec, GraphDALBackend(dal), top_k=3)
-    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), memory)
     ctx = service.retrieve_context("hi")
     assert ctx == ["vec1", "vec2", "graph1"]
 
 
 def test_retrieve_context_failures():
     memory = TieredMemory(FailingVector(), GraphDALBackend(FailingDAL()), top_k=3)
-    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), memory)
     ctx = service.retrieve_context("x")
     assert ctx == []
 
@@ -203,7 +212,7 @@ def test_dump_graph(tmp_path):
     dal = DummyGraphDAL()
     memory = DummyMemory(GraphDALBackend(dal))
 
-    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), memory)
 
     dot_file = service.dump_graph(str(tmp_path))
 
@@ -214,7 +223,7 @@ def test_dump_graph(tmp_path):
 
 
 def test_dump_graph_no_memory(tmp_path):
-    service = HierarchicalService(DummyNATS(), DummyJS(), None)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
     with pytest.raises(ValueError):
         service.dump_graph(str(tmp_path))
 
@@ -227,7 +236,7 @@ def test_retrieve_context_with_search(tmp_path):
         str(tmp_path / "index.db"),
         [("t1", "search result 1"), ("t2", "search result 2")],
     )
-    service = HierarchicalService(DummyNATS(), DummyJS(), memory, search=search)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), memory, search=search)
     ctx = service.retrieve_context("result")
     assert "search result 1" in ctx and "search result 2" in ctx
 
@@ -242,11 +251,11 @@ def test_retrieve_context_from_config(monkeypatch, tmp_path):
     import deepthought.config as config
 
     config._settings_cache = None
-    monkeypatch.setattr(config, "get_settings", lambda: types.SimpleNamespace(search_db=str(db)))
+    monkeypatch.setattr(config, "get_settings", lambda: Settings(search_db=str(db)))
     import deepthought.services.hierarchical_service as hs
 
-    monkeypatch.setattr(hs, "get_settings", lambda: types.SimpleNamespace(search_db=str(db)))
-    service = HierarchicalService(DummyNATS(), DummyJS(), memory)
+    monkeypatch.setattr(hs, "get_settings", lambda: Settings(search_db=str(db)))
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(search_db=str(db)), memory)
     ctx = service.retrieve_context("config")
     assert "via config" in ctx
 
@@ -258,7 +267,7 @@ def test_retrieve_context_with_example_corpus(tmp_path):
         str(tmp_path / "example.db"),
         [(d["title"], d["content"]) for d in docs],
     )
-    service = HierarchicalService(DummyNATS(), DummyJS(), None, search=search)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None, search=search)
     ctx = service.retrieve_context("web")
     assert any("web development" in c for c in ctx)
 
@@ -277,7 +286,7 @@ def test_service_uses_public_memory_interface():
             return ["g"]
 
     mem = SpyMemory()
-    service = HierarchicalService(DummyNATS(), DummyJS(), mem)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), mem)
 
     assert service._vector_matches("hi") == ["v"]
     assert service._graph_facts() == ["g"]
@@ -290,7 +299,7 @@ from unittest import mock
 def test_retrieve_context_delegates_to_memory():
     mem = mock.MagicMock()
     mem.retrieve_context.return_value = ["m1", "m2"]
-    service = HierarchicalService(DummyNATS(), DummyJS(), mem)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), mem)
     ctx = service.retrieve_context("hello")
     mem.retrieve_context.assert_called_once_with("hello")
     assert ctx == ["m1", "m2"]
@@ -301,7 +310,7 @@ def test_retrieve_context_merges_search_results():
     mem.retrieve_context.return_value = ["m1", "dup"]
     search = mock.MagicMock()
     search.search.return_value = ["dup", "s2"]
-    service = HierarchicalService(DummyNATS(), DummyJS(), mem, search=search, top_k=2)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(memory_top_k=2), mem, search=search)
     ctx = service.retrieve_context("question")
     mem.retrieve_context.assert_called_once_with("question")
     search.search.assert_called_once_with("question", limit=2)
@@ -320,7 +329,7 @@ class ClosedNATS(DummyNATS):
 
 @pytest.mark.asyncio
 async def test_stop_skips_drain_when_not_connected():
-    service = HierarchicalService(DummyNATS(), DummyJS(), None)
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
     service._subscriber = DummySubscriber()
     service._publisher = DummyPublisher()
     service._nc = ClosedNATS()

@@ -9,6 +9,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from ..config import Settings, get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -26,37 +27,22 @@ class MemoryService:
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
+        settings: Settings,
         memory: Optional[TieredMemory] = None,
-        *,
-        graph_backend_name: str | None = None,
-        collection_name: str = "deepthought",
-        persist_directory: str | None = None,
-        vector_backend: str | None = None,
-        use_gpu: bool | None = None,
-        capacity: int = 100,
-        top_k: int = 3,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._nc = nats_client
         if memory is None:
-            memory = create_memory_backend(
-                graph_backend_name=graph_backend_name,
-                collection_name=collection_name,
-                persist_directory=persist_directory,
-                vector_backend=vector_backend,
-                use_gpu=use_gpu,
-                capacity=capacity,
-                top_k=top_k,
-            )
+            memory = create_memory_backend(settings=settings)
         self._memory = memory
 
     @classmethod
     def from_config(cls, nats_client: NATS, js_context: JetStreamContext) -> "MemoryService":
         """Return a service with backends configured from environment variables."""
 
-        memory = create_memory_backend()
-        return cls(nats_client, js_context, memory)
+        settings = get_settings()
+        return cls(nats_client, js_context, settings)
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
