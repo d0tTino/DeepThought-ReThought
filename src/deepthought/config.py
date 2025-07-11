@@ -66,10 +66,11 @@ class Settings(BaseSettings):
     mg_user: str = os.getenv("MG_USER", "memgraph")
     mg_password: str = os.getenv("MG_PASSWORD", "memgraph")
 
-    neo4j_host: str = os.getenv("NEO4J_HOST", "localhost")
-    neo4j_port: int = int(os.getenv("NEO4J_PORT", 7687))
-    neo4j_user: str = os.getenv("NEO4J_USER", "neo4j")
-    neo4j_password: str = os.getenv("NEO4J_PASSWORD", "neo4j")
+
+    neo4j_host: str = "localhost"
+    neo4j_port: int = 7687
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "neo4j"
 
     reward: RewardThresholds = RewardThresholds()
     persona_descriptions: dict[str, str] = {
@@ -106,7 +107,25 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
         if not isinstance(data, dict):
             raise ValueError("Config data must be a mapping")
 
-        return Settings.model_validate(data)
+        if hasattr(Settings, "model_validate"):
+            return Settings.model_validate(data)
+
+        # Fallback for environments where pydantic is stubbed during tests.
+        inst = Settings()
+
+        def _assign(obj: object, values: dict[str, object]) -> None:
+            for key, val in values.items():
+                if isinstance(val, dict):
+                    sub = getattr(obj, key, None)
+                    if sub is None:
+                        setattr(obj, key, type("Sub", (), {})())
+                        sub = getattr(obj, key)
+                    _assign(sub, val)
+                else:
+                    setattr(obj, key, val)
+
+        _assign(inst, data)
+        return inst
     return Settings()
 
 

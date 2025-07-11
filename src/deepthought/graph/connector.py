@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import time
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -132,8 +131,12 @@ class Neo4jConnector:
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> None:
-        host = os.getenv("NEO4J_HOST", "localhost") if host is None else host
-        port = os.getenv("NEO4J_PORT", 7687) if port is None else port
+        from ..config import get_settings
+
+        settings = get_settings()
+
+        host = settings.neo4j_host if host is None else host
+        port = settings.neo4j_port if port is None else port
 
         if not host:
             raise ValueError("Neo4j host is required")
@@ -145,8 +148,8 @@ class Neo4jConnector:
         if port_int <= 0:
             raise ValueError("Neo4j port must be positive")
 
-        username = username or os.getenv("NEO4J_USER", "neo4j")
-        password = password or os.getenv("NEO4J_PASSWORD", "neo4j")
+        username = username or settings.neo4j_user
+        password = password or settings.neo4j_password
         self._uri = f"bolt://{host}:{port_int}"
         self._auth = (username, password)
         self._max_retries = max_retries

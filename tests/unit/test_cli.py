@@ -179,6 +179,7 @@ def test_parse_bus_init_service():
 
 def test_finetune_estimate_vram(tmp_path: Path, monkeypatch) -> None:
     pytest.importorskip("torch")
+    pytest.importorskip("bitsandbytes")
     import importlib
 
     from transformers import AutoModelForCausalLM, GPT2Config
@@ -196,4 +197,4 @@ def test_finetune_estimate_vram(tmp_path: Path, monkeypatch) -> None:
         "ds",
         "--estimate-vram",
     )
-    assert "Estimated VRAM" in result.stdout
+    assert "Estimated VRAM requirement" in result.stdout

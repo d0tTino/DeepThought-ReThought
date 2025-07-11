@@ -7,7 +7,7 @@ pytest-xdist==3.7.0
 pytest-asyncio==0.21.1
 flake8==6.1.0
 pydantic-settings==2.2.1
-pydantic
+pydantic>=2.7
 aiohttp==3.12.3
 fastapi==0.111.0
 discord.py==2.5.2
@@ -21,3 +21,5 @@ faiss-cpu
 prometheus-client
 setuptools
 streamlit
+datasets>=2.14.0
+peft>=0.5.0

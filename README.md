@@ -12,6 +12,7 @@ Install the package from PyPI:
 
 ```bash
 pip install deepthought-rethought
+conda install deepthought-rethought
 ```
 
 This exposes the `dtrt` CLI (also available as `dtrt-finetune`).
@@ -488,6 +489,11 @@ The bot's `GoalScheduler` queues reminders formatted as `<seconds>:<message>`. T
 bot.goal_scheduler.add_goal("60:Stretch your legs", priority=1)
 bot.goal_scheduler.add_goal("300:Time for a break", priority=2)
 ```
+
+### RAG Demo Notebook
+
+A minimal notebook demonstrating retrieval-augmented generation is available at [docs/notebooks/rag_demo.ipynb](docs/notebooks/rag_demo.ipynb). It compares a plain prompt with additional context retrieved via `HierarchicalService`. Run `python examples/rag_demo.py` to load the sample dataset and print example retrieval results.
+
 
 
 ## Discord Bot Roadmap

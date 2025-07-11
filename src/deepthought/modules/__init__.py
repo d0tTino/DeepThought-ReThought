@@ -5,7 +5,21 @@ This package contains the main functional modules of the DeepThought reThought s
 including input handling, memory, LLM processing, and output handling components.
 """
 
-from .input_handler import InputHandler
+# InputHandler depends on the optional `nats` package. Allow importing this
+# module even when that dependency is missing so other modules can be used
+# without installing the full async stack.
+try:  # pragma: no cover - optional dependency may be missing
+    from .input_handler import InputHandler  # type: ignore
+except Exception as exc:  # pragma: no cover - optional dependency may be missing
+    _missing_nats_err = exc
+
+    class InputHandler:  # type: ignore
+        """Placeholder that raises if instantiated without nats available."""
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise ImportError(
+                "InputHandler requires the 'nats-py' package"
+            ) from _missing_nats_err
 from .memory_basic import BasicMemory
 from .memory_graph import GraphMemory
 from .memory_stub import MemoryStub
