@@ -1,5 +1,11 @@
 # Finetune CLI Quickstart
 
+Install the package with:
+
+```bash
+conda install deepthought-rethought
+```
+
 Build the training image and launch finetuning:
 
 ```bash

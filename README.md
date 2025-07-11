@@ -12,6 +12,7 @@ Install the package from PyPI:
 
 ```bash
 pip install deepthought-rethought
+conda install deepthought-rethought
 ```
 
 This exposes the `dtrt` CLI (also available as `dtrt-finetune`).

@@ -1,0 +1,61 @@
+package:
+  name: deepthought-rethought
+  version: {{ GIT_DESCRIBE_TAG }}
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv
+  entry_points:
+    - dtrt = deepthought.cli:main
+    - dtrt-finetune = deepthought.train:main
+
+requirements:
+  host:
+    - python
+    - pip
+  run:
+    - python
+    - torch >=2.0.0
+    - transformers >=4.34.0
+    - datasets >=2.14.0
+    - peft >=0.5.0
+    - trl >=0.7.2
+    - accelerate >=0.21.0
+    - bitsandbytes >=0.41.0
+    - sentencepiece
+    - protobuf
+    - scipy
+    - evaluate
+    - nats-py
+    - pytest-asyncio
+    - aiosqlite
+    - aiohttp
+    - fastapi
+    - discord.py
+    - textblob
+    - networkx
+    - pydantic-settings
+    - pydantic
+    - vaderSentiment
+    - sentence-transformers
+    - uvicorn
+    - pyyaml
+    - faiss-cpu
+    - prometheus-client
+
+test:
+  commands:
+    - dtrt --help
+    - dtrt-finetune --help
+
+about:
+  home: https://github.com/d0tTino/DeepThought-ReThought
+  license: MIT
+  summary: DeepThought reThought - experimental AI framework
+
+extra:
+  recipe-maintainers:
+    - d0ttino
