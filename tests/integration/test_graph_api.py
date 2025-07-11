@@ -3,6 +3,9 @@ import sys
 import types
 
 fake_nats = types.ModuleType("nats")
+import importlib.machinery
+
+fake_nats.__spec__ = importlib.machinery.ModuleSpec("nats", loader=None)
 fake_nats.aio = types.ModuleType("aio")
 fake_nats.aio.client = types.ModuleType("client")
 fake_nats.aio.msg = types.ModuleType("msg")
@@ -28,8 +31,21 @@ sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 fake_prom = types.ModuleType("prometheus_client")
-fake_prom.Counter = lambda *a, **k: object()
-fake_prom.Histogram = lambda *a, **k: object()
+
+
+class _Metric:
+    def labels(self, **kwargs):
+        return self
+
+    def inc(self, *args, **kwargs):
+        pass
+
+    def observe(self, *args, **kwargs):
+        pass
+
+
+fake_prom.Counter = lambda *a, **k: _Metric()
+fake_prom.Histogram = lambda *a, **k: _Metric()
 fake_prom.REGISTRY = types.SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 

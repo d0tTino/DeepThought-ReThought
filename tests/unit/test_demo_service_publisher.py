@@ -9,6 +9,9 @@ import pytest
 
 # Stub out heavy dependencies
 fake_nats = types.ModuleType("nats")
+import importlib.machinery
+
+fake_nats.__spec__ = importlib.machinery.ModuleSpec("nats", loader=None)
 fake_nats.errors = types.SimpleNamespace(TimeoutError=Exception)
 
 aio_mod = types.ModuleType("nats.aio")

@@ -44,6 +44,9 @@ def test_init_service_demo_start_stop(tmp_path: Path) -> None:
     import types
 
     fake_nats = types.ModuleType("nats")
+    import importlib.machinery
+
+    fake_nats.__spec__ = importlib.machinery.ModuleSpec("nats", loader=None)
     fake_aio = types.ModuleType("aio")
     fake_client = types.ModuleType("client")
     setattr(fake_client, "Client", object)
