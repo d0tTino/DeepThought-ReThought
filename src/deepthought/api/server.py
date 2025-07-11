@@ -17,16 +17,23 @@ from ..config import get_settings
 from ..eda.events import EventSubjects
 from ..eda.subscriber import Subscriber
 from ..modules.input_handler import InputHandler
+from .graph import router as graph_router
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="DeepThought API")
+app.include_router(graph_router)
 
 
 class MemoryCache:
     """Store recent MEMORY_RETRIEVED events."""
 
-    def __init__(self, nats_client: nats.NATS, js_context: JetStreamContext, max_entries: int = 100) -> None:
+    def __init__(
+        self,
+        nats_client: nats.NATS,
+        js_context: JetStreamContext,
+        max_entries: int = 100,
+    ) -> None:
         self._subscriber = Subscriber(nats_client, js_context)
         self._cache: "OrderedDict[str, Dict]" = OrderedDict()
         self._max = max_entries
