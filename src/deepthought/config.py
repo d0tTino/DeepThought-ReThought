@@ -61,15 +61,15 @@ class Settings(BaseSettings):
     memory_top_k: int = 3
 
     graph_backend: str = "memgraph"
-    mg_host: str = os.getenv("MG_HOST", "localhost")
-    mg_port: int = int(os.getenv("MG_PORT", 7687))
-    mg_user: str = os.getenv("MG_USER", "memgraph")
-    mg_password: str = os.getenv("MG_PASSWORD", "memgraph")
+    mg_host: str = "localhost"
+    mg_port: int = 7687
+    mg_user: str = "memgraph"
+    mg_password: str = "memgraph"
 
-    neo4j_host: str = os.getenv("NEO4J_HOST", "localhost")
-    neo4j_port: int = int(os.getenv("NEO4J_PORT", 7687))
-    neo4j_user: str = os.getenv("NEO4J_USER", "neo4j")
-    neo4j_password: str = os.getenv("NEO4J_PASSWORD", "neo4j")
+    neo4j_host: str = "localhost"
+    neo4j_port: int = 7687
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "neo4j"
 
     reward: RewardThresholds = RewardThresholds()
     persona_descriptions: dict[str, str] = {
