@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from ..config import Settings, get_settings
 from ..graph import create_graph_backend
-from .faiss_vector_store import FaissVectorStore
 from .hierarchical import HierarchicalMemory
 from .tiered import TieredMemory
 from .vector_store import (

@@ -30,7 +30,7 @@ The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events, retrieves kno
 
 ## FAISS Setup
 
-`FaissVectorStore` in `src/deepthought/memory/faiss_vector_store.py` offers a lightweight vector database for similarity search. To enable it:
+`FaissVectorStore` in `src/deepthought/memory/vector_store.py` offers a lightweight vector database for similarity search. To enable it:
 
 - Install FAISS and run the unit test:
 
@@ -43,9 +43,9 @@ The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events, retrieves kno
 - Create a store and query vectors:
 
   ```python
-  from deepthought.memory.faiss_vector_store import FaissVectorStore
+  from deepthought.memory.vector_store import FaissVectorStore
 
-  store = FaissVectorStore(embedding_dim=8)
+  store = FaissVectorStore()
   store.add_texts(["hello world", "goodbye"], ids=["1", "2"])
   results = store.query(["hello"], n_results=1)
   ```
