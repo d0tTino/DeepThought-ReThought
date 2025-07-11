@@ -18,3 +18,6 @@ def test_finetune_cli_help(tmp_path):
     assert "--estimate-vram" in result.stdout
     assert "--estimate-only" in result.stdout
     assert "--pack-sequences" in result.stdout
+    assert "--epochs" in result.stdout
+    assert "--batch-size" in result.stdout
+    assert "--lr" in result.stdout

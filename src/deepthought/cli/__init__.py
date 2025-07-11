@@ -115,6 +115,12 @@ def _cmd_finetune(args: argparse.Namespace) -> int:
         args.output_dir,
         "--max-seq-length",
         str(args.max_seq_length),
+        "--epochs",
+        str(args.epochs),
+        "--batch-size",
+        str(args.batch_size),
+        "--lr",
+        str(args.lr),
     ]
     if args.model_path:
         argv[0:0] = ["--model-path", args.model_path]
@@ -163,6 +169,24 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["on", "off", "auto"],
         default="off",
         help="Sequence packing mode. 'auto' uses heuristics to reduce padding",
+    )
+    finetune_p.add_argument(
+        "--epochs",
+        type=float,
+        default=1,
+        help="Number of training epochs",
+    )
+    finetune_p.add_argument(
+        "--batch-size",
+        type=int,
+        default=2,
+        help="Per-device training batch size",
+    )
+    finetune_p.add_argument(
+        "--lr",
+        type=float,
+        default=2e-4,
+        help="Learning rate",
     )
     finetune_p.add_argument(
         "--estimate-only",

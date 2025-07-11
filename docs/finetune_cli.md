@@ -43,3 +43,15 @@ The `auto` option samples up to 1000 records from the dataset and enables
 packing when the average tokenized length is below 70% of the configured
 maximum. These heuristics mirror the behaviour of Predibase's automatic
 packing logic and aim to reduce padding without manual tuning.
+
+Additional hyperparameters can be configured from the command line:
+
+```bash
+dtrt finetune \
+    --epochs 3 \
+    --batch-size 4 \
+    --lr 1e-4
+```
+
+These options map directly to `TrainingArguments.num_train_epochs`,
+`per_device_train_batch_size` and `learning_rate` respectively.
