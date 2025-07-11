@@ -10,7 +10,7 @@ from nats.aio.msg import Msg
 from nats.errors import Error as NatsError
 from nats.js.client import JetStreamContext
 
-from ..config import get_settings
+from ..config import Settings, get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -29,16 +29,17 @@ class HierarchicalService:
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
-        memory: TieredMemory | None,
+        settings: Settings,
+        memory: TieredMemory | None = None,
         search: OfflineSearch | None = None,
-        top_k: int = 3,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._nc = nats_client
         self._memory = memory
+        if self._memory is None:
+            self._memory = create_memory_backend(settings=settings)
         if search is None:
-            settings = get_settings()
             db_path = settings.search_db
             if db_path:
                 if not os.path.exists(db_path):
@@ -46,7 +47,7 @@ class HierarchicalService:
                 else:
                     search = OfflineSearch(db_path)
         self._search = search
-        self._top_k = top_k
+        self._top_k = settings.memory_top_k
 
     def _vector_matches(self, prompt: str) -> List[str]:
         """Return vector matches using the underlying memory store."""
@@ -61,26 +62,11 @@ class HierarchicalService:
         cls,
         nats_client: NATS,
         js_context: JetStreamContext,
-        graph_backend_name: str = "memgraph",
-        collection_name: str = "deepthought",
-        persist_directory: Optional[str] = None,
-        backend: str = "chroma",
-        use_gpu: bool = False,
-        capacity: int = 100,
-        top_k: int = 3,
-        search_db: Optional[str] = None,
+        settings: Settings,
     ) -> "HierarchicalService":
-        """Instantiate with a new :class:`TieredMemory` using the chosen backend."""
-        memory = create_memory_backend(
-            graph_backend_name=graph_backend_name,
-            collection_name=collection_name,
-            persist_directory=persist_directory,
-            vector_backend=backend,
-            use_gpu=use_gpu,
-            capacity=capacity,
-            top_k=top_k,
-        )
-        db_path = search_db or get_settings().search_db
+        """Instantiate with a new :class:`TieredMemory` using Chroma."""
+        memory = create_memory_backend(settings=settings)
+        db_path = settings.search_db
         if db_path:
             if not os.path.exists(db_path):
                 search = OfflineSearch.create_index(db_path, [])
@@ -88,7 +74,7 @@ class HierarchicalService:
                 search = OfflineSearch(db_path)
         else:
             search = None
-        return cls(nats_client, js_context, memory, search=search, top_k=top_k)
+        return cls(nats_client, js_context, settings, memory, search=search)
 
     def retrieve_context(self, prompt: str) -> List[str]:
         """Return retrieved facts using :class:`TieredMemory` and optional search."""

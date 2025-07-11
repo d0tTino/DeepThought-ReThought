@@ -25,7 +25,15 @@ fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
 sys.modules.setdefault("pydantic", fake_pyd)
 fake_ps = types.ModuleType("pydantic_settings")
-fake_ps.BaseSettings = object
+
+
+class DummyBase:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+fake_ps.BaseSettings = DummyBase
 fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
@@ -70,6 +78,7 @@ fake_prom.Counter = lambda *a, **k: _Metric()
 fake_prom.Histogram = lambda *a, **k: _Metric()
 sys.modules.setdefault("prometheus_client", fake_prom)
 
+from deepthought.config import Settings
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.services.memory_service import MemoryService
 
@@ -125,7 +134,8 @@ async def test_handle_input_updates_graph_and_publishes(monkeypatch):
     memory = DummyMemory()
     monkeypatch.setattr(MemoryService, "_publisher", DummyPublisher(DummyNATS(), DummyJS()), raising=False)
     monkeypatch.setattr(MemoryService, "_subscriber", DummySubscriber(), raising=False)
-    service = MemoryService(DummyNATS(), DummyJS(), memory)
+    settings = Settings()
+    service = MemoryService(DummyNATS(), DummyJS(), settings, memory)
     # replace publisher and subscriber with dummies
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
@@ -148,28 +158,17 @@ def test_init_from_settings(monkeypatch):
     calls = {}
     import deepthought.services.memory_service as ms
 
-    def fake_create_memory_backend(**kwargs):
-        calls.update(kwargs)
+    def fake_create_memory_backend(*, settings):
+        calls["settings"] = settings
         return object()
 
     monkeypatch.setattr(ms, "create_memory_backend", fake_create_memory_backend)
 
-    fake_settings = SimpleNamespace(vector_backend="faiss", vector_use_gpu=True, graph_backend="noop")
-    import deepthought.memory as memory
+    fake_settings = Settings(vector_backend="faiss", vector_use_gpu=True, graph_backend="noop")
 
-    monkeypatch.setattr(memory, "load_memory_settings", lambda: fake_settings)
+    ms.MemoryService(DummyNATS(), DummyJS(), fake_settings)
 
-    ms.MemoryService(DummyNATS(), DummyJS())
-
-    assert calls == {
-        "graph_backend_name": None,
-        "collection_name": "deepthought",
-        "persist_directory": None,
-        "vector_backend": None,
-        "use_gpu": None,
-        "capacity": 100,
-        "top_k": 3,
-    }
+    assert calls["settings"] is fake_settings
 
 
 def test_from_config(monkeypatch):
@@ -177,10 +176,11 @@ def test_from_config(monkeypatch):
 
     dummy = object()
 
-    def fake_create_memory_backend():
+    def fake_create_memory_backend(*, settings):
         return dummy
 
     monkeypatch.setattr(ms, "create_memory_backend", fake_create_memory_backend)
+    monkeypatch.setattr(ms, "get_settings", lambda: Settings())
 
     service = ms.MemoryService.from_config(DummyNATS(), DummyJS())
 
@@ -199,7 +199,7 @@ class ClosedNATS(DummyNATS):
 
 @pytest.mark.asyncio
 async def test_stop_skips_drain_when_not_connected():
-    service = MemoryService(DummyNATS(), DummyJS(), DummyMemory())
+    service = MemoryService(DummyNATS(), DummyJS(), Settings(), DummyMemory())
     service._subscriber = DummySubscriber()
     service._publisher = DummyPublisher()
     service._nc = ClosedNATS()

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from ..config import get_settings
+from ..config import Settings, get_settings
 from ..graph import create_graph_backend
 from .faiss_vector_store import FaissVectorStore
 from .hierarchical import HierarchicalMemory
@@ -24,7 +24,6 @@ __all__ = [
     "SimpleEmbeddingFunction",
     "TieredMemory",
     "create_memory_backend",
-    "load_memory_settings",
 ]
 
 
@@ -35,32 +34,37 @@ class MemorySettings:
     vector_backend: str
     vector_use_gpu: bool
     graph_backend: str
+    memory_capacity: int
+    memory_top_k: int
 
 
-def load_memory_settings() -> MemorySettings:
-    """Return memory backend configuration from the environment."""
+def load_memory_settings(settings: Settings | None = None) -> MemorySettings:
+    """Return memory backend configuration from the given ``Settings``."""
 
-    settings = get_settings()
+    s = settings or get_settings()
     return MemorySettings(
-        vector_backend=settings.vector_backend,
-        vector_use_gpu=settings.vector_use_gpu,
-        graph_backend=settings.graph_backend,
+        vector_backend=s.vector_backend,
+        vector_use_gpu=s.vector_use_gpu,
+        graph_backend=s.graph_backend,
+        memory_capacity=s.memory_capacity,
+        memory_top_k=s.memory_top_k,
     )
 
 
 def create_memory_backend(
+    settings: Settings | None = None,
     *,
     graph_backend_name: str | None = None,
     collection_name: str = "deepthought",
     persist_directory: str | None = None,
     vector_backend: str | None = None,
     use_gpu: bool | None = None,
-    capacity: int = 100,
-    top_k: int = 3,
+    capacity: int | None = None,
+    top_k: int | None = None,
 ) -> TieredMemory:
-    """Return :class:`TieredMemory` configured from environment variables."""
+    """Return :class:`TieredMemory` configured from the provided ``Settings``."""
 
-    settings = load_memory_settings()
+    settings = load_memory_settings(settings)
 
     store = create_vector_store(
         backend=vector_backend or settings.vector_backend,
@@ -71,4 +75,9 @@ def create_memory_backend(
 
     backend = create_graph_backend(graph_backend_name or settings.graph_backend)
 
-    return TieredMemory(store, backend, capacity=capacity, top_k=top_k)
+    return TieredMemory(
+        store,
+        backend,
+        capacity=capacity if capacity is not None else settings.memory_capacity,
+        top_k=top_k if top_k is not None else settings.memory_top_k,
+    )

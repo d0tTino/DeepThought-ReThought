@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     vector_backend: str = "chroma"
     vector_use_gpu: bool = False
 
+    memory_capacity: int = 100
+    memory_top_k: int = 3
+
     graph_backend: str = "memgraph"
     mg_host: str = os.getenv("MG_HOST", "localhost")
     mg_port: int = int(os.getenv("MG_PORT", 7687))

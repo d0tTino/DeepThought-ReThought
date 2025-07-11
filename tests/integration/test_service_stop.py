@@ -14,7 +14,15 @@ fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
 sys.modules.setdefault("pydantic", fake_pyd)
 fake_ps = types.ModuleType("pydantic_settings")
-fake_ps.BaseSettings = object
+
+
+class DummyBase:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+fake_ps.BaseSettings = DummyBase
 fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
 fake_prom = types.ModuleType("prometheus_client")
@@ -37,10 +45,12 @@ fake_prom.REGISTRY = types.SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 
 import pytest
+
 pytest.importorskip("nats")
 from nats.aio.client import Client as NATS
 from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
 
+from deepthought.config import Settings
 from deepthought.modules.memory_graph import GraphMemory
 from deepthought.services.hierarchical_service import HierarchicalService
 from deepthought.services.memory_service import MemoryService
@@ -92,7 +102,7 @@ async def test_memory_service_stop_closes_nats():
     js = nc.jetstream(timeout=10.0)
     await ensure_stream_exists(js)
 
-    service = MemoryService(nc, js, memory=DummyMemory())
+    service = MemoryService(nc, js, Settings(), memory=DummyMemory())
     await service.start(durable_name="stop_mem_listener")
     await service.stop()
 
@@ -107,7 +117,7 @@ async def test_hierarchical_service_stop_closes_nats():
     js = nc.jetstream(timeout=10.0)
     await ensure_stream_exists(js)
 
-    service = HierarchicalService(nc, js, DummyMemory())
+    service = HierarchicalService(nc, js, Settings(), DummyMemory())
     await service.start(durable_name="stop_hier_listener")
     await service.stop()
 
