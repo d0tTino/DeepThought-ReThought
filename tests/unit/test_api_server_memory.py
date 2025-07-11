@@ -8,6 +8,7 @@ sys.modules.setdefault("networkx", fake_nx)
 from types import SimpleNamespace
 
 import pytest
+
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
@@ -90,12 +91,10 @@ def test_memory_query_reads_cache(client):
 
     resp = client.post("/memory/query", json={"query": "f1"})
     assert resp.status_code == 200
-    assert resp.json()["results"] == [
-        {"input_id": "abc", "retrieved_knowledge": {"facts": ["f1"], "source": "test"}}
-    ]
+    assert resp.json()["results"] == [{"input_id": "abc", "retrieved_knowledge": {"facts": ["f1"], "source": "test"}}]
+
 
 def test_memory_query_no_match(client):
     resp = client.post("/memory/query", json={"query": "nomatch"})
     assert resp.status_code == 200
     assert resp.json()["results"] == []
-

@@ -210,9 +210,7 @@ def run(args: argparse.Namespace) -> int:
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse command line options for fine-tuning."""
-    parser = argparse.ArgumentParser(
-        description="Fine-tune a language model with LoRA"
-    )
+    parser = argparse.ArgumentParser(description="Fine-tune a language model with LoRA")
     parser.add_argument("--model-path", default=None, help="Model ID or local path to the base model")
     parser.add_argument(
         "--dataset-path",

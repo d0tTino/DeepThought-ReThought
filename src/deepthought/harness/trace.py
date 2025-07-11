@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 class TraceRecorder:
     """Record agent events to a JSONL file."""
 
-    def __init__(
-        self, nats_client: NATS, js_context: JetStreamContext, outfile: str
-    ) -> None:
+    def __init__(self, nats_client: NATS, js_context: JetStreamContext, outfile: str) -> None:
         if not outfile:
             raise ValueError("outfile path must be provided")
         self._subscriber = Subscriber(nats_client, js_context)

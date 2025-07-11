@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Histogram, REGISTRY
+from prometheus_client import REGISTRY, Counter, Histogram
 
 if "inputs_total" not in REGISTRY._names_to_collectors:
     INPUTS_TOTAL = Counter(

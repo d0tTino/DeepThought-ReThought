@@ -1,8 +1,9 @@
 import asyncio
+import importlib.util
 from types import SimpleNamespace
 
 import pytest
-import importlib.util
+
 try:
     spec = importlib.util.find_spec("nats")
 except Exception:

@@ -28,4 +28,3 @@ def test_noop_backend():
     backend = NoOpGraphBackend()
     assert backend.query_subgraph("Q", {}) == []
     backend.merge_entity("n")  # should do nothing
-

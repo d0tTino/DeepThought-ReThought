@@ -1,6 +1,6 @@
-from datetime import datetime
 import importlib
 import sys
+from datetime import datetime
 
 sys.modules.pop("deepthought.harness.record", None)
 record = importlib.import_module("deepthought.harness.record")

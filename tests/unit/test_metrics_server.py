@@ -1,4 +1,5 @@
 import pytest
+
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 from prometheus_client import CONTENT_TYPE_LATEST

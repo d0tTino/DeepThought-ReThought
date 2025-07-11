@@ -3,6 +3,7 @@ import logging
 from types import SimpleNamespace
 
 import pytest
+
 pytest.importorskip("nats")
 
 import deepthought.modules.memory_basic as memory_basic

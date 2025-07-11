@@ -3,13 +3,15 @@ import shutil
 import socket
 import subprocess
 import time
+
 import pytest
+
 pytest.importorskip("aiohttp")
 pytest.importorskip("httpx")
 pytest.importorskip("pytest_asyncio")
-from aiohttp import web
 import httpx
 import pytest_asyncio
+from aiohttp import web
 
 from tests.helpers import nats_server_available
 
@@ -89,4 +91,3 @@ async def test_memory_add_and_query(memory_app, nats_server):
         assert resp.status_code == 200
         data = resp.json()
         assert data["memories"] == ["hello"]
-

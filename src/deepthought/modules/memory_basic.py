@@ -11,9 +11,9 @@ from nats.js.client import JetStreamContext
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from ..graph import NoOpGraphBackend
 from ..memory.tiered import TieredMemory
 from ..memory.vector_store import create_vector_store
-from ..graph import NoOpGraphBackend
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,5 @@
 import os
+
 import requests
 import streamlit as st
 
@@ -20,4 +21,3 @@ if st.button("Search"):
             st.error(f"Request failed: {e}")
     else:
         st.warning("Please enter a query first.")
-

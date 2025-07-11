@@ -135,4 +135,3 @@ async def add_memory(req: MemoryAddRequest) -> Dict[str, str]:
 async def query_memory(req: MemoryQueryRequest) -> Dict[str, List[Dict]]:
     results = app.state.memory_cache.search(req.query)
     return {"results": results}
-

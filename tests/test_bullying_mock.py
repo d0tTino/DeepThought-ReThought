@@ -2,9 +2,11 @@ import asyncio
 import random
 
 import pytest
+
 pytest.importorskip("discord")
 
 import examples.social_graph_bot as sg
+
 pytest.importorskip("nats")
 from deepthought.services import DBManager
 

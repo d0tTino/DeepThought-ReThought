@@ -1,10 +1,10 @@
 import importlib
+import importlib.util
 import sys
 import types
 
 import pytest
 
-import importlib.util
 import examples.social_graph_bot as sg
 
 textblob_available = importlib.util.find_spec("textblob") is not None

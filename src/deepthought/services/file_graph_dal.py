@@ -4,9 +4,9 @@ import os
 from datetime import datetime, timezone
 from typing import List
 
-from ..graph import GraphBackend
-
 import networkx as nx
+
+from ..graph import GraphBackend
 
 logger = logging.getLogger(__name__)
 

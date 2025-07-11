@@ -35,7 +35,9 @@ except Exception:  # pragma: no cover - chromadb not installed
 
     def _create_client(path=None):
         return _DummyClient()
+
 else:
+
     def _create_client(path=None):
         if path:
             return chromadb.PersistentClient(path=path)
@@ -111,9 +113,7 @@ class ChromaVectorStore(VectorStore):
         )
 
     def query(self, query_texts: Sequence[str], n_results: int = 3):
-        return self._collection.query(
-            query_texts=list(query_texts), n_results=n_results
-        )
+        return self._collection.query(query_texts=list(query_texts), n_results=n_results)
 
 
 try:  # pragma: no cover - optional dependency

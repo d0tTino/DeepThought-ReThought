@@ -1,4 +1,5 @@
 import pytest
+
 pytest.importorskip("nats")
 
 from deepthought.eda.events import EventSubjects, InputReceivedPayload

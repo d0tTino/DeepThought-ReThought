@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import logging
 import sys
 import types
@@ -6,7 +7,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-import importlib.util
+
 if importlib.util.find_spec("nats") is None:
     pytest.skip("nats not installed", allow_module_level=True)
 
@@ -161,9 +162,7 @@ async def test_handle_memory_event_non_dict(monkeypatch, caplog):
     assert msg.nacked
     pub = llm._publisher
     assert not pub.published
-    assert any(
-        "Invalid MemoryRetrieved payload" in r.getMessage() for r in caplog.records
-    )
+    assert any("Invalid MemoryRetrieved payload" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio

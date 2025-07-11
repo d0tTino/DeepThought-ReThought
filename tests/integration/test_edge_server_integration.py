@@ -3,9 +3,10 @@ import sys
 from pathlib import Path
 
 import pytest
+
 pytest.importorskip("fastapi")
-from fastapi.testclient import TestClient
 import requests
+from fastapi.testclient import TestClient
 
 
 @pytest.mark.slow
@@ -17,7 +18,6 @@ def test_generate_with_distilgpt2(monkeypatch):
         requests.head("https://huggingface.co", timeout=5)
     except Exception:
         pytest.skip("huggingface.co not reachable")
-
 
     real_load = _tf.AutoModelForCausalLM.from_pretrained
 
