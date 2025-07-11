@@ -98,7 +98,7 @@ The CLI is also available as ``dtrt-finetune`` for convenience.
 Build and run the CUDA-enabled image:
 
 ```bash
-docker build -f docker/Dockerfile.finetune -t dtrt-finetune .
+make -C docker finetune  # produces the `dtrt-finetune` tag
 docker run --gpus all dtrt-finetune \
     --dataset-path databricks/databricks-dolly-15k \
     --model-path meta-llama/Llama-3.2-3B-Instruct
@@ -107,6 +107,18 @@ docker run --gpus all dtrt-finetune \
 4.  **Reward Manager:** publishes user feedback as `RewardEvent` messages via JetStream, enabling future reinforcement or preference-based training. See [docs/reward_manager.md](docs/reward_manager.md).
 5.  **Adaptive Code Generation:** (Future Goal) Exploring techniques like template engines or JIT compilation (e.g., using AsmJit) for dynamic code optimization.
 6.  **Neuromorphic Processing:** (Long-Term Research) Investigating brain-inspired computing principles via simulation (e.g., using Nengo). An experimental stub is provided in `deepthought.neuromorphic` with an example at `examples/neuromorphic_nats_demo.py`.
+
+### Docker Edge
+
+Build a lightweight inference image:
+
+```bash
+make -C docker edge  # produces the `dtrt-edge` tag
+docker run -p 8000:8000 dtrt-edge
+```
+
+Published images are available on GitHub Container Registry as
+`ghcr.io/<owner>/dtrt-finetune` and `ghcr.io/<owner>/dtrt-edge`.
 
 ### Creating a Service
 

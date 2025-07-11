@@ -18,6 +18,9 @@ sys.modules.setdefault("deepthought.learn", types.ModuleType("learn"))
 sys.modules.setdefault("deepthought.modules", types.ModuleType("modules"))
 sys.modules.setdefault("deepthought.motivate", types.ModuleType("motivate"))
 fake_nats = types.ModuleType("nats")
+import importlib.machinery
+
+fake_nats.__spec__ = importlib.machinery.ModuleSpec("nats", loader=None)
 fake_nats.aio = types.ModuleType("aio")
 fake_client_mod = types.ModuleType("client")
 setattr(fake_client_mod, "Client", object)
@@ -40,12 +43,16 @@ sys.modules.setdefault("nats.js", fake_nats.js)
 sys.modules.setdefault("nats.js.client", fake_js_client_mod)
 sys.modules.setdefault("nats.errors", fake_errors_mod)
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
-fake_nx = types.ModuleType("networkx")
-setattr(fake_nx, "DiGraph", object)
-sys.modules.setdefault("networkx", fake_nx)
+import importlib.util
+
+if importlib.util.find_spec("networkx") is None:
+    fake_nx = types.ModuleType("networkx")
+    setattr(fake_nx, "DiGraph", object)
+    sys.modules.setdefault("networkx", fake_nx)
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
+fake_pyd.Field = lambda default=None, **kwargs: default
 sys.modules.setdefault("pydantic", fake_pyd)
 fake_ps = types.ModuleType("pydantic_settings")
 
@@ -224,6 +231,8 @@ def test_dump_graph(tmp_path):
 
 def test_dump_graph_no_memory(tmp_path):
     service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
+    # ensure memory is unset even if the service auto-creates one
+    service._memory = None
     with pytest.raises(ValueError):
         service.dump_graph(str(tmp_path))
 

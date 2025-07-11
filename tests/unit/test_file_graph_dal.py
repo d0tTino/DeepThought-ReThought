@@ -6,6 +6,9 @@ import networkx as nx
 
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 nats = types.ModuleType("nats")
+import importlib.machinery
+
+nats.__spec__ = importlib.machinery.ModuleSpec("nats", loader=None)
 nats.aio = types.ModuleType("aio")
 nats.aio.client = types.ModuleType("client")
 nats.aio.msg = types.ModuleType("msg")
@@ -26,6 +29,7 @@ sys.modules.setdefault("nats.js.client", nats.js.client)
 pydantic = types.ModuleType("pydantic")
 pydantic.AnyUrl = str
 pydantic.ValidationError = Exception
+pydantic.Field = lambda default=None, **kwargs: default
 sys.modules.setdefault("pydantic", pydantic)
 pydantic_settings = types.ModuleType("pydantic_settings")
 pydantic_settings.BaseSettings = object

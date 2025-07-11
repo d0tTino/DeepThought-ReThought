@@ -16,13 +16,17 @@ class TraceEvent:
 
 record_mod.TraceEvent = TraceEvent
 sys.modules.setdefault("deepthought.harness.record", record_mod)
-fake_nx = types.ModuleType("networkx")
-setattr(fake_nx, "DiGraph", object)
-sys.modules.setdefault("networkx", fake_nx)
+import importlib.util
+
+if importlib.util.find_spec("networkx") is None:
+    fake_nx = types.ModuleType("networkx")
+    setattr(fake_nx, "DiGraph", object)
+    sys.modules.setdefault("networkx", fake_nx)
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
+fake_pyd.Field = lambda default=None, **kwargs: default
 sys.modules.setdefault("pydantic", fake_pyd)
 fake_ps = types.ModuleType("pydantic_settings")
 
@@ -39,6 +43,9 @@ sys.modules.setdefault("pydantic_settings", fake_ps)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
 fake_nats = types.ModuleType("nats")
+import importlib.machinery
+
+fake_nats.__spec__ = importlib.machinery.ModuleSpec("nats", loader=None)
 fake_nats.aio = types.ModuleType("aio")
 fake_client_mod = types.ModuleType("client")
 setattr(fake_client_mod, "Client", object)
