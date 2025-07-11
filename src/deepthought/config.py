@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from pydantic import AnyUrl, ValidationError
+from pydantic import AnyUrl, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:  # YAML support is optional
@@ -54,13 +54,13 @@ class Settings(BaseSettings):
     search_db: str | None = None
     social_graph_db: str = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
 
-    vector_backend: str = "chroma"
-    vector_use_gpu: bool = False
+    vector_backend: str = Field("chroma", env="DT_VECTOR_BACKEND")
+    vector_use_gpu: bool = Field(False, env="DT_VECTOR_USE_GPU")
 
     memory_capacity: int = 100
     memory_top_k: int = 3
 
-    graph_backend: str = "memgraph"
+    graph_backend: str = Field("memgraph", env="DT_GRAPH_BACKEND")
     mg_host: str = os.getenv("MG_HOST", "localhost")
     mg_port: int = int(os.getenv("MG_PORT", 7687))
     mg_user: str = os.getenv("MG_USER", "memgraph")
@@ -141,4 +141,6 @@ def load_bot_env() -> BotEnv:
         return BotEnv()
     except ValidationError as exc:  # pragma: no cover - runtime validation
         missing = ", ".join(err["loc"][0] for err in exc.errors())
-        raise SystemExit(f"Missing or invalid environment variables: {missing}") from exc
+        raise SystemExit(
+            f"Missing or invalid environment variables: {missing}"
+        ) from exc

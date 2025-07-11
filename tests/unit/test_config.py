@@ -5,12 +5,8 @@ import pytest
 pytest.importorskip("yaml")
 import yaml
 
-from deepthought.config import (
-    BotEnv,
-    get_settings,
-    load_bot_env,
-    load_settings,
-)
+from deepthought.config import (BotEnv, get_settings, load_bot_env,
+                                load_settings)
 
 
 def test_env_overrides(monkeypatch):
@@ -146,6 +142,20 @@ def test_load_settings_missing_yaml_module(monkeypatch, tmp_path):
 
     with pytest.raises(RuntimeError):
         load_settings(str(cfg))
+
+
+def test_get_settings_env(monkeypatch):
+    import deepthought.config as config
+
+    config._settings_cache = None
+    monkeypatch.setenv("DT_VECTOR_BACKEND", "faiss")
+    monkeypatch.setenv("DT_VECTOR_USE_GPU", "true")
+    monkeypatch.setenv("DT_GRAPH_BACKEND", "neo4j")
+
+    settings = config.get_settings()
+    assert settings.vector_backend == "faiss"
+    assert settings.vector_use_gpu is True
+    assert settings.graph_backend == "neo4j"
 
 
 def test_load_bot_env_success(monkeypatch):
