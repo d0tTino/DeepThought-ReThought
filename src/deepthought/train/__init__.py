@@ -137,6 +137,10 @@ def create_trainer(
     train_dataset,
     eval_dataset,
     output_dir: str,
+    *,
+    epochs: float = 1,
+    batch_size: int = 2,
+    lr: float = 2e-4,
 ) -> Tuple[Trainer, TrainingArguments]:
     """Create the Trainer instance used for fine-tuning."""
     os.makedirs(output_dir, exist_ok=True)
@@ -152,15 +156,15 @@ def create_trainer(
     model = get_peft_model(model, lora_config)
     training_args = TrainingArguments(
         output_dir=output_dir,
-        num_train_epochs=1,
-        per_device_train_batch_size=2,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
         gradient_accumulation_steps=8,
-        per_device_eval_batch_size=2,
+        per_device_eval_batch_size=batch_size,
         logging_dir=f"{output_dir}/logs",
         logging_steps=10,
         save_steps=100,
         save_total_limit=3,
-        learning_rate=2e-4,
+        learning_rate=lr,
         weight_decay=0.01,
         warmup_steps=50,
         fp16=False,
@@ -201,7 +205,16 @@ def run(args: argparse.Namespace) -> int:
         max_seq_length=args.max_seq_length,
         pack_sequences=args.pack_sequences,
     )
-    trainer, _ = create_trainer(model, tokenizer, train_ds, eval_ds, args.output_dir)
+    trainer, _ = create_trainer(
+        model,
+        tokenizer,
+        train_ds,
+        eval_ds,
+        args.output_dir,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+    )
     trainer.train(resume_from_checkpoint=args.resume)
     trainer.save_model()
     trainer.save_state()
@@ -242,6 +255,24 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Sequence packing mode. 'auto' uses heuristics to reduce padding",
     )
     parser.add_argument(
+        "--epochs",
+        type=float,
+        default=1,
+        help="Number of training epochs",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=2,
+        help="Per-device training batch size",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=2e-4,
+        help="Learning rate",
+    )
+    parser.add_argument(
         "--estimate-only",
         action="store_true",
         help="Estimate VRAM and exit without loading the dataset",
@@ -261,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
         model, _ = load_model(args.model_path, args.bits)
         vram = estimate_vram(
             model,
-            batch_size=2,
+            batch_size=args.batch_size,
             seq_length=args.max_seq_length,
             gradient_accumulation_steps=8,
             bits=args.bits,

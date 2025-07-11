@@ -127,6 +127,12 @@ def test_parse_finetune_args():
             "4096",
             "--pack-sequences",
             "auto",
+            "--epochs",
+            "2",
+            "--batch-size",
+            "4",
+            "--lr",
+            "0.001",
             "--estimate-vram",
         ]
     )
@@ -137,6 +143,9 @@ def test_parse_finetune_args():
     assert args.output_dir == "/tmp/out"
     assert args.max_seq_length == 4096
     assert args.pack_sequences == "auto"
+    assert args.epochs == 2
+    assert args.batch_size == 4
+    assert args.lr == 0.001
     assert args.estimate_vram
     assert args.func.__name__ == "_cmd_finetune"
 
