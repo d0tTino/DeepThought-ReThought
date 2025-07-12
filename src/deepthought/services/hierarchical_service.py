@@ -123,18 +123,22 @@ class HierarchicalService:
                 timeout=10.0,
             )
             logger.info("HierarchicalService published memory event ID %s", input_id)
-            await msg.ack()
+            if hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except NatsError:
+                    logger.error("Failed to ack message", exc_info=True)
         except (json.JSONDecodeError, ValueError) as e:
             logger.error("Invalid InputReceived payload: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
-                except Exception:
+                except NatsError:
                     logger.error("Failed to NAK message", exc_info=True)
             elif hasattr(msg, "ack") and callable(msg.ack):
                 try:
                     await msg.ack()
-                except Exception:
+                except NatsError:
                     logger.error("Failed to ack message after error", exc_info=True)
 
         except Exception as e:  # pragma: no cover - defensive
