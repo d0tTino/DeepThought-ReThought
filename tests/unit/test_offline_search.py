@@ -1,3 +1,7 @@
+import sqlite3
+
+import pytest
+
 from deepthought.search.offline_search import OfflineSearch
 
 
@@ -52,3 +56,24 @@ def test_search_expected_hits_and_limit(tmp_path):
         "ipsum lorem",
         "ipsum dolor",
     ]
+
+
+def test_create_index_missing_fts5(monkeypatch, tmp_path):
+    path = tmp_path / "nofts5.db"
+
+    orig_connect = sqlite3.connect
+
+    class FailingConn(sqlite3.Connection):
+        def execute(self, sql, *args, **kwargs):
+            if "CREATE VIRTUAL TABLE" in sql:
+                raise sqlite3.OperationalError("no such module: fts5")
+            return super().execute(sql, *args, **kwargs)
+
+    def connect(*args, **kwargs):
+        kwargs["factory"] = FailingConn
+        return orig_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", connect)
+
+    with pytest.raises(RuntimeError, match="FTS5"):
+        OfflineSearch.create_index(str(path), [])
