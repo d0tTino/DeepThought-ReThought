@@ -34,7 +34,12 @@ setup(
         "console_scripts": [
             "dtrt=deepthought.cli:main",
             "dtrt-finetune=deepthought.train:main",
-        ]
+        ],
+        "deepthought.services": [
+            "demo=deepthought.services.demo.service:DemoService",
+            "codegen=deepthought.services.code_generation_service:CodeGenerationService",
+            "memory=deepthought.services.memory_service:MemoryService",
+        ],
     },
     description="DeepThought reThought - experimental AI framework",
     license="MIT",

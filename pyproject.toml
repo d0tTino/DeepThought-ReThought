@@ -16,6 +16,11 @@ dynamic = ["version", "dependencies"]
 dtrt = "deepthought.cli:main"
 dtrt-finetune = "deepthought.train:main"
 
+[project.entry-points."deepthought.services"]
+demo = "deepthought.services.demo.service:DemoService"
+codegen = "deepthought.services.code_generation_service:CodeGenerationService"
+memory = "deepthought.services.memory_service:MemoryService"
+
 [tool.setuptools.package-data]
 "tools" = ["template_service/*"]
 "deepthought.templates" = ["bus_service/*"]
