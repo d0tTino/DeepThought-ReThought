@@ -44,8 +44,11 @@ def test_faiss_store():
         def __init__(self, dim: int) -> None:
             self.count = 0
 
-        def add(self, vecs):
+        def add_with_ids(self, vecs, ids):
             self.count += len(vecs)
+
+        def remove_ids(self, ids):
+            self.count -= len(ids)
 
         def search(self, vecs, k):
             import numpy as np
@@ -56,6 +59,7 @@ def test_faiss_store():
 
     fake_faiss = types.SimpleNamespace(
         IndexFlatL2=DummyIndex,
+        IndexIDMap=lambda idx: idx,
         StandardGpuResources=object,
         index_cpu_to_gpu=lambda res, device, index: index,
     )
@@ -82,8 +86,11 @@ def test_create_vector_store_faiss(monkeypatch):
         def __init__(self, dim: int) -> None:
             self.count = 0
 
-        def add(self, vecs):
+        def add_with_ids(self, vecs, ids):
             self.count += len(vecs)
+
+        def remove_ids(self, ids):
+            self.count -= len(ids)
 
         def search(self, vecs, k):
             import numpy as np
@@ -94,6 +101,7 @@ def test_create_vector_store_faiss(monkeypatch):
 
     fake_faiss = types.SimpleNamespace(
         IndexFlatL2=DummyIndex,
+        IndexIDMap=lambda idx: idx,
         StandardGpuResources=object,
         index_cpu_to_gpu=lambda res, device, index: index,
     )
@@ -101,3 +109,42 @@ def test_create_vector_store_faiss(monkeypatch):
 
     store = create_vector_store(backend="faiss", use_gpu=False)
     assert isinstance(store, FaissVectorStore)
+
+
+def test_faiss_delete(monkeypatch):
+    import types
+
+    class DummyIndex:
+        def __init__(self, dim: int) -> None:
+            self.ids: list[int] = []
+
+        def add_with_ids(self, vecs, ids):
+            for i in ids:
+                self.ids.append(int(i))
+
+        def search(self, vecs, k):
+            import numpy as np
+
+            ids = self.ids[:k]
+            return np.zeros((len(vecs), len(ids)), dtype="float32"), np.tile(
+                np.array(ids, dtype="int64"), (len(vecs), 1)
+            )
+
+        def remove_ids(self, ids):
+            for i in ids:
+                if int(i) in self.ids:
+                    self.ids.remove(int(i))
+
+    fake_faiss = types.SimpleNamespace(
+        IndexFlatL2=lambda dim: DummyIndex(dim),
+        IndexIDMap=lambda idx: idx,
+        StandardGpuResources=object,
+        index_cpu_to_gpu=lambda res, device, index: index,
+    )
+    vector_store.faiss = fake_faiss
+
+    store = FaissVectorStore(embedding_function=SimpleEmbeddingFunction())
+    store.add_texts(["hello", "world"], ids=["1", "2"])
+    store.collection.delete(["1"])
+    res = store.query(["hello"], n_results=2)
+    assert "hello" not in res["documents"][0]
