@@ -43,11 +43,13 @@ sys.modules.setdefault("nats.js", fake_nats.js)
 sys.modules.setdefault("nats.js.client", fake_js_client_mod)
 sys.modules.setdefault("nats.errors", fake_errors_mod)
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
+import importlib.machinery
 import importlib.util
 
 if importlib.util.find_spec("networkx") is None:
     fake_nx = types.ModuleType("networkx")
     setattr(fake_nx, "DiGraph", object)
+    fake_nx.__spec__ = importlib.machinery.ModuleSpec("networkx", loader=None)
     sys.modules.setdefault("networkx", fake_nx)
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
@@ -346,3 +348,50 @@ async def test_stop_skips_drain_when_not_connected():
     await service.stop()
 
     assert not service._nc.drain_called
+
+
+class FailingAckMsg(DummyMsg):
+    async def ack(self):
+        raise fake_nats.errors.Error("boom")
+
+
+class FailingNakMsg(DummyMsg):
+    async def nak(self):
+        raise fake_nats.errors.Error("boom")
+
+
+class NoAckMsg:
+    def __init__(self, data):
+        self.data = data.encode()
+
+
+@pytest.mark.asyncio
+async def test_handle_input_ack_error_suppressed():
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    payload = InputReceivedPayload(user_input="hi", input_id="i1")
+    msg = FailingAckMsg(payload.to_json())
+    await service._handle_input(msg)
+
+
+@pytest.mark.asyncio
+async def test_handle_input_nak_error_suppressed():
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    msg = FailingNakMsg('{"bad": "payload"}')
+    await service._handle_input(msg)
+
+
+@pytest.mark.asyncio
+async def test_handle_input_without_ack_attribute():
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    payload = InputReceivedPayload(user_input="hey", input_id="i2")
+    msg = NoAckMsg(payload.to_json())
+    await service._handle_input(msg)
