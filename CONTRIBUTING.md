@@ -34,19 +34,19 @@ We welcome contributions via Pull Requests (PRs). To make a PR:
 ## Code Style
 
 *   **Python:** Follow PEP 8 guidelines.
-*   Run `flake8` to check style before submitting a PR:
-    ```bash
-    flake8 src tests
-    ```
-    The configuration lives in [.flake8](.flake8).
-*   Install `pre-commit` if you want flake8 and other checks to run automatically:
+*   Install `pre-commit` so that lint checks run automatically:
     ```bash
     pip install pre-commit
     pre-commit install
     ```
     This installs the hooks defined in
-    [.pre-commit-config.yaml](.pre-commit-config.yaml). You can run them
-    manually with `pre-commit run --files <changed files>`.
+    [.pre-commit-config.yaml](.pre-commit-config.yaml).
+*   Run lint checks via pre-commit before submitting a PR:
+    ```bash
+    pre-commit run --files <changed files>
+    ```
+    This will run Black, isort, flake8, and the pytest hooks on the staged
+    files.
 *   More detailed style guides or linters may be introduced later. For now, aim for clarity and consistency with the existing codebase.
 
 ## Questions

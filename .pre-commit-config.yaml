@@ -17,12 +17,6 @@ repos:
         files: "^(src|tests|docs|examples|scripts|ui)/"
   - repo: local
     hooks:
-      - id: flake8-local
-        name: flake8 on src, tests, docs, examples, scripts, and ui
-        entry: python -m flake8
-        language: system
-        pass_filenames: false
-        files: "^(src|tests|docs|examples|scripts|ui)/"
       - id: pytest
         name: pytest
         entry: pytest

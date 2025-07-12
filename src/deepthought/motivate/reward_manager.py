@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections import deque
@@ -95,7 +96,11 @@ class RewardManager:
             return
 
         novelty = self._score_novelty(response)
-        social = await self._score_social(channel_id, message_id)
+        social_res = self._score_social(channel_id, message_id)
+        if asyncio.iscoroutine(social_res):
+            social = await social_res
+        else:
+            social = social_res
         reward = (
             float(novelty >= self._novelty_threshold) * self._novelty_weight
             + float(social >= self._social_threshold) * self._social_weight  # noqa: W503
