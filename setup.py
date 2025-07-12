@@ -34,7 +34,9 @@ setup(
         "console_scripts": [
             "dtrt=deepthought.cli:main",
             "dtrt-finetune=deepthought.train:main",
-        ]
+        ],
+        "dtrt.model_loaders": ["hf=deepthought.train:_hf_model_loader"],
+        "dtrt.dataset_loaders": ["hf=deepthought.train:_hf_dataset_loader"],
     },
     description="DeepThought reThought - experimental AI framework",
     license="MIT",

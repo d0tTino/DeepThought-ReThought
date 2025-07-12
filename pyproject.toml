@@ -16,6 +16,12 @@ dynamic = ["version", "dependencies"]
 dtrt = "deepthought.cli:main"
 dtrt-finetune = "deepthought.train:main"
 
+[project.entry-points."dtrt.model_loaders"]
+hf = "deepthought.train:_hf_model_loader"
+
+[project.entry-points."dtrt.dataset_loaders"]
+hf = "deepthought.train:_hf_dataset_loader"
+
 [tool.setuptools.package-data]
 "tools" = ["template_service/*"]
 "deepthought.templates" = ["bus_service/*"]

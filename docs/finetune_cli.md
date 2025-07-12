@@ -58,3 +58,24 @@ dtrt finetune \
 
 These options map directly to `TrainingArguments.num_train_epochs`,
 `per_device_train_batch_size` and `learning_rate` respectively.
+
+## Registering custom loaders
+
+`deepthought.train` discovers model and dataset loaders through entry point
+plugins. To register your own loader, declare an entry point in your project's
+`pyproject.toml`:
+
+```toml
+[project.entry-points."dtrt.model_loaders"]
+my_loader = "my_package.loaders:load_model"
+
+[project.entry-points."dtrt.dataset_loaders"]
+my_dataset = "my_package.loaders:load_dataset"
+```
+
+After installing the package, select the loader with `--model-loader` or
+`--dataset-loader`:
+
+```bash
+dtrt finetune --model-loader my_loader --dataset-loader my_dataset
+```

@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-from typing import Tuple
+from importlib import metadata
+from typing import Callable, Tuple
 
 import torch
 from datasets import Dataset, load_dataset
@@ -22,6 +23,8 @@ from transformers import (
 __all__ = [
     "load_model",
     "load_dataset",
+    "_hf_model_loader",
+    "_hf_dataset_loader",
     "create_trainer",
     "run",
     "estimate_vram",
@@ -33,8 +36,25 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
-def load_model(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
-    """Load a model and tokenizer with the given quantization bits."""
+_MODEL_GROUP = "dtrt.model_loaders"
+_DATASET_GROUP = "dtrt.dataset_loaders"
+
+
+def _resolve_plugin(group: str, name: str) -> Callable:
+    """Return a plugin callable from entry points."""
+    eps = metadata.entry_points()
+    for ep in eps.select(group=group):
+        if ep.name == name:
+            return ep.load()
+    if group == _MODEL_GROUP and name == "hf":
+        return _hf_model_loader
+    if group == _DATASET_GROUP and name == "hf":
+        return _hf_dataset_loader
+    raise KeyError(f"No plugin named '{name}' in group '{group}'")
+
+
+def _hf_model_loader(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
+    """Default Hugging Face model loader."""
     base_model_id = model_path or "meta-llama/Llama-3.2-3B-Instruct"
     quantization_config = BitsAndBytesConfig(
         load_in_4bit=bits == 4,
@@ -60,13 +80,24 @@ def load_model(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM,
     return model, tokenizer
 
 
-def load_dataset(
+def load_model(
+    model_path: str | None,
+    bits: int,
+    *,
+    loader: str = "hf",
+) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
+    """Load a model using the specified loader plugin."""
+    fn = _resolve_plugin(_MODEL_GROUP, loader)
+    return fn(model_path, bits)
+
+
+def _hf_dataset_loader(
     dataset_path: str,
     tokenizer: AutoTokenizer,
     max_seq_length: int = 2048,
     pack_sequences: str | bool = "off",
-):
-    """Load and tokenize the dataset used for fine-tuning."""
+) -> Tuple[Dataset, Dataset]:
+    """Default Hugging Face dataset loader."""
     raw_dataset = load_dataset(dataset_path)
 
     def format_prompt(example):
@@ -127,6 +158,19 @@ def load_dataset(
         train_ds, eval_ds = split_dataset["train"], split_dataset["test"]
 
     return train_ds, eval_ds
+
+
+def load_dataset(
+    dataset_path: str,
+    tokenizer: AutoTokenizer,
+    max_seq_length: int = 2048,
+    pack_sequences: str | bool = "off",
+    *,
+    loader: str = "hf",
+) -> Tuple[Dataset, Dataset]:
+    """Load datasets using the specified loader plugin."""
+    fn = _resolve_plugin(_DATASET_GROUP, loader)
+    return fn(dataset_path, tokenizer, max_seq_length=max_seq_length, pack_sequences=pack_sequences)
 
 
 def create_trainer(
@@ -196,12 +240,13 @@ def estimate_vram(
 
 def run(args: argparse.Namespace) -> int:
     """Execute training using high level helper functions."""
-    model, tokenizer = load_model(args.model_path, args.bits)
+    model, tokenizer = load_model(args.model_path, args.bits, loader=args.model_loader)
     train_ds, eval_ds = load_dataset(
         args.dataset_path,
         tokenizer,
         max_seq_length=args.max_seq_length,
         pack_sequences=args.pack_sequences,
+        loader=args.dataset_loader,
     )
     trainer, _ = create_trainer(
         model,
@@ -227,6 +272,16 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--dataset-path",
         default="databricks/databricks-dolly-15k",
         help="Dataset path or HF dataset identifier",
+    )
+    parser.add_argument(
+        "--model-loader",
+        default="hf",
+        help="Name of the model loader plugin to use",
+    )
+    parser.add_argument(
+        "--dataset-loader",
+        default="hf",
+        help="Name of the dataset loader plugin to use",
     )
     parser.add_argument(
         "--bits",
@@ -287,7 +342,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.estimate_vram or args.estimate_only:
-        model, _ = load_model(args.model_path, args.bits)
+        model, _ = load_model(args.model_path, args.bits, loader=args.model_loader)
         vram = estimate_vram(
             model,
             batch_size=args.batch_size,
