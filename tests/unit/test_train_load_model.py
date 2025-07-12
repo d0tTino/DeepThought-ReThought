@@ -33,6 +33,10 @@ if "transformers" not in sys.modules:
         def from_pretrained(cls, *a, **k):
             raise RuntimeError("boom")
 
+        @classmethod
+        def from_config(cls, cfg):
+            return cls()
+
     class DummyTokenizer:
         @classmethod
         def from_pretrained(cls, *a, **k):
@@ -45,6 +49,7 @@ if "transformers" not in sys.modules:
     tf_stub.AutoModelForCausalLM = DummyAutoModel
     tf_stub.AutoTokenizer = DummyTokenizer
     tf_stub.BitsAndBytesConfig = DummyBitsAndBytesConfig
+    tf_stub.GPT2Config = lambda **kwargs: types.SimpleNamespace(**kwargs)
     tf_stub.DataCollatorForLanguageModeling = object
     tf_stub.Trainer = object
     tf_stub.TrainingArguments = object
