@@ -19,6 +19,9 @@ docker run --gpus all dtrt-finetune \
     --dataset-path <path> --model-path <model-id>
 ```
 
+If the specified model cannot be loaded, the CLI logs the underlying
+exception and exits instead of falling back to a different model.
+
 If you only have CPU resources, try the [Colab notebook](https://colab.research.google.com/github/d0tTino/DeepThought-ReThought/blob/main/docs/Finetune_CPU.ipynb).
 
 You can estimate the required VRAM before starting:

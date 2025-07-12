@@ -3,6 +3,7 @@ from __future__ import annotations
 """Training utilities for fine-tuning language models."""
 
 import argparse
+import logging
 import os
 from typing import Tuple
 
@@ -29,6 +30,9 @@ __all__ = [
 ]
 
 
+logger = logging.getLogger(__name__)
+
+
 def load_model(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
     """Load a model and tokenizer with the given quantization bits."""
     base_model_id = model_path or "meta-llama/Llama-3.2-3B-Instruct"
@@ -47,15 +51,9 @@ def load_model(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM,
             trust_remote_code=True,
         )
         tokenizer = AutoTokenizer.from_pretrained(base_model_id, trust_remote_code=True)
-    except Exception:
-        base_model_id = "HuggingFaceH4/zephyr-7b-beta"
-        model = AutoModelForCausalLM.from_pretrained(
-            base_model_id,
-            quantization_config=quantization_config,
-            device_map="auto",
-            trust_remote_code=True,
-        )
-        tokenizer = AutoTokenizer.from_pretrained(base_model_id, trust_remote_code=True)
+    except Exception as exc:
+        logger.exception("Failed to load model %s: %s", base_model_id, exc)
+        raise
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
