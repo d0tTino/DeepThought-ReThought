@@ -140,9 +140,11 @@ class FaissVectorStore(VectorStore):
         if use_gpu and hasattr(faiss, "StandardGpuResources"):
             res = faiss.StandardGpuResources()
             index = faiss.index_cpu_to_gpu(res, 0, index)
-        self._index = index
+        self._index = faiss.IndexIDMap(index)
         self._texts: list[Optional[str]] = []
-        self._id_to_idx: dict[str, int] = {}
+        self._id_to_internal_id: dict[str, int] = {}
+        self._internal_id_to_text_idx: dict[int, int] = {}
+        self._next_internal_id = 0
 
     @property
     def collection(self):  # pragma: no cover - simple accessor
@@ -156,10 +158,18 @@ class FaissVectorStore(VectorStore):
         return _Coll(self)
 
     def _delete(self, ids: Sequence[str]) -> None:
+        import numpy as np
+
+        internal_ids: list[int] = []
         for _id in ids:
-            idx = self._id_to_idx.pop(str(_id), None)
-            if idx is not None:
-                self._texts[idx] = None
+            iid = self._id_to_internal_id.pop(str(_id), None)
+            if iid is not None:
+                idx = self._internal_id_to_text_idx.pop(iid, None)
+                if idx is not None:
+                    self._texts[idx] = None
+                internal_ids.append(iid)
+        if internal_ids:
+            self._index.remove_ids(np.asarray(internal_ids, dtype="int64"))
 
     def add_texts(
         self,
@@ -171,10 +181,13 @@ class FaissVectorStore(VectorStore):
         vectors = self._embedding(list(texts))
         import numpy as np
 
-        self._index.add(np.asarray(vectors, dtype="float32"))
-        for text, _id in zip(texts, ids):
+        internal_ids = np.arange(self._next_internal_id, self._next_internal_id + len(texts), dtype="int64")
+        self._index.add_with_ids(np.asarray(vectors, dtype="float32"), internal_ids)
+        for text, _id, iid in zip(texts, ids, internal_ids):
             self._texts.append(text)
-            self._id_to_idx[str(_id)] = len(self._texts) - 1
+            self._id_to_internal_id[str(_id)] = int(iid)
+            self._internal_id_to_text_idx[int(iid)] = len(self._texts) - 1
+        self._next_internal_id += len(texts)
 
     def query(self, query_texts: Sequence[str], n_results: int = 3):
         import numpy as np
@@ -184,9 +197,10 @@ class FaissVectorStore(VectorStore):
         docs: list[list[str]] = []
         for inds in indices:
             hits: list[str] = []
-            for i in inds:
-                if 0 <= i < len(self._texts):
-                    text = self._texts[i]
+            for internal_id in inds:
+                idx = self._internal_id_to_text_idx.get(int(internal_id))
+                if idx is not None:
+                    text = self._texts[idx]
                     if text is not None:
                         hits.append(text)
             docs.append(hits)
