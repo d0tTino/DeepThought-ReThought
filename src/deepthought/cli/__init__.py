@@ -113,6 +113,10 @@ def _cmd_finetune(args: argparse.Namespace) -> int:
         str(args.bits),
         "--output-dir",
         args.output_dir,
+        "--model-loader",
+        args.model_loader,
+        "--dataset-loader",
+        args.dataset_loader,
         "--max-seq-length",
         str(args.max_seq_length),
         "--epochs",
@@ -145,6 +149,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dataset-path",
         default="databricks/databricks-dolly-15k",
         help="Dataset path or HF dataset identifier",
+    )
+    finetune_p.add_argument(
+        "--model-loader",
+        default="hf",
+        help="Name of the model loader plugin to use",
+    )
+    finetune_p.add_argument(
+        "--dataset-loader",
+        default="hf",
+        help="Name of the dataset loader plugin to use",
     )
     finetune_p.add_argument(
         "--bits",
