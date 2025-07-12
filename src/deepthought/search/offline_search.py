@@ -13,7 +13,17 @@ class OfflineSearch:
     def create_index(cls, db_path: str, docs: Iterable[Tuple[str, str]]) -> "OfflineSearch":
         """Create or reuse an FTS5 index at ``db_path``."""
         conn = sqlite3.connect(db_path)
-        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS documents USING FTS5(title, content)")
+        compile_options = {row[0] for row in conn.execute("pragma compile_options")}
+        if not any("FTS5" in opt for opt in compile_options):
+            conn.close()
+            raise RuntimeError("SQLite library is not compiled with FTS5 support")
+
+        try:
+            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS documents USING FTS5(title, content)")
+        except sqlite3.OperationalError as exc:  # pragma: no cover - environment dependent
+            conn.close()
+            raise RuntimeError("SQLite library is not compiled with FTS5 support") from exc
+
         conn.executemany("INSERT INTO documents(title, content) VALUES (?, ?)", list(docs))
         conn.commit()
         conn.close()
