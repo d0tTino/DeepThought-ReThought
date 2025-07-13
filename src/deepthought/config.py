@@ -61,15 +61,15 @@ class Settings(BaseSettings):
     memory_top_k: int = 3
 
     graph_backend: str = Field("memgraph", env="DT_GRAPH_BACKEND")
-    mg_host: str = os.getenv("MG_HOST", "localhost")
-    mg_port: int = int(os.getenv("MG_PORT", 7687))
-    mg_user: str = os.getenv("MG_USER", "memgraph")
-    mg_password: str = os.getenv("MG_PASSWORD", "memgraph")
+    mg_host: str = Field("localhost", env="DT_MG_HOST")
+    mg_port: int = Field(7687, env="DT_MG_PORT")
+    mg_user: str = Field("memgraph", env="DT_MG_USER")
+    mg_password: str = Field("memgraph", env="DT_MG_PASSWORD")
 
-    neo4j_host: str = Field(default_factory=lambda: os.getenv("NEO4J_HOST", "localhost"))
-    neo4j_port: int = Field(default_factory=lambda: int(os.getenv("NEO4J_PORT", 7687)))
-    neo4j_user: str = Field(default_factory=lambda: os.getenv("NEO4J_USER", "neo4j"))
-    neo4j_password: str = Field(default_factory=lambda: os.getenv("NEO4J_PASSWORD", "neo4j"))
+    neo4j_host: str = Field("localhost", env="DT_NEO4J_HOST")
+    neo4j_port: int = Field(7687, env="DT_NEO4J_PORT")
+    neo4j_user: str = Field("neo4j", env="DT_NEO4J_USER")
+    neo4j_password: str = Field("neo4j", env="DT_NEO4J_PASSWORD")
 
     reward: RewardThresholds = RewardThresholds()
     persona_descriptions: dict[str, str] = {
