@@ -10,6 +10,12 @@ Launch Memgraph using Docker:
 docker run --rm -p 7687:7687 memgraph/memgraph
 ```
 
+Alternatively start the container defined in `docker-compose.yml`:
+
+```bash
+docker compose up -d memgraph
+```
+
 ## Environment Variables
 
 Set the following variables so the memory service can reach Memgraph:
@@ -27,6 +33,12 @@ Run a local Neo4j instance with Docker:
 
 ```bash
 docker run --rm -p 7687:7687 -e NEO4J_AUTH=neo4j/test neo4j:5
+```
+
+You can also start the Neo4j service via Compose:
+
+```bash
+docker compose up -d neo4j
 ```
 
 Set these variables so ``create_graph_backend("neo4j")`` can connect:

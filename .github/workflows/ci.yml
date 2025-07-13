@@ -121,6 +121,34 @@ jobs:
         if: always()
         run: docker rm -f dtr_nats
 
+  memgraph_tests:
+    needs: integration_tests
+    if: needs.detect_changes.outputs.code_changed == 'true'
+    runs-on: ["self-hosted", "linux"]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Start Memgraph container
+        run: docker run -d --name dtr_memgraph -p 7687:7687 memgraph/memgraph
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements-ci.txt
+      - run: pip install -e . --no-deps
+      - env:
+          PYTHONPATH: src
+        run: pytest -m memgraph
+      - name: Cleanup Memgraph container
+        if: always()
+        run: docker rm -f dtr_memgraph
+
   docker_finetune_image:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
