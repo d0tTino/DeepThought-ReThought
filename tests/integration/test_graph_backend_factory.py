@@ -28,10 +28,10 @@ def test_factory_memgraph_live(memgraph_server, monkeypatch):
     if not memgraph_available(MG_HOST, MG_PORT):
         pytest.skip("Memgraph not reachable")
 
-    monkeypatch.setenv("MG_HOST", MG_HOST)
-    monkeypatch.setenv("MG_PORT", str(MG_PORT))
-    monkeypatch.setenv("MG_USER", MG_USER)
-    monkeypatch.setenv("MG_PASSWORD", MG_PASSWORD)
+    monkeypatch.setenv("DT_MG_HOST", MG_HOST)
+    monkeypatch.setenv("DT_MG_PORT", str(MG_PORT))
+    monkeypatch.setenv("DT_MG_USER", MG_USER)
+    monkeypatch.setenv("DT_MG_PASSWORD", MG_PASSWORD)
 
     backend = create_graph_backend("memgraph")
     assert isinstance(backend, GraphDALBackend)
@@ -50,10 +50,10 @@ def test_factory_neo4j_live(neo4j_server, monkeypatch):
     if not neo4j_available(NEO4J_HOST, NEO4J_PORT):
         pytest.skip("Neo4j not reachable")
 
-    monkeypatch.setenv("NEO4J_HOST", NEO4J_HOST)
-    monkeypatch.setenv("NEO4J_PORT", str(NEO4J_PORT))
-    monkeypatch.setenv("NEO4J_USER", NEO4J_USER)
-    monkeypatch.setenv("NEO4J_PASSWORD", NEO4J_PASSWORD)
+    monkeypatch.setenv("DT_NEO4J_HOST", NEO4J_HOST)
+    monkeypatch.setenv("DT_NEO4J_PORT", str(NEO4J_PORT))
+    monkeypatch.setenv("DT_NEO4J_USER", NEO4J_USER)
+    monkeypatch.setenv("DT_NEO4J_PASSWORD", NEO4J_PASSWORD)
 
     backend = create_graph_backend("neo4j")
     assert isinstance(backend, Neo4jBackend)
