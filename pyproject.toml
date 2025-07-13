@@ -24,7 +24,7 @@ memory = "deepthought.services.memory_service:MemoryService"
 
 [tool.setuptools.package-data]
 "tools" = ["template_service/*"]
-"deepthought.templates" = ["bus_service/*"]
+"deepthought.templates" = ["bus_service/*", "bus_project/*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "deepthought.__init__.__version__"}

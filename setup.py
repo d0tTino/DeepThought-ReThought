@@ -26,7 +26,7 @@ setup(
     package_dir={"": "src", "tools": "tools"},
     package_data={
         "tools": ["template_service/*"],
-        "deepthought.templates": ["bus_service/*"],
+        "deepthought.templates": ["bus_service/*", "bus_project/*"],
     },
     include_package_data=True,
     install_requires=requirements,
