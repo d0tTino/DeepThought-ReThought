@@ -8,6 +8,9 @@ sys.modules.setdefault("deepthought.motivate", types.ModuleType("motivate"))
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
 
+import pytest
+
+import deepthought.memory.tiered as tiered
 from deepthought.memory.tiered import TieredMemory
 
 
@@ -48,6 +51,16 @@ class DummyDAL:
 
     def merge_entity(self, name):
         self.merged.append(name)
+
+
+class FailingVector(DummyVector):
+    def query(self, query_texts, n_results=3):
+        raise RuntimeError("vector fail")
+
+
+class FailingDAL(DummyDAL):
+    def query_subgraph(self, query, params):
+        raise RuntimeError("graph fail")
 
 
 def test_eviction_lru():
@@ -104,3 +117,29 @@ def test_eviction_cleanup_on_delete_failure(monkeypatch):
 
     assert list(mem._lru.keys()) == ["b"]
     assert list(vec.docs.values()) == ["a", "b"]
+
+
+def test_vector_match_logs_error(monkeypatch):
+    vec = FailingVector()
+    dal = DummyDAL()
+    mem = TieredMemory(vec, dal)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("log")
+
+    monkeypatch.setattr(tiered.logger, "error", boom)
+    with pytest.raises(RuntimeError, match="log"):
+        mem.vector_matches("hi")
+
+
+def test_graph_facts_logs_error(monkeypatch):
+    vec = DummyVector()
+    dal = FailingDAL()
+    mem = TieredMemory(vec, dal)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("log")
+
+    monkeypatch.setattr(tiered.logger, "error", boom)
+    with pytest.raises(RuntimeError, match="log"):
+        mem.graph_facts()

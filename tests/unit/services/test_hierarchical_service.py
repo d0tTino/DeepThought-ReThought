@@ -365,6 +365,15 @@ class NoAckMsg:
         self.data = data.encode()
 
 
+class AckNakMsg(DummyMsg):
+    def __init__(self, data):
+        super().__init__(data)
+        self.nacked = False
+
+    async def nak(self):
+        self.nacked = True
+
+
 @pytest.mark.asyncio
 async def test_handle_input_ack_error_suppressed():
     service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
@@ -395,3 +404,29 @@ async def test_handle_input_without_ack_attribute():
     payload = InputReceivedPayload(user_input="hey", input_id="i2")
     msg = NoAckMsg(payload.to_json())
     await service._handle_input(msg)
+
+
+@pytest.mark.asyncio
+async def test_handle_input_invalid_payload():
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    msg = AckNakMsg("not json")
+    await service._handle_input(msg)
+
+    assert msg.nacked
+    assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_input_missing_fields():
+    service = HierarchicalService(DummyNATS(), DummyJS(), Settings(), None)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    msg = AckNakMsg(json.dumps({"user_input": "hi"}))
+    await service._handle_input(msg)
+
+    assert msg.nacked
+    assert not msg.acked
