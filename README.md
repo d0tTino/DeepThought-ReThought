@@ -374,7 +374,7 @@ variables:
 
 ```bash
 docker run --rm -p 7687:7687 memgraph/memgraph
-export DT_MG_HOST=localhost
+export DT_MG_HOST=localhost  # MG_HOST also accepted
 export DT_MG_PORT=7687
 export DT_MG_USER=memgraph
 export DT_MG_PASSWORD=memgraph
