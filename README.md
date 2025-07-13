@@ -158,6 +158,14 @@ the template and environment configuration.
 dtrt bus init service mysvc
 ```
 
+### Orchestrator Quick Start
+
+See [docs/orchestrator_quickstart.md](docs/orchestrator_quickstart.md) for running multiple services together:
+
+```bash
+dtrt orchestrate orchestrator.yaml
+```
+
 ## Current Status
 
 * The foundational EDA using NATS/JetStream is implemented and tested with the `BasicMemory` and `BasicLLM` reference modules.

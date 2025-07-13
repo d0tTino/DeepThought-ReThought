@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import shutil
 from importlib import import_module, resources
 from pathlib import Path
@@ -139,6 +140,13 @@ def _cmd_finetune(args: argparse.Namespace) -> int:
     return training.main(argv)
 
 
+def _cmd_orchestrate(args: argparse.Namespace) -> int:
+    from .. import orchestrator
+
+    asyncio.run(orchestrator.run(args.config))
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dtrt")
     sub = parser.add_subparsers(dest="command")
@@ -214,6 +222,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     finetune_p.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint")
     finetune_p.set_defaults(func=_cmd_finetune)
+
+    orchestrate_p = sub.add_parser(
+        "orchestrate",
+        description="Launch multiple services from a config file",
+    )
+    orchestrate_p.add_argument("config", help="Path to YAML or JSON config")
+    orchestrate_p.set_defaults(func=_cmd_orchestrate)
 
     init_p = sub.add_parser("init")
     init_sub = init_p.add_subparsers(dest="target")

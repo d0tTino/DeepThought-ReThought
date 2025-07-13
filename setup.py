@@ -35,8 +35,12 @@ setup(
             "dtrt=deepthought.cli:main",
             "dtrt-finetune=deepthought.train:main",
         ],
-        "dtrt.model_loaders": ["hf=deepthought.train:_hf_model_loader"],
-        "dtrt.dataset_loaders": ["hf=deepthought.train:_hf_dataset_loader"],
+        "deepthought.services": [
+            "demo=deepthought.services.demo.service:DemoService",
+            "codegen=deepthought.services.code_generation_service:CodeGenerationService",
+            "memory=deepthought.services.memory_service:MemoryService",
+        ],
+
     },
     description="DeepThought reThought - experimental AI framework",
     license="MIT",
