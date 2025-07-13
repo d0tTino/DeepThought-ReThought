@@ -29,6 +29,8 @@ def test_cli_bus_init_service(tmp_path: Path) -> None:
     sub_text = (dest / "subscriber.py").read_text(encoding="utf-8")
     assert f"{class_name}Publisher" in pub_text
     assert f"{class_name}Subscriber" in sub_text
+    assert "INPUTS_TOTAL" in sub_text
+    assert 'service="demo"' in sub_text
 
     for py_file in dest.glob("*.py"):
         subprocess.run(

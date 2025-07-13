@@ -2,6 +2,8 @@ import asyncio
 import time
 from typing import Any, Awaitable, Callable
 
+from deepthought.metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
+
 
 def rate_limit(
     capacity: int, refill_interval: float
@@ -50,4 +52,8 @@ class TemplateServiceSubscriber:
 
     @rate_limit(10, 1)  # 10 messages per second
     async def _handle(self, msg):
+        start = time.perf_counter()
         await msg.ack()
+        duration = time.perf_counter() - start
+        INPUTS_TOTAL.labels(service="template_service").inc()
+        INPUT_LATENCY_SECONDS.labels(service="template_service").observe(duration)

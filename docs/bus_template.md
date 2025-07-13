@@ -101,3 +101,18 @@ async def _handle(self, msg):
 The first argument is the bucket capacity and the second is the refill interval
 in seconds. When the bucket is empty, the wrapper waits until enough tokens are
 available before calling the original handler.
+
+### Prometheus Metrics
+
+The generated `subscriber.py` records simple Prometheus metrics for each
+message that is handled. After acknowledging a message it increments the
+`inputs_total` counter and observes the processing latency:
+
+```python
+duration = time.perf_counter() - start
+INPUTS_TOTAL.labels(service="template_service").inc()
+INPUT_LATENCY_SECONDS.labels(service="template_service").observe(duration)
+```
+
+These metrics can be scraped from the metrics server to monitor throughput
+and latency of your service.
