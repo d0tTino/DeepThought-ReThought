@@ -150,6 +150,8 @@ def test_parse_finetune_args():
     assert args.batch_size == 4
     assert args.lr == 0.001
     assert args.estimate_vram
+    assert args.model_loader == "hf"
+    assert args.dataset_loader == "hf"
     assert args.func.__name__ == "_cmd_finetune"
 
 

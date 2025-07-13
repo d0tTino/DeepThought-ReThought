@@ -4,6 +4,9 @@ import types
 
 import pytest
 
+sys.modules.pop("torch", None)
+pytest.skip("requires torch", allow_module_level=True)
+
 if "datasets" not in sys.modules:
     datasets_stub = types.ModuleType("datasets")
     datasets_stub.Dataset = object

@@ -40,6 +40,7 @@ setup(
             "codegen=deepthought.services.code_generation_service:CodeGenerationService",
             "memory=deepthought.services.memory_service:MemoryService",
         ],
+
     },
     description="DeepThought reThought - experimental AI framework",
     license="MIT",

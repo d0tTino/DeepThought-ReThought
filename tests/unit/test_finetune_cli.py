@@ -21,3 +21,5 @@ def test_finetune_cli_help(tmp_path):
     assert "--epochs" in result.stdout
     assert "--batch-size" in result.stdout
     assert "--lr" in result.stdout
+    assert "--model-loader" in result.stdout
+    assert "--dataset-loader" in result.stdout

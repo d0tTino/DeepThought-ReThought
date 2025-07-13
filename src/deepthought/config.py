@@ -66,11 +66,10 @@ class Settings(BaseSettings):
     mg_user: str = os.getenv("MG_USER", "memgraph")
     mg_password: str = os.getenv("MG_PASSWORD", "memgraph")
 
-
-    neo4j_host: str = "localhost"
-    neo4j_port: int = 7687
-    neo4j_user: str = "neo4j"
-    neo4j_password: str = "neo4j"
+    neo4j_host: str = Field(default_factory=lambda: os.getenv("NEO4J_HOST", "localhost"))
+    neo4j_port: int = Field(default_factory=lambda: int(os.getenv("NEO4J_PORT", 7687)))
+    neo4j_user: str = Field(default_factory=lambda: os.getenv("NEO4J_USER", "neo4j"))
+    neo4j_password: str = Field(default_factory=lambda: os.getenv("NEO4J_PASSWORD", "neo4j"))
 
     reward: RewardThresholds = RewardThresholds()
     persona_descriptions: dict[str, str] = {
@@ -160,6 +159,4 @@ def load_bot_env() -> BotEnv:
         return BotEnv()
     except ValidationError as exc:  # pragma: no cover - runtime validation
         missing = ", ".join(err["loc"][0] for err in exc.errors())
-        raise SystemExit(
-            f"Missing or invalid environment variables: {missing}"
-        ) from exc
+        raise SystemExit(f"Missing or invalid environment variables: {missing}") from exc

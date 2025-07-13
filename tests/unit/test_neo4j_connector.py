@@ -1,5 +1,6 @@
 import pytest
 
+import deepthought.config as cfg
 from deepthought.graph.connector import Neo4jConnector
 
 
@@ -8,6 +9,7 @@ def test_env_defaults(monkeypatch):
     monkeypatch.setenv("NEO4J_PORT", "7777")
     monkeypatch.setenv("NEO4J_USER", "u")
     monkeypatch.setenv("NEO4J_PASSWORD", "p")
+    monkeypatch.setattr(cfg, "_settings_cache", None)
     c = Neo4jConnector()
     assert c._uri == "bolt://h:7777"
     assert c._auth == ("u", "p")

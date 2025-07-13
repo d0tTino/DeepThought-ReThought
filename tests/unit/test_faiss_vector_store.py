@@ -12,6 +12,9 @@ def test_add_and_query_neighbors():
         def add(self, vecs):
             self.count += len(vecs)
 
+        def add_with_ids(self, vecs, ids):
+            self.add(vecs)
+
         def search(self, vecs, k):
             import numpy as np
 
@@ -23,6 +26,7 @@ def test_add_and_query_neighbors():
         IndexFlatL2=DummyIndex,
         StandardGpuResources=object,
         index_cpu_to_gpu=lambda res, device, index: index,
+        IndexIDMap=lambda index: index,
     )
     vector_store.faiss = fake_faiss
 
