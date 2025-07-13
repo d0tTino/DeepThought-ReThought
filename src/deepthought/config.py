@@ -82,7 +82,11 @@ class Settings(BaseSettings):
 
 
 def load_settings(config_file: Optional[str] = None) -> Settings:
-    """Load settings from environment variables or a config file."""
+    """Load settings from environment variables or a config file.
+
+    Either the default ``DT_`` prefix or plain variable names are accepted
+    for Memgraph options, e.g. ``DT_MG_HOST`` or ``MG_HOST``.
+    """
     file_path = config_file or os.getenv("DT_CONFIG_FILE")
     if file_path:
         path = Path(file_path)

@@ -22,7 +22,7 @@ Set the following variables so the memory service can reach Memgraph:
 
 | Variable       | Description           | Default     |
 | -------------- | -------------------- | ----------- |
-| `DT_MG_HOST`      | Memgraph host name   | `localhost` |
+| `DT_MG_HOST` / `MG_HOST` | Memgraph host name | `localhost` |
 | `DT_MG_PORT`      | Memgraph port number | `7687`      |
 | `DT_MG_USER`      | Username (optional)  | `memgraph`  |
 | `DT_MG_PASSWORD`  | Password (optional)  | `memgraph`  |
