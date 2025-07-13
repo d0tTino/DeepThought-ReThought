@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from deepthought import orchestrator
+import deepthought.orchestrator as orchestrator
 
 
 class DummyService:
@@ -21,6 +21,16 @@ class DummyService:
 
 @pytest.mark.asyncio
 async def test_run(monkeypatch, tmp_path):
+    created: dict[str, DummyService] = {}
+
+    orig_init = DummyService.__init__
+
+    def capture_init(self, nc, js):
+        orig_init(self, nc, js)
+        created["instance"] = self
+
+    monkeypatch.setattr(DummyService, "__init__", capture_init)
+
     ep = SimpleNamespace(name="dummy", load=lambda: DummyService)
     monkeypatch.setattr(
         orchestrator.metadata,
@@ -49,3 +59,8 @@ async def test_run(monkeypatch, tmp_path):
     cfg.write_text('{"services": ["dummy"]}', encoding="utf-8")
 
     await orchestrator.run(str(cfg))
+
+    service = created.get("instance")
+    assert service is not None, "DummyService instance was not created"
+    assert service.started is True
+    assert service.stopped is True
