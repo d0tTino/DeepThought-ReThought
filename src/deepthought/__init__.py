@@ -34,7 +34,10 @@ try:  # pragma: no cover - optional dependency may be missing
     from . import motivate  # type: ignore  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
     motivate = None  # type: ignore
-from . import orchestrator  # noqa: F401
+try:  # pragma: no cover - optional dependency may be missing
+    from . import orchestrator  # type: ignore  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    orchestrator = None  # type: ignore
 from . import persona  # noqa: F401
 
 # neuromorphic uses optional nengo dependency
