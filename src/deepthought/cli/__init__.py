@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import shutil
 from importlib import import_module, resources
 from pathlib import Path
@@ -92,17 +93,76 @@ def init_service(
         docker_file.write_text(text, encoding="utf-8")
 
 
+def init_project(
+    name: str,
+    *,
+    stream_name: str | None = None,
+    tls_cert: str | None = None,
+    tls_key: str | None = None,
+    tls_ca: str | None = None,
+    js_storage: str | None = None,
+    max_msgs: int | None = None,
+    template_name: str = "bus_project",
+) -> None:
+    dest = Path(name)
+    if dest.exists():
+        raise SystemExit(f"Project '{name}' already exists")
+
+    template = None
+    try:
+        templ_res = resources.files("deepthought.templates").joinpath(template_name)
+        with resources.as_file(templ_res) as path:
+            if path.exists():
+                template = Path(path)
+    except ModuleNotFoundError:
+        template = None
+    if template is None or not template.exists():
+        candidate = Path(__file__).resolve().parents[3] / "templates" / template_name
+        if candidate.exists():
+            template = candidate
+    if template is None or not template.exists():
+        raise SystemExit("Project template not found")
+
+    shutil.copytree(template, dest)
+    cwd = Path.cwd()
+    try:
+        os.chdir(dest)
+        init_service(
+            name,
+            template_name="bus_service",
+            stream_name=stream_name,
+            tls_cert=tls_cert,
+            tls_key=tls_key,
+            tls_ca=tls_ca,
+            js_storage=js_storage,
+            max_msgs=max_msgs,
+        )
+    finally:
+        os.chdir(cwd)
+
+
 def _cmd_init_service(args: argparse.Namespace) -> None:
-    init_service(
-        args.name,
-        template_name=args.template,
-        stream_name=getattr(args, "stream_name", None),
-        tls_cert=getattr(args, "tls_cert", None),
-        tls_key=getattr(args, "tls_key", None),
-        tls_ca=getattr(args, "tls_ca", None),
-        js_storage=getattr(args, "js_storage", None),
-        max_msgs=getattr(args, "max_msgs", None),
-    )
+    if args.template == "bus_project":
+        init_project(
+            args.name,
+            stream_name=getattr(args, "stream_name", None),
+            tls_cert=getattr(args, "tls_cert", None),
+            tls_key=getattr(args, "tls_key", None),
+            tls_ca=getattr(args, "tls_ca", None),
+            js_storage=getattr(args, "js_storage", None),
+            max_msgs=getattr(args, "max_msgs", None),
+        )
+    else:
+        init_service(
+            args.name,
+            template_name=args.template,
+            stream_name=getattr(args, "stream_name", None),
+            tls_cert=getattr(args, "tls_cert", None),
+            tls_key=getattr(args, "tls_key", None),
+            tls_ca=getattr(args, "tls_ca", None),
+            js_storage=getattr(args, "js_storage", None),
+            max_msgs=getattr(args, "max_msgs", None),
+        )
 
 
 def _cmd_finetune(args: argparse.Namespace) -> int:
@@ -266,6 +326,30 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Maximum messages per subject",
     )
     bus_svc.set_defaults(func=_cmd_init_service, template="bus_service")
+
+    bus_proj = bus_init_sub.add_parser("project")
+    bus_proj.add_argument("name")
+    bus_proj.add_argument(
+        "--stream-name",
+        default="deepthought_events",
+        help="JetStream stream name to use",
+    )
+    bus_proj.add_argument("--tls-cert", default="", help="Path to the client certificate")
+    bus_proj.add_argument("--tls-key", default="", help="Path to the client key")
+    bus_proj.add_argument("--tls-ca", default="", help="Path to the CA certificate")
+    bus_proj.add_argument(
+        "--js-storage",
+        choices=["memory", "file"],
+        default="memory",
+        help="JetStream storage backend",
+    )
+    bus_proj.add_argument(
+        "--max-msgs",
+        type=int,
+        default=10000,
+        help="Maximum messages per subject",
+    )
+    bus_proj.set_defaults(func=_cmd_init_service, template="bus_project")
 
     return parser
 
