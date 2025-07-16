@@ -25,12 +25,16 @@ def test_bus_init_project(tmp_path: Path) -> None:
     assert (service_dir / "service.py").exists()
 
     for py_file in service_dir.glob("*.py"):
-        subprocess.run([
-            sys.executable,
-            "-m",
-            "py_compile",
-            str(py_file),
-        ], check=True, env=env)
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "py_compile",
+                str(py_file),
+            ],
+            check=True,
+            env=env,
+        )
 
 
 def test_bus_init_project_options(tmp_path: Path) -> None:
@@ -71,6 +75,7 @@ def test_bus_init_project_options(tmp_path: Path) -> None:
     assert "NATS_JS_STORAGE=file" in env_text
     assert "NATS_MAX_MSGS=42" in env_text
     docker_text = (service_dir / "Dockerfile").read_text(encoding="utf-8")
+    assert "pip install deepthought-rethought" in docker_text
     assert "NATS_TLS_CERT=c.pem" in docker_text
     assert "NATS_JS_STORAGE=file" in docker_text
     assert "NATS_MAX_MSGS=42" in docker_text
