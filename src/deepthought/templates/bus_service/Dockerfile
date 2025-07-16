@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 WORKDIR /app
 COPY . .
-RUN pip install -e ../../..
+RUN pip install deepthought-rethought
 # Example credentials file for NATS connection
 COPY nats.env.example /etc/nats.env
 # Copy TLS certificates if present

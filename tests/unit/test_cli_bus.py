@@ -24,6 +24,9 @@ def test_cli_bus_init_service(tmp_path: Path) -> None:
     assert (dest / "Dockerfile").exists()
     assert (dest / "nats.env.example").exists()
 
+    docker_text = (dest / "Dockerfile").read_text(encoding="utf-8")
+    assert "pip install deepthought-rethought" in docker_text
+
     class_name = "DemoService"
     pub_text = (dest / "publisher.py").read_text(encoding="utf-8")
     sub_text = (dest / "subscriber.py").read_text(encoding="utf-8")
