@@ -2,6 +2,15 @@ version: '3'
 services:
   nats:
     image: nats:latest
-    command: ["-js"]
+    command:
+      - "-js"
+      - "--tlscert"
+      - "${TLS_CERT}"
+      - "--tlskey"
+      - "${TLS_KEY}"
+      - "--tlscacert"
+      - "${TLS_CA}"
+    environment:
+      - "STREAM_NAME=${STREAM_NAME}"
     ports:
       - "4222:4222"
