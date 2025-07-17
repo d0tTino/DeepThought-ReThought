@@ -18,11 +18,14 @@ def test_bus_init_project(tmp_path: Path) -> None:
     dest = tmp_path / "demo"
     service_dir = dest / "src" / "deepthought" / "services" / "demo"
     assert dest.is_dir()
-    assert (dest / "docker-compose.yml").exists()
+    docker_compose = dest / "docker-compose.yml"
+    assert docker_compose.exists()
     assert service_dir.is_dir()
     assert (service_dir / "publisher.py").exists()
     assert (service_dir / "subscriber.py").exists()
     assert (service_dir / "service.py").exists()
+
+    assert "deepthought_events" in docker_compose.read_text(encoding="utf-8")
 
     for py_file in service_dir.glob("*.py"):
         subprocess.run([
@@ -74,3 +77,9 @@ def test_bus_init_project_options(tmp_path: Path) -> None:
     assert "NATS_TLS_CERT=c.pem" in docker_text
     assert "NATS_JS_STORAGE=file" in docker_text
     assert "NATS_MAX_MSGS=42" in docker_text
+
+    compose_text = (tmp_path / "opt" / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "custom" in compose_text
+    assert "c.pem" in compose_text
+    assert "k.pem" in compose_text
+    assert "ca.pem" in compose_text

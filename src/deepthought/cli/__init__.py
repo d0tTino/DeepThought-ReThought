@@ -104,6 +104,13 @@ def init_project(
     max_msgs: int | None = None,
     template_name: str = "bus_project",
 ) -> None:
+    """Create a new bus project with a default service.
+
+    The function copies the ``bus_project`` template to ``name`` and then calls
+    :func:`init_service` to scaffold the initial service within that directory.
+    Any provided stream name or TLS file paths are substituted into the copied
+    ``docker-compose.yml`` file.
+    """
     dest = Path(name)
     if dest.exists():
         raise SystemExit(f"Project '{name}' already exists")
@@ -124,6 +131,18 @@ def init_project(
         raise SystemExit("Project template not found")
 
     shutil.copytree(template, dest)
+    compose_file = dest / "docker-compose.yml"
+    if compose_file.exists():
+        text = compose_file.read_text(encoding="utf-8")
+        if stream_name:
+            text = text.replace("${STREAM_NAME}", stream_name)
+        if tls_cert:
+            text = text.replace("${TLS_CERT}", tls_cert)
+        if tls_key:
+            text = text.replace("${TLS_KEY}", tls_key)
+        if tls_ca:
+            text = text.replace("${TLS_CA}", tls_ca)
+        compose_file.write_text(text, encoding="utf-8")
     cwd = Path.cwd()
     try:
         os.chdir(dest)
