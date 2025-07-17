@@ -19,7 +19,7 @@ This exposes the `dtrt` CLI (also available as `dtrt-finetune`).
 
 ### Build from source
 
-Create a wheel and install it with pip:
+Build the project and install the wheel with pip:
 
 ```bash
 python -m build
@@ -34,10 +34,10 @@ dtrt finetune --help
 
 ### Publishing to PyPI
 
-Create a wheel and upload it using `twine`:
+Build the project and upload it using `twine`:
 
 ```bash
-python -m build --wheel
+python -m build
 twine upload dist/*
 ```
 

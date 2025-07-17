@@ -29,3 +29,11 @@ memory = "deepthought.services.memory_service:MemoryService"
 [tool.setuptools.dynamic]
 version = {attr = "deepthought.__init__.__version__"}
 dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.package-dir]
+"" = "src"
+tools = "tools"
+
+[tool.setuptools.packages.find]
+where = ["src", "."]
+include = ["deepthought", "deepthought.*", "tools", "tools.*"]
