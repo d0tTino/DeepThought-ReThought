@@ -4,13 +4,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("build")
+
 
 def test_dtrt_init_service_from_wheel(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     wheel_dir = tmp_path / "dist"
     wheel_dir.mkdir()
     subprocess.run(
-        [sys.executable, "setup.py", "bdist_wheel", "--dist-dir", str(wheel_dir)],
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(wheel_dir)],
         cwd=repo_root,
         check=True,
     )
