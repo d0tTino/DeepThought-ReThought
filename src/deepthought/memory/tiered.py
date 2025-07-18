@@ -58,7 +58,8 @@ class TieredMemory:
         while len(self._lru) > self._capacity:
             text, doc_id = next(iter(self._lru.items()))
             try:
-                self._store.collection.delete([doc_id])
+                if hasattr(self._store.collection, "delete"):
+                    self._store.collection.delete([doc_id])
             except Exception:  # pragma: no cover - defensive
                 logger.error("Failed to delete %s from vector store", doc_id, exc_info=True)
             finally:
