@@ -119,6 +119,27 @@ def test_eviction_cleanup_on_delete_failure(monkeypatch):
     assert list(vec.docs.values()) == ["a", "b"]
 
 
+def test_eviction_when_delete_missing():
+    class NoDeleteVector(DummyVector):
+        class Collection:
+            def __init__(self, outer):
+                self.outer = outer
+
+        @property
+        def collection(self):
+            return NoDeleteVector.Collection(self)
+
+    vec = NoDeleteVector()
+    dal = DummyDAL()
+    mem = TieredMemory(vec, dal, capacity=1, top_k=1)
+
+    mem.store_interaction("a")
+    mem.store_interaction("b")
+
+    assert list(mem._lru.keys()) == ["b"]
+    assert list(vec.docs.values()) == ["a", "b"]
+
+
 def test_vector_match_logs_error(monkeypatch):
     vec = FailingVector()
     dal = DummyDAL()
