@@ -20,14 +20,13 @@ dtrt-finetune = "deepthought.train:main"
 demo = "deepthought.services.demo.service:DemoService"
 codegen = "deepthought.services.code_generation_service:CodeGenerationService"
 memory = "deepthought.services.memory_service:MemoryService"
-remote_llm = "deepthought.services.llm_remote_service:LLMRemoteService"
-output_handler = "deepthought.services.output_handler_service:OutputHandlerService"
-reward_manager = "deepthought.services.reward_manager_service:RewardManagerService"
+reward_manager = "deepthought.motivate.reward_manager:RewardManager"
+
 
 
 [tool.setuptools.package-data]
 "tools" = ["template_service/*"]
-"deepthought.templates" = ["bus_service/*", "bus_project/*"]
+"deepthought.templates" = ["bus_service/*", "bus_project/*", "reward_service/*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "deepthought.__init__.__version__"}
