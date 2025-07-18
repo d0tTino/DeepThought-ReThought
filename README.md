@@ -232,6 +232,11 @@ For instructions on compiling these scripts as part of your Unity project, see [
         ```bash
         docker run --rm -p 7687:7687 memgraph/memgraph
         ```
+    Alternatively start all integration services (NATS, Memgraph and Chroma) using
+    the provided Compose file:
+        ```bash
+        docker compose up -d nats memgraph chroma
+        ```
     Set the GraphDAL environment variables (see [docs/graphdal.md](docs/graphdal.md)).
 6.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
 7.  **CI-style setup:** A helper script mirrors the project\'s continuous integration workflow.

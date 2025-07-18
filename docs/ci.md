@@ -38,8 +38,10 @@ To replicate the CI steps locally or on your self-hosted runner:
    ```
 2. Start the integration services using Docker Compose:
    ```bash
-   docker-compose up -d
+   docker compose up -d nats memgraph chroma
    ```
+   This launches the same NATS, Memgraph and Chroma services used in CI.
+   For a lightweight setup that starts only NATS, run `./scripts/codex_setup.sh`.
 3. Initialize the required JetStream streams:
    ```bash
    python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
