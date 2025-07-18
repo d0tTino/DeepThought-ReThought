@@ -9,7 +9,7 @@ def test_cli_bus_init_service(tmp_path: Path) -> None:
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
 
     subprocess.run(
-        [sys.executable, "-m", "deepthought.cli", "bus", "init", "service", "demo"],
+        [sys.executable, "-m", "deepthought.cli.bus", "init", "service", "demo"],
         cwd=tmp_path,
         stdout=subprocess.PIPE,
         text=True,

@@ -116,3 +116,15 @@ INPUT_LATENCY_SECONDS.labels(service="template_service").observe(duration)
 
 These metrics can be scraped from the metrics server to monitor throughput
 and latency of your service.
+
+## End-to-End Example
+
+Create a new project and start both NATS and the initial service using Docker Compose:
+
+```bash
+dtrt bus init project mybus --stream-name demo_events --js-storage file --max-msgs 5000
+cd mybus
+docker compose up --build
+```
+
+The command scaffolds a directory ``mybus`` with a ``docker-compose.yml`` and a service in ``src/deepthought/services/mybus``.
