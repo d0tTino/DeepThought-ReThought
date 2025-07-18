@@ -23,6 +23,7 @@ memory = "deepthought.services.memory_service:MemoryService"
 reward_manager = "deepthought.motivate.reward_manager:RewardManager"
 
 
+
 [tool.setuptools.package-data]
 "tools" = ["template_service/*"]
 "deepthought.templates" = ["bus_service/*", "bus_project/*", "reward_service/*"]
