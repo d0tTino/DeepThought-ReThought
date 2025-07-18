@@ -21,6 +21,7 @@ demo = "deepthought.services.demo.service:DemoService"
 codegen = "deepthought.services.code_generation_service:CodeGenerationService"
 memory = "deepthought.services.memory_service:MemoryService"
 reward_manager = "deepthought.motivate.reward_manager:RewardManager"
+knowledge_graph = "deepthought.services.knowledge_graph_service:KnowledgeGraphService"
 
 
 

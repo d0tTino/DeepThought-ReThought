@@ -96,6 +96,34 @@ Another demo using a Neo4j backend is available:
 python examples/graph_memory_demo.py
 ```
 
+### Orchestrator Configuration
+
+Start the `knowledge_graph` service via the orchestrator by writing an
+`orchestrator.yml` file:
+
+```yaml
+services:
+  - knowledge_graph
+```
+
+Choose the backend with `DT_GRAPH_BACKEND` and set the connection variables.
+For Neo4j:
+
+```bash
+export DT_GRAPH_BACKEND=neo4j
+export DT_NEO4J_HOST=localhost
+export DT_NEO4J_PORT=7687
+export DT_NEO4J_USER=neo4j
+export DT_NEO4J_PASSWORD=test
+```
+
+For Memgraph simply set `DT_GRAPH_BACKEND=memgraph` and optionally the
+`DT_MG_*` variables. Then run:
+
+```bash
+dtrt orchestrate orchestrator.yml
+```
+
 
 ## Hierarchical Memory Wrapper
 

@@ -8,7 +8,12 @@ Create a configuration file listing the services to launch:
 services:
   - demo
   - codegen
+  - knowledge_graph
 ```
+
+Set `DT_GRAPH_BACKEND` to either `memgraph` or `neo4j` and export the matching
+connection variables (see `docs/graphdal.md`) so the service can reach your
+database.
 
 Start a local NATS server with JetStream enabled then run:
 
