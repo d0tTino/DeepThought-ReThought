@@ -172,9 +172,12 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
             max_msgs=getattr(args, "max_msgs", None),
         )
     else:
+        template = args.template
+        if args.template == "bus_service" and args.name == "reward":
+            template = "reward_service"
         init_service(
             args.name,
-            template_name=args.template,
+            template_name=template,
             stream_name=getattr(args, "stream_name", None),
             tls_cert=getattr(args, "tls_cert", None),
             tls_key=getattr(args, "tls_key", None),
