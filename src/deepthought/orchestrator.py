@@ -15,10 +15,11 @@ logger = logging.getLogger(__name__)
 
 def discover_services(names: Iterable[str] | None = None) -> list[type]:
     """Return service classes registered under ``deepthought.services``."""
-    try:
-        eps = metadata.entry_points().select(group="deepthought.services")
-    except Exception:
-        eps = []
+    eps_obj = metadata.entry_points()
+    if hasattr(eps_obj, "select"):
+        eps = eps_obj.select(group="deepthought.services")
+    else:  # pragma: no cover - Python < 3.10
+        eps = eps_obj.get("deepthought.services", [])
     selected = []
     if names is None:
         selected = eps

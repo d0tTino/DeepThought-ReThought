@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "deepthought-rethought"
 description = "DeepThought reThought - experimental AI framework"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Tino Tonitini"}]
 urls = {Homepage = "https://github.com/d0tTino/DeepThought-ReThought"}
