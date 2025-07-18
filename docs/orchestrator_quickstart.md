@@ -17,3 +17,16 @@ dtrt orchestrate orchestrator.yaml
 ```
 
 Publishing an `INPUT_RECEIVED` event will now flow through the `DemoService` and the `CodeGenerationService`, demonstrating end-to-end event handling.
+
+## End-to-End Demo
+
+The `examples/end_to_end_demo.py` script shows how to run multiple services via
+the orchestrator. It launches a local NATS server and starts the
+`MemoryService`, `RemoteLLM`, `OutputHandler` and `RewardManager` services. A
+sample message is then processed end-to-end.
+
+Run the demo with:
+
+```bash
+python examples/end_to_end_demo.py
+```
