@@ -43,7 +43,8 @@ _DATASET_GROUP = "dtrt.dataset_loaders"
 def _resolve_plugin(group: str, name: str) -> Callable:
     """Return a plugin callable from entry points."""
     eps = metadata.entry_points()
-    for ep in eps.select(group=group):
+    ep_iter = eps.select(group=group) if hasattr(eps, "select") else eps.get(group, [])
+    for ep in ep_iter:
         if ep.name == name:
             return ep.load()
     if group == _MODEL_GROUP and name == "hf":
