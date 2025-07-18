@@ -4,8 +4,10 @@ import argparse
 import asyncio
 import os
 import shutil
-from importlib import import_module, resources
+from importlib import import_module
 from pathlib import Path
+
+from .template_helpers import apply_bus_substitutions, find_template
 
 
 def _to_camel(name: str) -> str:
@@ -27,22 +29,7 @@ def init_service(
     if dest.exists():
         raise SystemExit(f"Service '{name}' already exists")
 
-    template = None
-    try:
-        templ_res = resources.files("deepthought.templates").joinpath(template_name)
-        with resources.as_file(templ_res) as path:
-            if path.exists():
-                template = Path(path)
-    except ModuleNotFoundError:
-        template = None
-    if template is None or not template.exists():
-        # templates live under ``templates/<template_name>`` during development
-        candidate = Path(__file__).resolve().parents[3] / "templates" / template_name
-        if candidate.exists():
-            template = candidate
-        else:
-            # fallback to package data when installed from a wheel
-            template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
+    template = find_template(template_name)
 
     shutil.copytree(template, dest)
     class_name = _to_camel(name) + "Service"
@@ -63,33 +50,28 @@ def init_service(
     env_file = dest / "nats.env.example"
     if env_file.exists():
         text = env_file.read_text(encoding="utf-8")
-        if stream_name:
-            text = text.replace("deepthought_events", stream_name)
-        if tls_cert is not None:
-            text = text.replace("NATS_TLS_CERT=", f"NATS_TLS_CERT={tls_cert}")
-        if tls_key is not None:
-            text = text.replace("NATS_TLS_KEY=", f"NATS_TLS_KEY={tls_key}")
-        if tls_ca is not None:
-            text = text.replace("NATS_TLS_CA=", f"NATS_TLS_CA={tls_ca}")
-        if js_storage is not None:
-            text = text.replace("NATS_JS_STORAGE=memory", f"NATS_JS_STORAGE={js_storage}")
-        if max_msgs is not None:
-            text = text.replace("NATS_MAX_MSGS=10000", f"NATS_MAX_MSGS={max_msgs}")
+        text = apply_bus_substitutions(
+            text,
+            stream_name=stream_name,
+            tls_cert=tls_cert,
+            tls_key=tls_key,
+            tls_ca=tls_ca,
+            js_storage=js_storage,
+            max_msgs=max_msgs,
+        )
         env_file.write_text(text, encoding="utf-8")
 
     docker_file = dest / "Dockerfile"
     if docker_file.exists():
         text = docker_file.read_text(encoding="utf-8")
-        if tls_cert is not None:
-            text = text.replace("NATS_TLS_CERT=", f"NATS_TLS_CERT={tls_cert}")
-        if tls_key is not None:
-            text = text.replace("NATS_TLS_KEY=", f"NATS_TLS_KEY={tls_key}")
-        if tls_ca is not None:
-            text = text.replace("NATS_TLS_CA=", f"NATS_TLS_CA={tls_ca}")
-        if js_storage is not None:
-            text = text.replace("NATS_JS_STORAGE=memory", f"NATS_JS_STORAGE={js_storage}")
-        if max_msgs is not None:
-            text = text.replace("NATS_MAX_MSGS=10000", f"NATS_MAX_MSGS={max_msgs}")
+        text = apply_bus_substitutions(
+            text,
+            tls_cert=tls_cert,
+            tls_key=tls_key,
+            tls_ca=tls_ca,
+            js_storage=js_storage,
+            max_msgs=max_msgs,
+        )
         docker_file.write_text(text, encoding="utf-8")
 
 
@@ -115,33 +97,19 @@ def init_project(
     if dest.exists():
         raise SystemExit(f"Project '{name}' already exists")
 
-    template = None
-    try:
-        templ_res = resources.files("deepthought.templates").joinpath(template_name)
-        with resources.as_file(templ_res) as path:
-            if path.exists():
-                template = Path(path)
-    except ModuleNotFoundError:
-        template = None
-    if template is None or not template.exists():
-        candidate = Path(__file__).resolve().parents[3] / "templates" / template_name
-        if candidate.exists():
-            template = candidate
-    if template is None or not template.exists():
-        raise SystemExit("Project template not found")
+    template = find_template(template_name)
 
     shutil.copytree(template, dest)
     compose_file = dest / "docker-compose.yml"
     if compose_file.exists():
         text = compose_file.read_text(encoding="utf-8")
-        if stream_name:
-            text = text.replace("${STREAM_NAME}", stream_name)
-        if tls_cert:
-            text = text.replace("${TLS_CERT}", tls_cert)
-        if tls_key:
-            text = text.replace("${TLS_KEY}", tls_key)
-        if tls_ca:
-            text = text.replace("${TLS_CA}", tls_ca)
+        text = apply_bus_substitutions(
+            text,
+            stream_name=stream_name,
+            tls_cert=tls_cert,
+            tls_key=tls_key,
+            tls_ca=tls_ca,
+        )
         compose_file.write_text(text, encoding="utf-8")
     cwd = Path.cwd()
     try:
