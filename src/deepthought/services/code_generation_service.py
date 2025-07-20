@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from string import Template
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import nats
 from nats.aio.client import Client as NATS
@@ -11,7 +11,6 @@ from nats.js.client import JetStreamContext
 
 from ..eda.events import (
     CodeGeneratedPayload,
-    CodeTemplatePayload,
     EventSubjects,
 )
 from ..eda.publisher import Publisher

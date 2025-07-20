@@ -4,25 +4,17 @@ import json
 import logging
 import os
 import random
-import sys
-import types
 import uuid
 from datetime import timedelta, timezone
-from typing import TYPE_CHECKING, List, Tuple
+from typing import List, Tuple
 
 import aiohttp
 
 from deepthought.goal_scheduler import GoalScheduler
-from deepthought.graph.connector import GraphConnector
-from deepthought.graph.dal import GraphDAL
 from deepthought.services import PersonaManager
 from deepthought.services.db_manager import (
-    MAX_MEMORY_LENGTH,
-    MAX_PROMPT_LENGTH,
-    MAX_THEORY_LENGTH,
     DBManager,
 )
-from deepthought.services.file_graph_dal import FileGraphDAL
 from deepthought.services.moderation import is_allowed
 from deepthought.services.scheduler import SchedulerService
 
@@ -76,7 +68,6 @@ except Exception:  # pragma: no cover - optional dependency
     )
 
 import nats
-from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
 SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()

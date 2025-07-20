@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import subprocess
 import sys
 import uuid
 from pathlib import Path

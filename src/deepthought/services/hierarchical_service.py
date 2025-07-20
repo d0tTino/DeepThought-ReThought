@@ -3,14 +3,14 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import List, Optional, Sequence
+from typing import List, Sequence
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.errors import Error as NatsError
 from nats.js.client import JetStreamContext
 
-from ..config import Settings, get_settings
+from ..config import Settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber

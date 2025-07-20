@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 
 try:  # Ensure prometheus_client is loaded before tests patch it

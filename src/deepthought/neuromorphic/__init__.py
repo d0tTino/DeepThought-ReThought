@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 try:  # pragma: no cover - optional dependency may be missing
     import nengo  # type: ignore
