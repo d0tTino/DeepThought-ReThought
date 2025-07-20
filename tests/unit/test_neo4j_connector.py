@@ -31,3 +31,13 @@ def test_connect_retries(monkeypatch):
     driver = connector.connect()
     assert driver == "driver"
     assert len(calls) == 2
+
+
+def test_settings_argument():
+    from deepthought.config import Settings
+
+    s = Settings(neo4j_host="h", neo4j_port=11, neo4j_user="u", neo4j_password="p")
+    c = Neo4jConnector(settings=s)
+
+    assert c._uri == "bolt://h:11"
+    assert c._auth == ("u", "p")

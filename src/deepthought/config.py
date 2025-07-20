@@ -10,6 +10,25 @@ from typing import Optional
 from pydantic import AnyUrl, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
+def _apply_env_aliases() -> None:
+    """Map legacy environment variables to the expected ``DT_*`` names."""
+
+    mapping = {
+        "MG_HOST": "DT_MG_HOST",
+        "MG_PORT": "DT_MG_PORT",
+        "MG_USER": "DT_MG_USER",
+        "MG_PASSWORD": "DT_MG_PASSWORD",
+        "NEO4J_HOST": "DT_NEO4J_HOST",
+        "NEO4J_PORT": "DT_NEO4J_PORT",
+        "NEO4J_USER": "DT_NEO4J_USER",
+        "NEO4J_PASSWORD": "DT_NEO4J_PASSWORD",
+    }
+
+    for old, new in mapping.items():
+        if old in os.environ and new not in os.environ:
+            os.environ[new] = os.environ[old]
+
 try:  # YAML support is optional
     import yaml  # type: ignore
 except Exception:  # pragma: no cover - yaml may not be installed
@@ -87,6 +106,7 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
     Either the default ``DT_`` prefix or plain variable names are accepted
     for Memgraph options, e.g. ``DT_MG_HOST`` or ``MG_HOST``.
     """
+    _apply_env_aliases()
     file_path = config_file or os.getenv("DT_CONFIG_FILE")
     if file_path:
         path = Path(file_path)

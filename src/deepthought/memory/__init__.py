@@ -62,8 +62,8 @@ def create_memory_backend(
     top_k: int | None = None,
 ) -> TieredMemory:
     """Return :class:`TieredMemory` configured from the provided ``Settings``."""
-
-    settings = load_memory_settings(settings)
+    full_settings = settings or get_settings()
+    settings = load_memory_settings(full_settings)
 
     store = create_vector_store(
         backend=vector_backend or settings.vector_backend,
@@ -72,7 +72,9 @@ def create_memory_backend(
         use_gpu=use_gpu if use_gpu is not None else settings.vector_use_gpu,
     )
 
-    backend = create_graph_backend(graph_backend_name or settings.graph_backend)
+    backend = create_graph_backend(
+        graph_backend_name or settings.graph_backend, settings=full_settings
+    )
 
     return TieredMemory(
         store,

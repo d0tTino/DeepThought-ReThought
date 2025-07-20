@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - import for type hints
+    from ..config import Settings
 
 try:  # pragma: no cover - optional dependency
     from neo4j import GraphDatabase
@@ -22,17 +25,18 @@ class GraphConnector:
 
     def __init__(
         self,
+        settings: Settings | None = None,
+        *,
         host: str | None = None,
         port: int | None = None,
         username: str | None = None,
         password: str | None = None,
-        *,
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> None:
         from ..config import get_settings
 
-        settings = get_settings()
+        settings = settings or get_settings()
 
         host = settings.mg_host if host is None else host
         port = settings.mg_port if port is None else port
@@ -121,17 +125,18 @@ class Neo4jConnector:
 
     def __init__(
         self,
+        settings: Settings | None = None,
+        *,
         host: str | None = None,
         port: int | None = None,
         username: str | None = None,
         password: str | None = None,
-        *,
         max_retries: int = 3,
         retry_delay: float = 1.0,
     ) -> None:
         from ..config import get_settings
 
-        settings = get_settings()
+        settings = settings or get_settings()
 
         host = settings.neo4j_host if host is None else host
         port = settings.neo4j_port if port is None else port
