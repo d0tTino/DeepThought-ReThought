@@ -1,0 +1,49 @@
+version: '3.8'
+services:
+  nats:
+    image: nats:latest
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  edge:
+    image: dtrt-edge
+    ports:
+      - "8000:8000"
+
+  agent1:
+    image: python:3.11-slim
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - NATS_URL=nats://nats:4222
+      - LLM_ENDPOINT=http://edge:8000/generate
+      - PYTHONPATH=/app/src:/app
+      - EDGE_IMAGE=dtrt-edge
+    command: python examples/multi_agent_demo.py
+
+  agent2:
+    image: python:3.11-slim
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - NATS_URL=nats://nats:4222
+      - LLM_ENDPOINT=http://edge:8000/generate
+      - PYTHONPATH=/app/src:/app
+      - EDGE_IMAGE=dtrt-edge
+    command: python examples/multi_agent_demo.py
+
+  agent3:
+    image: python:3.11-slim
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - NATS_URL=nats://nats:4222
+      - LLM_ENDPOINT=http://edge:8000/generate
+      - PYTHONPATH=/app/src:/app
+      - EDGE_IMAGE=dtrt-edge
+    command: python examples/multi_agent_demo.py
