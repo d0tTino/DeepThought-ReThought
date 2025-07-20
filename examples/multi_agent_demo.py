@@ -43,7 +43,8 @@ async def main() -> None:
 
     settings = get_settings()
     metrics_port = int(os.getenv("METRICS_PORT", "0"))
-    start_http_server(metrics_port)
+    if metrics_port > 0:
+        start_http_server(metrics_port)
     nc = await nats.connect(settings.nats_url)
     js = nc.jetstream()
 

@@ -69,6 +69,8 @@ EDGE_IMAGE=dtrt-edge python examples/multi_agent_demo.py
 
 The container runs `tools/edge_server.py` on port `8000` and is terminated when the demo exits.
 
+Set `METRICS_PORT` to a positive integer to expose Prometheus metrics. If `METRICS_PORT` is `0` or unset, the metrics server is not started.
+
 ### Low-Resource Docker Compose Demo
 
 Use `docker-compose.edge.yml` to start NATS, the edge model and three agents with a single command:
