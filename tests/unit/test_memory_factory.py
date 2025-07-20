@@ -35,8 +35,8 @@ def test_factory_uses_settings(monkeypatch):
         calls["vector"] = (backend, collection_name, persist_directory, use_gpu)
         return vec_obj
 
-    def fake_create_graph_backend(name):
-        calls["graph"] = name
+    def fake_create_graph_backend(name, *, settings=None):
+        calls["graph"] = (name, settings)
         return graph_obj
 
     class DummyTiered:
@@ -60,8 +60,8 @@ def test_factory_uses_settings(monkeypatch):
         ),
     )
 
-    memory.create_memory_backend(capacity=42, top_k=7)
+    memory.create_memory_backend(settings=fake_settings, capacity=42, top_k=7)
 
     assert calls["vector"] == ("faiss", "deepthought", None, True)
-    assert calls["graph"] == "noop"
+    assert calls["graph"] == ("noop", fake_settings)
     assert calls["tiered"] == (vec_obj, graph_obj, 42, 7)

@@ -90,6 +90,20 @@ def test_env_defaults(monkeypatch):
     }
 
 
+def test_settings_argument():
+    from deepthought.config import Settings
+
+    s = Settings(mg_host="h", mg_port=12, mg_user="u", mg_password="p")
+    connector = GraphConnector(settings=s)
+
+    assert connector._params == {
+        "host": "h",
+        "port": 12,
+        "username": "u",
+        "password": "p",
+    }
+
+
 def test_connect_retries(monkeypatch):
     calls = []
 

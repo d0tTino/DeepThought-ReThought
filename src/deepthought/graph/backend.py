@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any, List
+from typing import Any, List, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - import for type hints
+    from ..config import Settings
 
 from .connector import GraphConnector, Neo4jConnector
 from .dal import GraphDAL
@@ -62,15 +65,21 @@ class NoOpGraphBackend(GraphBackend):
         pass
 
 
-def create_graph_backend(backend: str = "memgraph", **params: Any) -> GraphBackend:
+def create_graph_backend(
+    backend: str = "memgraph", *, settings: Settings | None = None, **params: Any
+) -> GraphBackend:
     """Return a :class:`GraphBackend` implementation for ``backend``."""
+    from ..config import get_settings, Settings
+
+    settings = settings or get_settings()
+
     lower = backend.lower()
     if lower == "memgraph":
-        connector = GraphConnector(**params)
+        connector = GraphConnector(settings=settings, **params)
         dal = GraphDAL(connector)
         return GraphDALBackend(dal)
     if lower == "neo4j":
-        connector = Neo4jConnector(**params)
+        connector = Neo4jConnector(settings=settings, **params)
         return Neo4jBackend(connector)
     if lower in {"none", "noop", "stub"}:
         return NoOpGraphBackend()
