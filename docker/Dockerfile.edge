@@ -3,6 +3,7 @@ FROM python:3.11-slim
 ENV MODEL_PATH=/model
 ARG MODEL_NAME=gpt2
 ENV MODEL_NAME=${MODEL_NAME}
+ENV PORT=8000
 
 RUN apt-get update && \
     apt-get install -y git gcc && \
@@ -20,5 +21,7 @@ tokenizer = AutoTokenizer.from_pretrained("$MODEL_NAME")
 model.save_pretrained("/model")
 tokenizer.save_pretrained("/model")
 PY
+
+EXPOSE 8000
 
 CMD ["uvicorn", "edge_server:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -53,3 +53,18 @@ docker build --build-arg MODEL_NAME=tiiuae/falcon-7b-instruct -f docker/Dockerfi
 ```
 
 This image downloads the model during build and starts `tools/edge_server.py` on port `8000`.
+
+### Hardware Requirements
+
+* A GPU with **6\-8GB VRAM** is recommended for reasonable inference speed.
+* At least **4 CPU cores** and **16GB RAM** allow the container to run comfortably.
+
+### Launching via `multi_agent_demo.py`
+
+After building the image, set the `EDGE_IMAGE` environment variable so the demo will start the container automatically:
+
+```bash
+EDGE_IMAGE=dtrt-edge python examples/multi_agent_demo.py
+```
+
+The container runs `tools/edge_server.py` on port `8000` and is terminated when the demo exits.
