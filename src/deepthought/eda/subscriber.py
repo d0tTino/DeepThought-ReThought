@@ -1,19 +1,16 @@
 # File: src/deepthought/eda/subscriber.py
 import asyncio
 import logging
-import os
 import ssl
 
 # Imported lazily in ``connect`` to avoid mandatory dependencies
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-if TYPE_CHECKING:  # pragma: no cover - for type checking only
-    from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 MessageHandlerType = Callable[[Msg], Awaitable[None]]

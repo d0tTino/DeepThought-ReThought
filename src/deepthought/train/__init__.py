@@ -9,7 +9,7 @@ from importlib import metadata
 from typing import Callable, Tuple
 
 import torch
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset as hf_load_dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
@@ -99,7 +99,7 @@ def _hf_dataset_loader(
     pack_sequences: str | bool = "off",
 ) -> Tuple[Dataset, Dataset]:
     """Default Hugging Face dataset loader."""
-    raw_dataset = load_dataset(dataset_path)
+    raw_dataset = hf_load_dataset(dataset_path)
 
     def format_prompt(example):
         instruction = example["instruction"]

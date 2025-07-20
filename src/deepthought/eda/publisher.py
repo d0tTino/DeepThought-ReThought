@@ -1,17 +1,14 @@
 # File: src/deepthought/eda/publisher.py
 import logging
-import os
 import ssl
 
 # Imported lazily in ``connect`` to avoid mandatory dependencies
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
-if TYPE_CHECKING:  # pragma: no cover - for type checking only
-    from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 

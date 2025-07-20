@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 try:  # pragma: no cover - optional dependency
     from neo4j import GraphDatabase
@@ -15,8 +15,6 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover - driver not installed
     Memgraph = None  # type: ignore[assignment]
 
-if TYPE_CHECKING:  # pragma: no cover - for type checking only
-    from ..config import get_settings
 
 
 class GraphConnector:

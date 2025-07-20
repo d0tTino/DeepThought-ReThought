@@ -1,9 +1,6 @@
-import json
 import logging
-import os
 from typing import Optional, Tuple
 
-import networkx as nx
 
 from .file_graph_dal import FileGraphDAL
 
