@@ -1,0 +1,11 @@
+{
+  "name": "template-service",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "nats": "^2.15.0",
+    "ts-node": "^10.0.0"
+  }
+}

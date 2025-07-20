@@ -51,6 +51,16 @@ dtrt bus init service mysvc \
   --tls-ca certs/ca.pem \
   --js-storage file \
   --max-msgs 5000
+  --language go
+```
+
+Use `--language` to scaffold services in Go or TypeScript. The default `python`
+generates the original Python skeleton, while `go` and `ts` produce Go and
+TypeScript projects respectively.
+
+```bash
+dtrt bus init service mysvc --language go
+dtrt bus init service websvc --language ts
 ```
 
 The values supplied are interpolated into `nats.env.example` and the Dockerfile.
@@ -64,10 +74,14 @@ pre-populated files:
 | ---- | ------- |
 | `Dockerfile` | Minimal image that installs the `deepthought` package and loads TLS certificates. |
 | `nats.env.example` | Example environment file containing connection settings for NATS. |
-| `service.py` | Skeleton service that forwards messages from `dtr.template.input` to `dtr.template.output`. |
-| `publisher.py` | Thin wrapper around `deepthought.eda.Publisher` for publishing events. |
-| `subscriber.py` | Example subscriber showing how to apply a rate limit to message handling. |
-| `__init__.py` | Empty module marker so Python treats the directory as a package. |
+| `service.py` | Skeleton service that forwards messages from `dtr.template.input` to `dtr.template.output` (Python). |
+| `publisher.py` | Thin wrapper around `deepthought.eda.Publisher` for publishing events (Python). |
+| `subscriber.py` | Example subscriber showing how to apply a rate limit to message handling (Python). |
+| `main.go` | Basic service entrypoint for Go projects. |
+| `go.mod` | Go module definition. |
+| `src/index.ts` | Service entrypoint when using TypeScript. |
+| `package.json` | Node project manifest for TypeScript services. |
+| `__init__.py` | Empty module marker so Python treats the directory as a package (Python only). |
 
 ### Environment Variables
 

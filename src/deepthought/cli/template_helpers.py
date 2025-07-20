@@ -30,6 +30,7 @@ def apply_bus_substitutions(
     if service_name is not None:
         text = text.replace("${SERVICE_NAME}", service_name)
         text = text.replace("template_service", service_name)
+        text = text.replace("template-service", service_name.replace("_", "-"))
     if stream_name is not None:
         text = text.replace("${STREAM_NAME}", stream_name)
         text = text.replace("deepthought_events", stream_name)

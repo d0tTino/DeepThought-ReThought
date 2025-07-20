@@ -33,10 +33,13 @@ def init_service(
 
     shutil.copytree(template, dest)
     class_name = _to_camel(name) + "Service"
-    for path in dest.rglob("*.py"):
+    for path in dest.rglob("*.*"):
+        if path.suffix not in {".py", ".go", ".ts", ".json", ".mod"}:
+            continue
         text = path.read_text(encoding="utf-8")
         text = text.replace("TemplateService", class_name)
         text = text.replace("template_service", name)
+        text = text.replace("template-service", name.replace("_", "-"))
         if stream_name:
             text = text.replace("template_stream", stream_name)
         if tls_cert:
@@ -84,6 +87,7 @@ def init_project(
     tls_ca: str | None = None,
     js_storage: str | None = None,
     max_msgs: int | None = None,
+    language: str = "python",
     template_name: str = "bus_project",
 ) -> None:
     """Create a new bus project with a default service.
@@ -117,7 +121,9 @@ def init_project(
         os.chdir(dest)
         init_service(
             name,
-            template_name="bus_service",
+            template_name=(
+                "bus_service" if language == "python" else f"bus_service_{language}"
+            ),
             stream_name=stream_name,
             tls_cert=tls_cert,
             tls_key=tls_key,
@@ -139,6 +145,7 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
             tls_ca=getattr(args, "tls_ca", None),
             js_storage=getattr(args, "js_storage", None),
             max_msgs=getattr(args, "max_msgs", None),
+            language=getattr(args, "language", "python"),
         )
     else:
         template = args.template
@@ -146,7 +153,11 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
             template = "reward_service"
         init_service(
             args.name,
-            template_name=template,
+            template_name=(
+                template
+                if getattr(args, "language", "python") == "python"
+                else f"{template}_{args.language}"
+            ),
             stream_name=getattr(args, "stream_name", None),
             tls_cert=getattr(args, "tls_cert", None),
             tls_key=getattr(args, "tls_key", None),
@@ -316,6 +327,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=10000,
         help="Maximum messages per subject",
     )
+    bus_svc.add_argument(
+        "--language",
+        choices=["python", "go", "ts"],
+        default="python",
+        help="Service language",
+    )
     bus_svc.set_defaults(func=_cmd_init_service, template="bus_service")
 
     bus_proj = bus_init_sub.add_parser("project")
@@ -339,6 +356,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=10000,
         help="Maximum messages per subject",
+    )
+    bus_proj.add_argument(
+        "--language",
+        choices=["python", "go", "ts"],
+        default="python",
+        help="Service language",
     )
     bus_proj.set_defaults(func=_cmd_init_service, template="bus_project")
 
