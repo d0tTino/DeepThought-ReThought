@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -46,7 +45,13 @@ async def main() -> None:
     await ensure_stream(js)
 
     model_proc = None
-    if os.getenv("MODEL_PATH"):
+    container_proc = None
+    edge_image = os.getenv("EDGE_IMAGE")
+    if edge_image:
+        logger.info("Starting edge model container %s", edge_image)
+        container_proc = await asyncio.create_subprocess_exec("docker", "run", "--rm", "-p", "8000:8000", edge_image)
+        await asyncio.sleep(5.0)
+    elif os.getenv("MODEL_PATH"):
         script = Path(__file__).resolve().parents[1] / "tools" / "edge_server.py"
         logger.info("Starting edge model from %s", script)
         model_proc = await asyncio.create_subprocess_exec(sys.executable, str(script))
@@ -107,7 +112,10 @@ async def main() -> None:
     await llm.stop_listening()
     await asyncio.gather(*(oh.stop_listening() for oh in output_handlers))
     await nc.drain()
-    if model_proc:
+    if container_proc:
+        container_proc.terminate()
+        await container_proc.wait()
+    elif model_proc:
         model_proc.terminate()
         await model_proc.wait()
 
