@@ -1,6 +1,6 @@
 import pytest
 
-from deepthought.graph.connector import GraphConnector
+from deepthought.graph.connector import GraphConnector, Neo4jConnector
 
 
 class DummyCursor:
@@ -159,3 +159,35 @@ def test_init_port_must_be_int(monkeypatch):
 
     with pytest.raises(ValueError, match="integer"):
         GraphConnector()
+
+
+def test_connect_error_raises_after_retries(monkeypatch):
+    calls = []
+
+    class AlwaysFail:
+        def __init__(self, **_):
+            calls.append("called")
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("deepthought.graph.connector.Memgraph", AlwaysFail)
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    connector = GraphConnector(max_retries=3, retry_delay=0)
+    with pytest.raises(RuntimeError, match="boom"):
+        connector.connect()
+    assert len(calls) == 3
+
+
+def test_neo4j_connect_error_raises_after_retries(monkeypatch):
+    calls = []
+
+    class DummyDB:
+        def driver(self, uri, auth):
+            calls.append((uri, auth))
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("deepthought.graph.connector.GraphDatabase", DummyDB())
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    connector = Neo4jConnector(max_retries=3, retry_delay=0)
+    with pytest.raises(RuntimeError, match="boom"):
+        connector.connect()
+    assert len(calls) == 3
