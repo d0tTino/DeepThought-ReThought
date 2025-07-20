@@ -95,3 +95,22 @@ def test_query_subgraph():
 
     assert result == [{"id": 1}]
     assert connector.executed == [(q, {"limit": 1})]
+
+
+def test_add_entity_empty_props():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+    dal.add_entity("Thing", {})
+    assert connector.executed == [("MERGE (n:`Thing`) SET n += $props", {"props": {}})]
+
+
+def test_add_relationship_empty_props():
+    connector = DummyConnector()
+    dal = GraphDAL(connector)
+    dal.add_relationship("A", "B", "REL", {})
+    assert connector.executed == [
+        (
+            "MATCH (a {id: $start_id}), (b {id: $end_id}) MERGE (a)-[r:REL]->(b) SET r += $props",
+            {"start_id": "A", "end_id": "B", "props": {}},
+        )
+    ]

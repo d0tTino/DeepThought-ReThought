@@ -66,3 +66,38 @@ def test_generate_endpoint(monkeypatch):
     data = response.json()
     assert isinstance(data["text"], str)
     assert data["text"]
+
+
+def test_generate_custom_model_path(monkeypatch, tmp_path):
+    tf = types.ModuleType("transformers")
+    tf.AutoTokenizer = DummyTokenizer
+    tf.AutoModelForCausalLM = DummyModel
+
+    torch_mod = types.ModuleType("torch")
+
+    class _NoGrad:
+        def __enter__(self):
+            pass
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+    torch_mod.no_grad = lambda: _NoGrad()
+
+    monkeypatch.setitem(sys.modules, "transformers", tf)
+    monkeypatch.setitem(sys.modules, "torch", torch_mod)
+
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    monkeypatch.setenv("MODEL_PATH", str(model_dir))
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
+    import edge_server
+
+    importlib.reload(edge_server)
+
+    assert edge_server.MODEL_PATH == str(model_dir)
+    client = TestClient(edge_server.app)
+    resp = client.post("/generate", json={"text": "hi"})
+    assert resp.status_code == 200
+    assert resp.json()["text"]
