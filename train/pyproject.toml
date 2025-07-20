@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dtrt-finetune"
+version = "0.1.0"
+dependencies = ["deepthought-rethought"]
+
+[project.scripts]
+dtrt-finetune = "deepthought.train:main"
