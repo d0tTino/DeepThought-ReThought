@@ -69,7 +69,11 @@ class HierarchicalService:
         db_path = settings.search_db
         if db_path:
             if not os.path.exists(db_path):
-                search = OfflineSearch.create_index(db_path, [])
+                try:
+                    search = OfflineSearch.create_index(db_path, [])
+                except ValueError:
+                    logger.warning("No documents available for search index; disabling offline search")
+                    search = None
             else:
                 search = OfflineSearch(db_path)
         else:

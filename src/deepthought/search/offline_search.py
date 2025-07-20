@@ -12,6 +12,10 @@ class OfflineSearch:
     @classmethod
     def create_index(cls, db_path: str, docs: Iterable[Tuple[str, str]]) -> "OfflineSearch":
         """Create or reuse an FTS5 index at ``db_path``."""
+        docs = list(docs)
+        if not docs:
+            raise ValueError("No documents provided to create_index")
+
         conn = sqlite3.connect(db_path)
         compile_options = {row[0] for row in conn.execute("pragma compile_options")}
         if not any("FTS5" in opt for opt in compile_options):

@@ -58,6 +58,12 @@ def test_search_expected_hits_and_limit(tmp_path):
     ]
 
 
+def test_create_index_empty_docs(tmp_path):
+    path = tmp_path / "empty.db"
+    with pytest.raises(ValueError):
+        OfflineSearch.create_index(str(path), [])
+
+
 def test_create_index_missing_fts5(monkeypatch, tmp_path):
     path = tmp_path / "nofts5.db"
 
@@ -76,4 +82,4 @@ def test_create_index_missing_fts5(monkeypatch, tmp_path):
     monkeypatch.setattr(sqlite3, "connect", connect)
 
     with pytest.raises(RuntimeError, match="FTS5"):
-        OfflineSearch.create_index(str(path), [])
+        OfflineSearch.create_index(str(path), [("t", "c")])
