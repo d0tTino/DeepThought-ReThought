@@ -34,20 +34,27 @@ We welcome contributions via Pull Requests (PRs). To make a PR:
 ## Code Style
 
 *   **Python:** Follow PEP 8 guidelines.
-*   Install `pre-commit` so that lint checks run automatically:
-    ```bash
-    pip install pre-commit
-    pre-commit install
-    ```
-    This installs the hooks defined in
-    [.pre-commit-config.yaml](.pre-commit-config.yaml).
-*   Run lint checks via pre-commit before submitting a PR:
-    ```bash
-    pre-commit run --files <changed files>
-    ```
-    This will run Black, isort, flake8, and the pytest hooks on the staged
-    files.
+*   Use [`pre-commit`](https://pre-commit.com/) for lint checks. See
+    [Pre-commit Hooks](#pre-commit-hooks) for setup instructions.
 *   More detailed style guides or linters may be introduced later. For now, aim for clarity and consistency with the existing codebase.
+
+## Pre-commit Hooks
+
+Running the pre-commit hooks locally mirrors the checks performed in CI. Install
+the tool and set up the hooks:
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --files <changed files>
+```
+
+To replicate the exact CI process, including environment setup and conditional
+test execution, use the helper script:
+
+```bash
+./scripts/codex_setup.sh
+```
 
 ## Questions
 
