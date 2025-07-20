@@ -1,10 +1,22 @@
 import sys
+import types
 
 sys.modules.pop("numpy", None)
 import pytest
 
 pytest.importorskip("numpy")
 import numpy as np
+
+fake_pyd = types.ModuleType("pydantic")
+fake_pyd.AnyUrl = str
+fake_pyd.ValidationError = Exception
+fake_pyd.Field = lambda default=None, **kwargs: default
+sys.modules.setdefault("pydantic", fake_pyd)
+fake_ps = types.ModuleType("pydantic_settings")
+fake_ps.BaseSettings = object
+fake_ps.SettingsConfigDict = dict
+sys.modules.setdefault("pydantic_settings", fake_ps)
+sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 
 from deepthought.memory import vector_store
 from deepthought.memory.vector_store import (
@@ -148,3 +160,8 @@ def test_faiss_delete(monkeypatch):
     store.collection.delete(["1"])
     res = store.query(["hello"], n_results=2)
     assert "hello" not in res["documents"][0]
+
+
+def test_create_vector_store_invalid_backend():
+    with pytest.raises(ValueError, match="chroma|faiss"):
+        create_vector_store(backend="invalid")
