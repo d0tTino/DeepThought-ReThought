@@ -215,3 +215,23 @@ async def test_multi_agent_demo_main(monkeypatch):
 
     for handler in demo.output_handlers:
         assert handler.get_all_responses(), "handler received no messages"
+
+
+@pytest.mark.asyncio
+async def test_no_metrics_server_when_port_zero(monkeypatch):
+    calls: list[int] = []
+
+    async def fake_generate(self, prompt: str) -> str:
+        return f"echo: {prompt}"
+
+    monkeypatch.setattr(demo, "nats", fake_nats)
+    monkeypatch.setattr(demo.RemoteLLM, "_generate", fake_generate)
+    monkeypatch.setattr(demo, "start_http_server", lambda port: calls.append(port))
+    orig_sleep = asyncio.sleep
+    monkeypatch.setattr(demo.asyncio, "sleep", lambda *a, **k: orig_sleep(0))
+    monkeypatch.setenv("LANGGRAPH_RECURSION_LIMIT", "1000")
+    monkeypatch.setenv("METRICS_PORT", "0")
+
+    await demo.main()
+
+    assert not calls, "start_http_server should not be called when METRICS_PORT=0"
