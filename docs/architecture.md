@@ -91,6 +91,7 @@ Execution traces from bots or training runs can be replayed and analyzed.
   ```
 
 The generated `dashboard.png` illustrates BLEU, ROUGE‑L and average latency over time.
+For a Prometheus and Grafana setup see [prometheus_grafana.md](prometheus_grafana.md).
 
 ## Service Template
 

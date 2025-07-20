@@ -1,0 +1,24 @@
+{
+  "title": "DeepThought Metrics",
+  "uid": "deepthought-metrics",
+  "schemaVersion": 36,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Inputs Total per Service",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(inputs_total[1m])", "legendFormat": "{{service}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Average Latency Seconds",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(input_latency_seconds_sum[1m]) / rate(input_latency_seconds_count[1m])", "legendFormat": "{{service}}"}
+      ]
+    }
+  ]
+}

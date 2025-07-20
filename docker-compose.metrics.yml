@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+  metrics:
+    image: python:3.11-slim
+    command: python -m deepthought.metrics_server
+    volumes:
+      - .:/app
+    working_dir: /app
+    ports:
+      - "8000:8000"
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+  grafana:
+    image: grafana/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
