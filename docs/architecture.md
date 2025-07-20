@@ -151,6 +151,7 @@ Start a local NATS server with `./scripts/start_nats.sh` and create the JetStrea
 ```bash
 python -c "import asyncio, setup_jetstream; asyncio.run(setup_jetstream.setup_jetstream())"
 ```
+The helper now retries connecting to NATS up to three times before giving up.
 
 Install the optional dependency used by the demo:
 

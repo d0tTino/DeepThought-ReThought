@@ -58,12 +58,29 @@ async def setup_jetstream() -> None:
         logger.error("Example command: 'nats-server -js'")
         raise JetStreamSetupError("NATS server unavailable")
 
-    # Connect to NATS
+    # Connect to NATS with retries
     nats_client = NATS()
     try:
-        logger.info("Attempting to connect to NATS server...")
-        await nats_client.connect(servers=[NATS_URL])
-        logger.info("Connected to NATS server")
+        last_exc: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                logger.info(
+                    "Attempting to connect to NATS server (attempt %s/3)...",
+                    attempt,
+                )
+                await nats_client.connect(servers=[NATS_URL])
+                logger.info("Connected to NATS server")
+                break
+            except Exception as exc:  # pragma: no cover - network dependent
+                last_exc = exc
+                logger.warning(
+                    "Connection attempt %s failed: %s", attempt, exc
+                )
+                if attempt < 3:
+                    await asyncio.sleep(1)
+        else:  # pragma: no cover - loop exhausted
+            assert last_exc is not None
+            raise last_exc
 
         # Create JetStream context
         js = nats_client.jetstream()
