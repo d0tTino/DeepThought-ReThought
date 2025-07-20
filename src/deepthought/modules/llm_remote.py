@@ -27,17 +27,17 @@ class RemoteLLM:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._endpoint = endpoint or os.getenv("LLM_ENDPOINT", "http://localhost:8000/generate")
+        self._session = aiohttp.ClientSession()
         logger.info("RemoteLLM initialized with endpoint %s", self._endpoint)
 
     async def _generate(self, prompt: str) -> str:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(self._endpoint, json={"text": prompt}) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-                text = data.get("text")
-                if not isinstance(text, str):
-                    raise ValueError("Invalid generate response")
-                return text
+        async with self._session.post(self._endpoint, json={"text": prompt}) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+            text = data.get("text")
+            if not isinstance(text, str):
+                raise ValueError("Invalid generate response")
+            return text
 
     async def _handle_memory_event(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -95,4 +95,6 @@ class RemoteLLM:
     async def stop_listening(self) -> None:
         if self._subscriber:
             await self._subscriber.unsubscribe_all()
-            logger.info("RemoteLLM stopped listening.")
+        if not self._session.closed:
+            await self._session.close()
+        logger.info("RemoteLLM stopped listening.")
