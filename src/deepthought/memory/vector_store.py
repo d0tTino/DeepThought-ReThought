@@ -216,5 +216,14 @@ def create_vector_store(
 ) -> VectorStore:
     """Return a vector store implementation based on ``backend``."""
     if backend == "faiss":
-        return FaissVectorStore(embedding_function=embedding_function, use_gpu=use_gpu)
-    return ChromaVectorStore(collection_name, persist_directory, embedding_function)
+        return FaissVectorStore(
+            embedding_function=embedding_function,
+            use_gpu=use_gpu,
+        )
+    if backend == "chroma":
+        return ChromaVectorStore(
+            collection_name,
+            persist_directory,
+            embedding_function,
+        )
+    raise ValueError(f"backend must be 'chroma' or 'faiss', got {backend!r}")
