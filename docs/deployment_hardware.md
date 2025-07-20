@@ -68,3 +68,14 @@ EDGE_IMAGE=dtrt-edge python examples/multi_agent_demo.py
 ```
 
 The container runs `tools/edge_server.py` on port `8000` and is terminated when the demo exits.
+
+### Low-Resource Docker Compose Demo
+
+Use `docker-compose.edge.yml` to start NATS, the edge model and three agents with a single command:
+
+```bash
+docker compose -f docker-compose.edge.yml up
+```
+
+Each agent container runs `examples/multi_agent_demo.py` and communicates with the shared edge model.
+This setup works on machines with as little as **2 CPU cores** and **4GB RAM**.

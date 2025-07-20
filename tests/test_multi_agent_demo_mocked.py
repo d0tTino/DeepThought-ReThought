@@ -1,11 +1,54 @@
 import asyncio
 import importlib
-import types
 import sys
+import types
 
 import pytest
 
-pytest.importorskip("langgraph")
+sys.modules.pop("examples.multi_agent_demo", None)
+sys.modules.pop("langgraph", None)
+
+# Provide a very small stub of langgraph so the demo can run without the real
+# package installed.
+fake_langgraph = types.ModuleType("langgraph")
+fake_graph = types.ModuleType("langgraph.graph")
+
+
+class StateGraph:
+    def __init__(self, _state):
+        self.nodes = {}
+        self.entry = None
+
+    def add_node(self, name, fn):
+        self.nodes[name] = fn
+
+    def set_entry_point(self, name):
+        self.entry = name
+
+    def add_edge(self, *_args):
+        pass
+
+    def compile(self):
+        graph = self
+
+        class Compiled:
+            async def ainvoke(self, state):
+                fn = graph.nodes[graph.entry]
+                state = await fn(state) if asyncio.iscoroutinefunction(fn) else fn(state)
+                for name, fn in graph.nodes.items():
+                    if name != graph.entry:
+                        state = await fn(state) if asyncio.iscoroutinefunction(fn) else fn(state)
+                return state
+
+        return Compiled()
+
+
+fake_graph.StateGraph = StateGraph
+fake_langgraph.graph = fake_graph
+sys.modules.setdefault("langgraph", fake_langgraph)
+sys.modules.setdefault("langgraph.graph", fake_graph)
+
+pytest.importorskip("langgraph.graph")
 
 
 class DummyMsg:
@@ -101,18 +144,23 @@ fake_nats.js.client = types.ModuleType("client")
 fake_nats.js.client.JetStreamContext = object
 fake_nats.js.api = types.ModuleType("api")
 
+
 class DiscardPolicy:
     OLD = "old"
+
 
 class RetentionPolicy:
     LIMITS = "limits"
 
+
 class StorageType:
     MEMORY = "memory"
+
 
 class StreamConfig:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+
 
 fake_nats.js.api.DiscardPolicy = DiscardPolicy
 fake_nats.js.api.RetentionPolicy = RetentionPolicy
@@ -128,6 +176,26 @@ sys.modules.setdefault("nats.js.client", fake_nats.js.client)
 sys.modules.setdefault("nats.js.api", fake_nats.js.api)
 sys.modules.setdefault("nats.errors", fake_nats.errors)
 
+fake_prom = types.ModuleType("prometheus_client")
+
+
+class _Metric:
+    def labels(self, *args, **kwargs):
+        return self
+
+    def inc(self, *args, **kwargs):
+        pass
+
+    def observe(self, *args, **kwargs):
+        pass
+
+
+fake_prom.Counter = lambda *a, **k: _Metric()
+fake_prom.Histogram = lambda *a, **k: _Metric()
+fake_prom.start_http_server = lambda *a, **k: None
+fake_prom.REGISTRY = types.SimpleNamespace(_names_to_collectors={})
+sys.modules.setdefault("prometheus_client", fake_prom)
+
 
 import examples.multi_agent_demo as demo
 
@@ -139,10 +207,11 @@ async def test_multi_agent_demo_main(monkeypatch):
 
     monkeypatch.setattr(demo, "nats", fake_nats)
     monkeypatch.setattr(demo.RemoteLLM, "_generate", fake_generate)
-    monkeypatch.setattr(demo.asyncio, "sleep", lambda *a, **k: asyncio.sleep(0))
+    orig_sleep = asyncio.sleep
+    monkeypatch.setattr(demo.asyncio, "sleep", lambda *a, **k: orig_sleep(0))
+    monkeypatch.setenv("LANGGRAPH_RECURSION_LIMIT", "1000")
 
     await demo.main()
 
     for handler in demo.output_handlers:
         assert handler.get_all_responses(), "handler received no messages"
-

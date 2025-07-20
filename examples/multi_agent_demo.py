@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import TypedDict
@@ -9,7 +10,9 @@ from typing import TypedDict
 import nats
 from langgraph.graph import StateGraph
 from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
+from prometheus_client import start_http_server
 
+from deepthought.metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from deepthought.modules import InputHandler, OutputHandler
 from deepthought.modules.llm_remote import RemoteLLM
 from deepthought.services import MemoryService
@@ -39,6 +42,8 @@ async def main() -> None:
     from deepthought.config import get_settings
 
     settings = get_settings()
+    metrics_port = int(os.getenv("METRICS_PORT", "0"))
+    start_http_server(metrics_port)
     nc = await nats.connect(settings.nats_url)
     js = nc.jetstream()
 
@@ -57,7 +62,7 @@ async def main() -> None:
         model_proc = await asyncio.create_subprocess_exec(sys.executable, str(script))
         await asyncio.sleep(2.0)
 
-    memory_service = MemoryService(nc, js)
+    memory_service = MemoryService.from_config(nc, js)
     llm = RemoteLLM(nc, js)
 
     global input_handlers, output_handlers
@@ -80,6 +85,7 @@ async def main() -> None:
     async def send_receive(state: AgentState) -> AgentState:
         idx = state["idx"]
         event = asyncio.Event()
+        start = time.perf_counter()
 
         def cb(_id: str, text: str) -> None:
             logger.info("Agent %s says: %s", idx + 1, text)
@@ -89,6 +95,9 @@ async def main() -> None:
         output_handlers[idx]._output_callback = cb
         await input_handlers[idx].process_input(state["text"])
         await event.wait()
+        duration = time.perf_counter() - start
+        INPUTS_TOTAL.labels(service="multi_agent_demo").inc()
+        INPUT_LATENCY_SECONDS.labels(service="multi_agent_demo").observe(duration)
         state["count"] += 1
         return state
 
