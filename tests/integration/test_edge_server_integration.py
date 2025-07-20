@@ -132,3 +132,22 @@ async def test_llm_session_closed(monkeypatch):
     await llm.stop_listening()
 
     assert session.closed
+
+
+@pytest.mark.asyncio
+async def test_llm_requires_endpoint(monkeypatch):
+    pytest.importorskip("aiohttp")
+    from deepthought.modules import llm_remote as llm_mod
+
+    class DummyNATS:
+        pass
+
+    class DummyJS:
+        pass
+
+    monkeypatch.setenv("LLM_ENDPOINT", "")
+    with pytest.raises(ValueError):
+        llm_mod.RemoteLLM(DummyNATS(), DummyJS())
+
+    with pytest.raises(ValueError):
+        llm_mod.RemoteLLM(DummyNATS(), DummyJS(), endpoint="")

@@ -27,6 +27,8 @@ class RemoteLLM:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._endpoint = endpoint or os.getenv("LLM_ENDPOINT", "http://localhost:8000/generate")
+        if not self._endpoint:
+            raise ValueError("LLM_ENDPOINT environment variable must be set or passed to RemoteLLM")
         self._session = aiohttp.ClientSession()
         logger.info("RemoteLLM initialized with endpoint %s", self._endpoint)
 
