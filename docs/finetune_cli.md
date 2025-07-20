@@ -4,7 +4,9 @@ Install the package with:
 
 ```bash
 conda install deepthought-rethought
+pip install deepthought-rethought
 ```
+The PyPI distribution exposes both ``dtrt`` and ``dtrt-finetune`` entry points.
 
 Build the training image and launch finetuning:
 
@@ -28,6 +30,11 @@ You can estimate the required VRAM before starting:
 
 ```bash
 dtrt finetune --estimate-vram
+```
+Example output:
+
+```text
+Estimated VRAM requirement: 6.4 GB
 ```
 
 To only calculate the estimate without loading the dataset, use:
