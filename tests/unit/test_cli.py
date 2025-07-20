@@ -74,11 +74,8 @@ def test_init_service_demo_start_stop(tmp_path: Path) -> None:
         spec.loader.exec_module(module)
         DemoService = module.DemoService
     else:
-        fallback = Path(__file__).resolve().parents[2] / "tools" / "template_service" / "service.py"
-        spec = importlib.util.spec_from_file_location("template_service.service", fallback)
-        module = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        spec.loader.exec_module(module)
+        from deepthought.templates.bus_service import service as module
+
         DemoService = module.TemplateService
 
     class DummyNATS:

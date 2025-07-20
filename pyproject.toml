@@ -26,8 +26,12 @@ knowledge_graph = "deepthought.services.knowledge_graph_service:KnowledgeGraphSe
 
 
 [tool.setuptools.package-data]
-"tools" = ["template_service/*"]
-"deepthought.templates" = ["bus_service/*", "bus_project/*", "reward_service/*"]
+"deepthought.templates" = [
+  "bus_service/*",
+  "bus_project/*",
+  "reward_service/*",
+  "service/*",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "deepthought.__init__.__version__"}

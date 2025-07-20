@@ -8,26 +8,11 @@ __all__ = ["find_template", "apply_bus_substitutions"]
 
 def find_template(template_name: str) -> Path:
     """Return the path to a bundled template."""
-    template = None
-    try:
-        templ_res = resources.files("deepthought.templates").joinpath(template_name)
-        with resources.as_file(templ_res) as path:
-            if path.exists():
-                template = Path(path)
-    except ModuleNotFoundError:
-        template = None
-
-    if template is None or not template.exists():
-        candidate = Path(__file__).resolve().parents[3] / "templates" / template_name
-        if candidate.exists():
-            template = candidate
-        elif template_name == "service":
-            template = Path(__file__).resolve().parents[2] / "tools" / "template_service"
-
-    if template is None or not template.exists():
-        raise SystemExit("Template not found")
-
-    return template
+    templ_res = resources.files("deepthought.templates").joinpath(template_name)
+    with resources.as_file(templ_res) as path:
+        if not path.exists():
+            raise SystemExit("Template not found")
+        return Path(path)
 
 
 def apply_bus_substitutions(

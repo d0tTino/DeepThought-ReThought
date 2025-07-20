@@ -95,7 +95,7 @@ For a Prometheus and Grafana setup see [prometheus_grafana.md](prometheus_grafan
 
 ## Service Template
 
-A minimal skeleton is available under `templates/service/`. It demonstrates
+A minimal skeleton is available under `deepthought/templates/service/`. It demonstrates
 how to use the shared `Publisher` and `Subscriber` helpers.
 The bus CLI exposes an initializer for creating new services.
 To create a new service based on this template run:
