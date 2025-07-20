@@ -35,3 +35,6 @@ Run the demo with:
 ```bash
 python examples/end_to_end_demo.py
 ```
+
+RemoteLLM requires the `LLM_ENDPOINT` environment variable to point to a
+running `/generate` endpoint when not using the built-in edge server.

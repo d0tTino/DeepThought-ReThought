@@ -19,6 +19,7 @@ services:
     working_dir: /app
     environment:
       - NATS_URL=nats://nats:4222
+      # LLM_ENDPOINT must point to the running /generate endpoint
       - LLM_ENDPOINT=http://edge:8000/generate
       - PYTHONPATH=/app/src:/app
       - EDGE_IMAGE=dtrt-edge
@@ -31,6 +32,7 @@ services:
     working_dir: /app
     environment:
       - NATS_URL=nats://nats:4222
+      # LLM_ENDPOINT must point to the running /generate endpoint
       - LLM_ENDPOINT=http://edge:8000/generate
       - PYTHONPATH=/app/src:/app
       - EDGE_IMAGE=dtrt-edge
@@ -43,6 +45,7 @@ services:
     working_dir: /app
     environment:
       - NATS_URL=nats://nats:4222
+      # LLM_ENDPOINT must point to the running /generate endpoint
       - LLM_ENDPOINT=http://edge:8000/generate
       - PYTHONPATH=/app/src:/app
       - EDGE_IMAGE=dtrt-edge
