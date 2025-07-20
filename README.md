@@ -40,6 +40,17 @@ python -m build
 twine upload dist/*
 ```
 
+
+## DTRT FineTune v0.1
+
+Install the standalone training package from TestPyPI:
+
+```bash
+pip install -i https://test.pypi.org/simple/ dtrt-finetune==0.1.0
+```
+
+This package exposes only the `dtrt-finetune` command.
+
 ## Goals
 
 * **Extreme Efficiency:** Develop AI components that minimize computational cost (CPU, memory, energy) and financial expenditure.

@@ -1,0 +1,25 @@
+package:
+  name: dtrt-finetune
+  version: 0.1.0
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install ../train -vv
+  entry_points:
+    - dtrt-finetune = deepthought.train:main
+
+requirements:
+  host:
+    - python
+    - pip
+  run:
+    - python
+    - deepthought-rethought
+
+about:
+  home: https://github.com/d0tTino/DeepThought-ReThought
+  license: MIT
+  summary: Fine-tuning utility for DeepThought
