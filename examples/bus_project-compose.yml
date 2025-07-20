@@ -1,0 +1,17 @@
+version: '3'
+services:
+  nats:
+    image: nats:latest
+    command: ['-js']
+    ports:
+      - '4222:4222'
+
+  demo:
+    build: ./src/deepthought/services/demo
+    env_file:
+      - ./src/deepthought/services/demo/nats.env.example
+    environment:
+      - NATS_URL=nats://nats:4222
+      - STREAM_NAME=deepthought_events
+    depends_on:
+      - nats

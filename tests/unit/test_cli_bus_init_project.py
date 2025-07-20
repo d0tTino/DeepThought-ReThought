@@ -25,7 +25,10 @@ def test_bus_init_project(tmp_path: Path) -> None:
     assert (service_dir / "subscriber.py").exists()
     assert (service_dir / "service.py").exists()
 
-    assert "deepthought_events" in docker_compose.read_text(encoding="utf-8")
+    compose_text = docker_compose.read_text(encoding="utf-8")
+    assert "deepthought_events" in compose_text
+    assert "demo:" in compose_text
+    assert "services/demo" in compose_text
 
     for py_file in service_dir.glob("*.py"):
         subprocess.run(
@@ -88,3 +91,4 @@ def test_bus_init_project_options(tmp_path: Path) -> None:
     assert "c.pem" in compose_text
     assert "k.pem" in compose_text
     assert "ca.pem" in compose_text
+    assert "opt:" in compose_text
