@@ -76,6 +76,8 @@ Example output:
 ```text
 Estimated VRAM requirement: 6.4 GB
 ```
+See [docs/vram_usage.md](docs/vram_usage.md) for a summary of VRAM usage on 3B
+models during fine-tuning and inference.
 
 Estimate VRAM without loading the dataset:
 
