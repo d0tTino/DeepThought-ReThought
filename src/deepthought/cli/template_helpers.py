@@ -18,6 +18,7 @@ def find_template(template_name: str) -> Path:
 def apply_bus_substitutions(
     text: str,
     *,
+    service_name: str | None = None,
     stream_name: str | None = None,
     tls_cert: str | None = None,
     tls_key: str | None = None,
@@ -26,6 +27,9 @@ def apply_bus_substitutions(
     max_msgs: int | None = None,
 ) -> str:
     """Replace placeholders for bus service templates."""
+    if service_name is not None:
+        text = text.replace("${SERVICE_NAME}", service_name)
+        text = text.replace("template_service", service_name)
     if stream_name is not None:
         text = text.replace("${STREAM_NAME}", stream_name)
         text = text.replace("deepthought_events", stream_name)

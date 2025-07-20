@@ -14,3 +14,13 @@ services:
       - "STREAM_NAME=${STREAM_NAME}"
     ports:
       - "4222:4222"
+
+  ${SERVICE_NAME}:
+    build: ./src/deepthought/services/${SERVICE_NAME}
+    env_file:
+      - ./src/deepthought/services/${SERVICE_NAME}/nats.env.example
+    environment:
+      - "NATS_URL=nats://nats:4222"
+      - "STREAM_NAME=${STREAM_NAME}"
+    depends_on:
+      - nats

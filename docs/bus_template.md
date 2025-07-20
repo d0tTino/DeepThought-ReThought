@@ -128,3 +128,25 @@ docker compose up --build
 ```
 
 The command scaffolds a directory ``mybus`` with a ``docker-compose.yml`` and a service in ``src/deepthought/services/mybus``.
+
+The compose file defines NATS alongside the generated service:
+
+```yaml
+version: '3'
+services:
+  nats:
+    image: nats:latest
+    command: ['-js']
+    ports:
+      - '4222:4222'
+
+  mybus:
+    build: ./src/deepthought/services/mybus
+    env_file:
+      - ./src/deepthought/services/mybus/nats.env.example
+    environment:
+      - NATS_URL=nats://nats:4222
+      - STREAM_NAME=demo_events
+    depends_on:
+      - nats
+```

@@ -105,6 +105,7 @@ def init_project(
         text = compose_file.read_text(encoding="utf-8")
         text = apply_bus_substitutions(
             text,
+            service_name=name,
             stream_name=stream_name,
             tls_cert=tls_cert,
             tls_key=tls_key,
