@@ -131,3 +131,10 @@ class MemoryService:
             logger.warning("Cannot stop listening - no subscriber available.")
         if getattr(self, "_nc", None) and getattr(self._nc, "is_connected", False):
             await self._nc.drain()
+
+    async def __aenter__(self) -> "MemoryService":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.stop()

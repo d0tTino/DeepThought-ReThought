@@ -25,3 +25,10 @@ class RewardManagerService:
 
     async def stop(self) -> None:
         await self._manager.stop_listening()
+
+    async def __aenter__(self) -> "RewardManagerService":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.stop()
