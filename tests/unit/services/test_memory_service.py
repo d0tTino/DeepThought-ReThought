@@ -299,3 +299,25 @@ async def test_handle_input_missing_fields():
 
     assert msg.nacked
     assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_context_manager_calls_start_stop(monkeypatch):
+    service = MemoryService(DummyNATS(), DummyJS(), Settings(), DummyMemory())
+
+    called = {"start": 0, "stop": 0}
+
+    async def fake_start(self, durable_name: str = "memory_service_listener"):
+        called["start"] += 1
+        return True
+
+    async def fake_stop(self):
+        called["stop"] += 1
+
+    monkeypatch.setattr(MemoryService, "start", fake_start)
+    monkeypatch.setattr(MemoryService, "stop", fake_stop)
+
+    async with service:
+        pass
+
+    assert called == {"start": 1, "stop": 1}

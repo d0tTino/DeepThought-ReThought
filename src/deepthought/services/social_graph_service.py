@@ -106,3 +106,10 @@ class SocialGraphService:
             logger.info("SocialGraphService stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
+
+    async def __aenter__(self) -> "SocialGraphService":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.stop()

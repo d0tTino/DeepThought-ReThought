@@ -21,3 +21,10 @@ class LLMRemoteService:
 
     async def stop(self) -> None:
         await self._llm.stop_listening()
+
+    async def __aenter__(self) -> "LLMRemoteService":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.stop()

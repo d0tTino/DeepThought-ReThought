@@ -70,64 +70,66 @@ async def main() -> None:
     input_handlers = [InputHandler(nc, js) for _ in range(3)]
     output_handlers = [OutputHandler(nc, js) for _ in range(3)]
 
-    await asyncio.gather(
-        memory_service.start(),
-        llm.start_listening(durable_name=f"llm_demo_{uuid.uuid4()}"),
-        *(oh.start_listening(durable_name=f"out_demo_{i}_{uuid.uuid4()}") for i, oh in enumerate(output_handlers)),
-    )
+    async with memory_service:
+        await asyncio.gather(
+            llm.start_listening(durable_name=f"llm_demo_{uuid.uuid4()}"),
+            *(
+                oh.start_listening(durable_name=f"out_demo_{i}_{uuid.uuid4()}")
+                for i, oh in enumerate(output_handlers)
+            ),
+        )
 
-    await asyncio.sleep(1.0)
+        await asyncio.sleep(1.0)
 
-    class AgentState(TypedDict):
-        text: str
-        idx: int
-        count: int
+        class AgentState(TypedDict):
+            text: str
+            idx: int
+            count: int
 
-    async def send_receive(state: AgentState) -> AgentState:
-        idx = state["idx"]
-        event = asyncio.Event()
-        start = time.perf_counter()
+        async def send_receive(state: AgentState) -> AgentState:
+            idx = state["idx"]
+            event = asyncio.Event()
+            start = time.perf_counter()
 
-        def cb(_id: str, text: str) -> None:
-            logger.info("Agent %s says: %s", idx + 1, text)
-            state["text"] = text
-            event.set()
+            def cb(_id: str, text: str) -> None:
+                logger.info("Agent %s says: %s", idx + 1, text)
+                state["text"] = text
+                event.set()
 
-        output_handlers[idx]._output_callback = cb
-        await input_handlers[idx].process_input(state["text"])
-        await event.wait()
-        duration = time.perf_counter() - start
-        INPUTS_TOTAL.labels(service="multi_agent_demo").inc()
-        INPUT_LATENCY_SECONDS.labels(service="multi_agent_demo").observe(duration)
-        state["count"] += 1
-        return state
+            output_handlers[idx]._output_callback = cb
+            await input_handlers[idx].process_input(state["text"])
+            await event.wait()
+            duration = time.perf_counter() - start
+            INPUTS_TOTAL.labels(service="multi_agent_demo").inc()
+            INPUT_LATENCY_SECONDS.labels(service="multi_agent_demo").observe(duration)
+            state["count"] += 1
+            return state
 
-    def rotate(state: AgentState) -> AgentState:
-        state["idx"] = (state["idx"] + 1) % 3
-        return state
+        def rotate(state: AgentState) -> AgentState:
+            state["idx"] = (state["idx"] + 1) % 3
+            return state
 
-    graph = StateGraph(AgentState)
-    graph.add_node("talk", send_receive)
-    graph.add_node("next", rotate)
-    graph.set_entry_point("talk")
-    graph.add_edge("talk", "next")
-    graph.add_edge("next", "talk")
-    compiled = graph.compile()
+        graph = StateGraph(AgentState)
+        graph.add_node("talk", send_receive)
+        graph.add_node("next", rotate)
+        graph.set_entry_point("talk")
+        graph.add_edge("talk", "next")
+        graph.add_edge("next", "talk")
+        compiled = graph.compile()
 
-    state: AgentState = {"text": "Hello from agent 1!", "idx": 0, "count": 0}
-    while state["count"] < 3:
-        state = await compiled.ainvoke(state)
+        state: AgentState = {"text": "Hello from agent 1!", "idx": 0, "count": 0}
+        while state["count"] < 3:
+            state = await compiled.ainvoke(state)
 
-    await memory_service.stop()
-    await llm.stop_listening()
-    await asyncio.gather(*(oh.stop_listening() for oh in output_handlers))
-    await nc.drain()
-    if container_proc:
-        container_proc.terminate()
-        await container_proc.wait()
-    elif model_proc:
-        model_proc.terminate()
-        await model_proc.wait()
+        await llm.stop_listening()
+        await asyncio.gather(*(oh.stop_listening() for oh in output_handlers))
+        await nc.drain()
+        if container_proc:
+            container_proc.terminate()
+            await container_proc.wait()
+        elif model_proc:
+            model_proc.terminate()
+            await model_proc.wait()
 
 
 if __name__ == "__main__":

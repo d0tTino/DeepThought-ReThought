@@ -17,3 +17,10 @@ class OutputHandlerService:
 
     async def stop(self) -> None:
         await self._handler.stop_listening()
+
+    async def __aenter__(self) -> "OutputHandlerService":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.stop()

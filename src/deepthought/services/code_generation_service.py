@@ -109,3 +109,10 @@ class CodeGenerationService:
             logger.info("CodeGenerationService stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
+
+    async def __aenter__(self) -> "CodeGenerationService":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.stop()

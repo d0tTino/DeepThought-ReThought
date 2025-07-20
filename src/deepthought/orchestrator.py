@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import AsyncExitStack
 import json
 import logging
 import ssl
@@ -80,19 +81,16 @@ async def run(config_path: str) -> None:
         logger.warning("No services found for names %s", names)
         return
     nc, js = await _connect_nats()
-    instances = [cls(nc, js) for cls in service_classes]
-    for inst in instances:
-        await inst.start()
-    logger.info("Started %d services", len(instances))
-    try:
-        await asyncio.Event().wait()
-    except (asyncio.CancelledError, KeyboardInterrupt):
-        pass
-    finally:
-        for inst in instances:
-            try:
-                await inst.stop()
-            except Exception:  # pragma: no cover - defensive
-                logger.error("Failed to stop service %s", inst, exc_info=True)
+    async with AsyncExitStack() as stack:
         if nc.is_connected:
-            await nc.drain()
+            stack.push_async_callback(nc.drain)
+        instances = []
+        for cls in service_classes:
+            inst = cls(nc, js)
+            await stack.enter_async_context(inst)
+            instances.append(inst)
+        logger.info("Started %d services", len(instances))
+        try:
+            await asyncio.Event().wait()
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            pass

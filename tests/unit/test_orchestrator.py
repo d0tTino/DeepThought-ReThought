@@ -48,6 +48,13 @@ class DummyService:
     async def stop(self) -> None:
         self.stopped = True
 
+    async def __aenter__(self):
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.stop()
+
 
 @pytest.mark.asyncio
 async def test_run(monkeypatch, tmp_path):

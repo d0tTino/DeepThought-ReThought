@@ -91,6 +91,13 @@ class SchedulerService:
             except asyncio.CancelledError:
                 pass
 
+    async def __aenter__(self) -> "SchedulerService":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.stop()
+
     async def _summary_loop(self) -> None:
         while self._running:
             await self._sleep(self._summary_interval)
