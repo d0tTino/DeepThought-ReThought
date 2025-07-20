@@ -83,3 +83,25 @@ def test_create_index_missing_fts5(monkeypatch, tmp_path):
 
     with pytest.raises(RuntimeError, match="FTS5"):
         OfflineSearch.create_index(str(path), [("t", "c")])
+
+
+def test_create_index_missing_fts5_compile_options(monkeypatch, tmp_path):
+    """Fail early when FTS5 support is absent in compile options."""
+    path = tmp_path / "nofts5_compile.db"
+
+    orig_connect = sqlite3.connect
+
+    class NoFTS5Conn(sqlite3.Connection):
+        def execute(self, sql, *args, **kwargs):
+            if sql.lower().startswith("pragma compile_options"):
+                return [("SOME_OPTION",)]
+            return super().execute(sql, *args, **kwargs)
+
+    def connect(*args, **kwargs):
+        kwargs["factory"] = NoFTS5Conn
+        return orig_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", connect)
+
+    with pytest.raises(RuntimeError, match="FTS5"):
+        OfflineSearch.create_index(str(path), [("t", "c")])
