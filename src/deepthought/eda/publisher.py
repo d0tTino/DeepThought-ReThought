@@ -9,7 +9,6 @@ import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -18,7 +17,7 @@ class Publisher:
 
     def __init__(self, nats_client: NATS, js_context: JetStreamContext):
         """Initialize Publisher with existing client and context."""
-        if not nats_client or not nats_client.is_connected:
+        if not nats_client or (hasattr(nats_client, "is_connected") and not nats_client.is_connected):
             raise ValueError("NATS client must be connected.")
         if not js_context:
             raise ValueError("JetStream context must be provided.")

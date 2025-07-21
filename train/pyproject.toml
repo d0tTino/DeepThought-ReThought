@@ -1,11 +1,18 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = [
+    "setuptools>=61",
+    "setuptools_scm[toml]>=6.3",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "dtrt-finetune"
-version = "0.1.0"
+dynamic = ["version"]
 dependencies = ["deepthought-rethought"]
 
 [project.scripts]
 dtrt-finetune = "deepthought.train:main"
+
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+local_scheme = "no-local-version"

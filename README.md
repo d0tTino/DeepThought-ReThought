@@ -51,6 +51,11 @@ pip install -i https://test.pypi.org/simple/ dtrt-finetune==0.1.0
 
 This package exposes only the `dtrt-finetune` command.
 
+The package derives its version from git tags via `setuptools_scm`. Pushing a tag
+like `train-v0.1.0` triggers an automated workflow that builds
+`train/pyproject.toml` and publishes the wheel to PyPI when `PYPI_API_TOKEN` is
+configured.
+
 ## Goals
 
 * **Extreme Efficiency:** Develop AI components that minimize computational cost (CPU, memory, energy) and financial expenditure.

@@ -11,7 +11,6 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-
 logger = logging.getLogger(__name__)
 MessageHandlerType = Callable[[Msg], Awaitable[None]]
 
@@ -21,7 +20,7 @@ class Subscriber:
 
     def __init__(self, nats_client: NATS, js_context: Optional[JetStreamContext] = None):
         """Initialize Subscriber with existing client and optional context."""
-        if not nats_client or not nats_client.is_connected:
+        if not nats_client or (hasattr(nats_client, "is_connected") and not nats_client.is_connected):
             raise ValueError("NATS client must be connected.")
         self._nc = nats_client
         self._js = js_context  # Store JS context if provided
