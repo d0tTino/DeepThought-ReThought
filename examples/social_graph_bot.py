@@ -13,6 +13,9 @@ import aiohttp
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.services import PersonaManager
 from deepthought.services.db_manager import (
+    MAX_MEMORY_LENGTH,
+    MAX_PROMPT_LENGTH,
+    MAX_THEORY_LENGTH,
     DBManager,
 )
 from deepthought.services.moderation import is_allowed

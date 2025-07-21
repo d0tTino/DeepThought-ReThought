@@ -1,0 +1,37 @@
+name: Train PyPI Release
+
+on:
+  push:
+    tags:
+      - 'train-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip build setuptools setuptools_scm[toml]
+      - name: Build training package
+        run: python -m build train
+      - name: Publish to PyPI
+        if: secrets.PYPI_API_TOKEN != ''
+        uses: pypa/gh-action-pypi-publish@v1.8.11
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: train/dist
+          skip-existing: true

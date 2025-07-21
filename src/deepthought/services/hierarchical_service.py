@@ -11,6 +11,7 @@ from nats.errors import Error as NatsError
 from nats.js.client import JetStreamContext
 
 from ..config import Settings
+from ..config import get_settings as _get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -20,6 +21,11 @@ from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ..search import OfflineSearch
 
 logger = logging.getLogger(__name__)
+
+
+def get_settings() -> Settings:
+    """Expose config getter for testing."""
+    return _get_settings()
 
 
 class HierarchicalService:
