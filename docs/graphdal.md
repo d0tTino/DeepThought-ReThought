@@ -90,9 +90,20 @@ Alternatively, run the example script directly:
 python examples/memgraph_memory_service.py
 ```
 
-Another demo using a Neo4j backend is available:
+You can try a standalone graph memory demo once either Memgraph or Neo4j is
+running. Choose the backend via ``DT_GRAPH_BACKEND`` before executing the
+script. A ``noop`` backend is also available for quick testing without any
+database:
 
 ```bash
+# For Memgraph
+export DT_GRAPH_BACKEND=memgraph
+python examples/graph_memory_demo.py
+# For Neo4j
+export DT_GRAPH_BACKEND=neo4j
+python examples/graph_memory_demo.py
+# Or to quickly run it with no database
+export DT_GRAPH_BACKEND=noop
 python examples/graph_memory_demo.py
 ```
 
