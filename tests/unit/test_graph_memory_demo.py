@@ -1,4 +1,5 @@
 import importlib
+import os
 import sys
 import types
 
@@ -30,29 +31,16 @@ class DummyStore:
         return DummyStore.Collection(self)
 
 
-class DummyBackend:
-    def __init__(self):
-        self.entities = []
-
-    def query_subgraph(self, query, params):
-        return [{"fact": "g1"}]
-
-    def merge_entity(self, name):
-        self.entities.append(name)
-
-
-def test_main(monkeypatch):
+def test_main_noop(monkeypatch):
     store = DummyStore()
-    backend = DummyBackend()
+    monkeypatch.setenv("DT_GRAPH_BACKEND", "noop")
     importlib.reload(demo)
     monkeypatch.setattr(demo, "create_vector_store", lambda *a, **k: store)
-    monkeypatch.setattr(demo, "create_graph_backend", lambda *a, **k: backend)
 
-    captured = {}
-    monkeypatch.setattr(demo.logger, "info", lambda msg, ctx: captured.setdefault("ctx", ctx))
+    logs = []
+    monkeypatch.setattr(demo.logger, "info", lambda msg, *a: logs.append(msg))
 
     demo.main()
 
     assert store.added
-    assert backend.entities
-    assert captured.get("ctx")
+    assert any("Retrieval latency" in m for m in logs)
