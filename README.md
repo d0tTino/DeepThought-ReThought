@@ -18,7 +18,7 @@ This installs the ``dtrt`` and ``dtrt-finetune`` entry points for the CLI.
 
 ### Build from source
 
-Build the project and install the wheel with pip:
+Build the project using [build](https://pypi.org/project/build/) then install the wheel:
 
 ```bash
 python -m build
@@ -31,14 +31,8 @@ After installation, the `dtrt` CLI is available. View its commands with:
 dtrt finetune --help
 ```
 
-### Publishing to PyPI
-
-Build the project and upload it using `twine`:
-
-```bash
-python -m build
-twine upload dist/*
-```
+See [docs/packaging.md](docs/packaging.md) for detailed instructions on publishing
+both the core package and the standalone `dtrt-finetune` helper.
 
 
 ## DTRT FineTune v0.1
