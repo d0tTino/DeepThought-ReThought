@@ -1,0 +1,6 @@
+[run]
+omit =
+    */templates/*
+[report]
+include =
+    src/deepthought/config.py
