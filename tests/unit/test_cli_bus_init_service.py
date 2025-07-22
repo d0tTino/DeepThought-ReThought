@@ -70,10 +70,10 @@ def test_bus_init_service_options(tmp_path: Path) -> None:
     dest = tmp_path / "src" / "deepthought" / "services" / "opt"
     env_text = (dest / "nats.env.example").read_text(encoding="utf-8")
     assert "NATS_STREAM=custom" in env_text
-    assert "NATS_TLS_CERT=c.pem" in env_text
-    assert "NATS_JS_STORAGE=file" in env_text
-    assert "NATS_MAX_MSGS=42" in env_text
+    assert 'NATS_TLS_CERT="c.pem"' in env_text
+    assert 'NATS_JS_STORAGE="file"' in env_text
+    assert 'NATS_MAX_MSGS="42"' in env_text
     docker_text = (dest / "Dockerfile").read_text(encoding="utf-8")
-    assert "NATS_TLS_CERT=c.pem" in docker_text
-    assert "NATS_JS_STORAGE=file" in docker_text
-    assert "NATS_MAX_MSGS=42" in docker_text
+    assert 'NATS_TLS_CERT="c.pem"' in docker_text
+    assert 'NATS_JS_STORAGE="file"' in docker_text
+    assert 'NATS_MAX_MSGS="42"' in docker_text
