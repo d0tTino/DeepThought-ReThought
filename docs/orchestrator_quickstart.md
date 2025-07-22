@@ -2,26 +2,87 @@
 
 The orchestrator starts multiple services with a single NATS connection. Each service is registered via an entry point in the `deepthought.services` group.
 
-Create a configuration file listing the services to launch:
+## Step-by-Step Setup
 
-```yaml
-services:
-  - demo
-  - codegen
-  - knowledge_graph
-```
+1. **Start NATS**
 
-Set `DT_GRAPH_BACKEND` to either `memgraph` or `neo4j` and export the matching
-connection variables (see `docs/graphdal.md`) so the service can reach your
-database.
+   Launch a local NATS server with JetStream enabled:
 
-Start a local NATS server with JetStream enabled then run:
+   ```bash
+   ./scripts/start_nats.sh
+   ```
+
+   Then create the required stream:
+
+   ```bash
+   python -m setup_jetstream
+   ```
+
+2. **Choose a Graph Backend**
+
+   Either Memgraph or Neo4j can be used. Export the appropriate environment
+   variables so the `knowledge_graph` service can connect.
+
+   *Memgraph*
+
+   ```bash
+   docker compose up -d memgraph
+   export DT_GRAPH_BACKEND=memgraph
+   export DT_MG_HOST=localhost
+   export DT_MG_PORT=7687
+   export DT_MG_USER=memgraph
+   export DT_MG_PASSWORD=memgraph
+   ```
+
+   *Neo4j*
+
+   ```bash
+   docker compose up -d neo4j
+   export DT_GRAPH_BACKEND=neo4j
+   export DT_NEO4J_HOST=localhost
+   export DT_NEO4J_PORT=7687
+   export DT_NEO4J_USER=neo4j
+   export DT_NEO4J_PASSWORD=test
+   ```
+
+3. **Write a configuration file**
+
+   Create `orchestrator.yaml` listing the services to launch:
+
+   ```yaml
+   services:
+     - memory
+     - knowledge_graph
+     - llm_remote
+     - codegen
+     - output_handler
+     - reward_manager
+   ```
+
+   `llm_remote` requires the `LLM_ENDPOINT` variable pointing to a running
+   `/generate` endpoint.
+
+4. **Run the orchestrator**
+
+   ```bash
+   dtrt orchestrate orchestrator.yaml
+   ```
+
+Publishing an `INPUT_RECEIVED` event will now flow through the configured
+services, demonstrating end-to-end event handling.
+
+## Monitoring Services
+
+Set `METRICS_PORT=8000` before starting the orchestrator to expose Prometheus
+metrics. For a full dashboard, launch Prometheus and Grafana using the provided
+Compose file:
 
 ```bash
-dtrt orchestrate orchestrator.yaml
+docker compose -f docker-compose.metrics.yml up
 ```
 
-Publishing an `INPUT_RECEIVED` event will now flow through the `DemoService` and the `CodeGenerationService`, demonstrating end-to-end event handling.
+Grafana will be available on <http://localhost:3000> with the default password
+`admin`.
 
 ## End-to-End Demo
 
