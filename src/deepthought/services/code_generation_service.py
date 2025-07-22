@@ -1,4 +1,5 @@
 import ast
+import asyncio
 import json
 import logging
 import operator
@@ -61,15 +62,42 @@ class CodeGenerationService:
             return self._unary_ops[op_type](operand)
         raise ValueError("Disallowed expression")
 
-    def _safe_execute(self, code: str, variables: Dict[str, Any]) -> Any:
-        module = ast.parse(code, mode="exec")
-        if len(module.body) != 1 or not isinstance(module.body[0], ast.Assign):
-            raise ValueError("Code must be a single assignment to 'result'")
-        assign = module.body[0]
-        if len(assign.targets) != 1 or not isinstance(assign.targets[0], ast.Name) or assign.targets[0].id != "result":
-            raise ValueError("Code must assign to 'result'")
-        value = self._eval_expr(assign.value, variables)
-        return value
+    async def _safe_execute(self, code: str, variables: Dict[str, Any], timeout: float = 0.1) -> Any:
+        """Safely evaluate a simple assignment expression.
+
+        The code must consist of a single assignment to ``result`` and may only
+        contain arithmetic expressions built from constants or provided
+        variables. Loops and excessively large constants are rejected. The
+        evaluation runs in a separate thread and is cancelled if it exceeds the
+        given ``timeout`` seconds.
+        """
+
+        def check_ast(module: ast.Module) -> None:
+            for node in ast.walk(module):
+                if isinstance(node, (ast.For, ast.While, ast.AsyncFor, ast.AsyncWith, ast.With)):
+                    raise ValueError("Loops are not allowed")
+                if isinstance(node, ast.Constant):
+                    val = node.value
+                    if isinstance(val, (int, float)) and abs(val) > 1_000_000:
+                        raise ValueError("Constant too large")
+                    if isinstance(val, str) and len(val) > 1000:
+                        raise ValueError("Constant too large")
+
+        def eval_ast() -> Any:
+            module = ast.parse(code, mode="exec")
+            check_ast(module)
+            if len(module.body) != 1 or not isinstance(module.body[0], ast.Assign):
+                raise ValueError("Code must be a single assignment to 'result'")
+            assign = module.body[0]
+            if (
+                len(assign.targets) != 1
+                or not isinstance(assign.targets[0], ast.Name)
+                or assign.targets[0].id != "result"
+            ):
+                raise ValueError("Code must assign to 'result'")
+            return self._eval_expr(assign.value, variables)
+
+        return await asyncio.wait_for(asyncio.to_thread(eval_ast), timeout)
 
     async def _handle_template_request(self, msg: Msg) -> None:
         request_id = "unknown"
@@ -85,7 +113,7 @@ class CodeGenerationService:
             logger.info("CodeGenerationService received request ID %s", request_id)
 
             code = Template(template_text).safe_substitute(**variables)
-            result = self._safe_execute(code, variables)
+            result = await self._safe_execute(code, variables)
 
             payload = CodeGeneratedPayload(
                 code=code,
