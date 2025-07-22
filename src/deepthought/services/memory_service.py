@@ -129,6 +129,17 @@ class MemoryService:
             logger.info("MemoryService stopped listening.")
         else:
             logger.warning("Cannot stop listening - no subscriber available.")
+        try:
+            backend = getattr(self._memory, "graph_backend", None)
+            connector = None
+            if hasattr(backend, "_dal"):
+                connector = getattr(getattr(backend, "_dal", None), "_connector", None)
+            elif backend is not None:
+                connector = getattr(backend, "_connector", None)
+            if connector and hasattr(connector, "close"):
+                connector.close()
+        except Exception:
+            logger.error("Failed to close graph connector", exc_info=True)
         if getattr(self, "_nc", None) and getattr(self._nc, "is_connected", False):
             await self._nc.drain()
 
