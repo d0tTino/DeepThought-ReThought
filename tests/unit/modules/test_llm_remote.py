@@ -2,7 +2,9 @@ import asyncio
 import importlib.util
 import json
 import sys
+from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 import pytest
 
 pytest.importorskip("nats")
@@ -204,3 +206,75 @@ async def test_handle_memory_event_bad_json(monkeypatch):
 
     assert msg.nacked
     assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_generate_http_error(monkeypatch):
+    err = aiohttp.ClientResponseError(
+        request_info=MagicMock(real_url="http://api"),
+        history=(),
+        status=500,
+        message="boom",
+    )
+
+    mock_response = AsyncMock()
+    mock_response.__aenter__.return_value = mock_response
+    mock_response.__aexit__.return_value = False
+    mock_response.raise_for_status = MagicMock(side_effect=err)
+    mock_response.json.return_value = {"text": "x"}
+
+    session = MagicMock()
+    session.post = MagicMock(return_value=mock_response)
+
+    llm = create_llm(monkeypatch, session)
+
+    with pytest.raises(aiohttp.ClientResponseError):
+        await llm._generate("hello")
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_http_error(monkeypatch):
+    llm = create_llm(monkeypatch)
+
+    async def fake_generate(self, prompt):
+        raise aiohttp.ClientResponseError(
+            request_info=MagicMock(real_url="http://api"),
+            history=(),
+            status=500,
+            message="bad",
+        )
+
+    monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
+
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="77")
+    msg = DummyMsg(payload.to_json())
+
+    await llm._handle_memory_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_with_mock_session(monkeypatch):
+    mock_response = AsyncMock()
+    mock_response.__aenter__.return_value = mock_response
+    mock_response.__aexit__.return_value = False
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {"text": "resp"}
+
+    session = MagicMock()
+    session.post = MagicMock(return_value=mock_response)
+
+    llm = create_llm(monkeypatch, session)
+
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["fact"]}, input_id="55")
+    msg = DummyMsg(payload.to_json())
+
+    await llm._handle_memory_event(msg)
+
+    assert msg.acked
+    assert llm._publisher.published
+    subject, sent_payload = llm._publisher.published[0]
+    assert subject == EventSubjects.RESPONSE_GENERATED
+    assert sent_payload.final_response == "resp"
