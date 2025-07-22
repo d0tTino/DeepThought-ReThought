@@ -26,10 +26,11 @@ We welcome contributions via Pull Requests (PRs). To make a PR:
     This installs `flake8`, `pytest`, and other tools pinned to the same versions
     used in the continuous integration workflow.
 5.  **Ensure tests pass** if your changes affect code that is covered by tests. (See `README.md` for how to run tests).
-6.  **Keep your PRs focused.** Submit separate PRs for separate features or fixes.
-7.  **Write a clear commit message** for your changes.
-8.  **Push your changes** to your fork and then **submit a Pull Request** to the main DeepThought-ReThought repository.
-9.  Provide a clear description of your PR, explaining the changes and why they are being made.
+6.  **Maintain test coverage.** The CI workflow fails if coverage drops below 80%, so run `pytest --cov --cov-fail-under=80` locally to verify.
+7.  **Keep your PRs focused.** Submit separate PRs for separate features or fixes.
+8.  **Write a clear commit message** for your changes.
+9.  **Push your changes** to your fork and then **submit a Pull Request** to the main DeepThought-ReThought repository.
+10.  Provide a clear description of your PR, explaining the changes and why they are being made.
 
 ## Code Style
 
