@@ -14,8 +14,10 @@ A request payload should look like:
 }
 ```
 
-The service substitutes the variables into the template, executes the generated
-code and publishes a `CodeGeneratedPayload` containing the final code and result.
+The service substitutes the variables into the template and evaluates the
+resulting code in a restricted sandbox before publishing a
+`CodeGeneratedPayload` containing the final code and result. Only simple
+expressions are supported to avoid arbitrary code execution.
 
 This example is intentionally simple and intended as a starting point for more
 advanced JIT or template based generation experiments.

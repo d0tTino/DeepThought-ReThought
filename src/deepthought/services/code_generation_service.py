@@ -1,5 +1,7 @@
+import ast
 import json
 import logging
+import operator
 from datetime import datetime, timezone
 from string import Template
 from typing import Any, Dict
@@ -26,6 +28,49 @@ class CodeGenerationService:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
 
+    _bin_ops = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.Mod: operator.mod,
+        ast.Pow: operator.pow,
+    }
+
+    _unary_ops = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+
+    def _eval_expr(self, node: ast.AST, variables: Dict[str, Any]) -> Any:
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id in variables:
+                return variables[node.id]
+            raise ValueError(f"Unknown variable '{node.id}' in expression")
+        if isinstance(node, ast.BinOp):
+            op_type = type(node.op)
+            if op_type not in self._bin_ops:
+                raise ValueError("Unsupported operator")
+            left = self._eval_expr(node.left, variables)
+            right = self._eval_expr(node.right, variables)
+            return self._bin_ops[op_type](left, right)
+        if isinstance(node, ast.UnaryOp):
+            op_type = type(node.op)
+            if op_type not in self._unary_ops:
+                raise ValueError("Unsupported unary operator")
+            operand = self._eval_expr(node.operand, variables)
+            return self._unary_ops[op_type](operand)
+        raise ValueError("Disallowed expression")
+
+    def _safe_execute(self, code: str, variables: Dict[str, Any]) -> Any:
+        module = ast.parse(code, mode="exec")
+        if len(module.body) != 1 or not isinstance(module.body[0], ast.Assign):
+            raise ValueError("Code must be a single assignment to 'result'")
+        assign = module.body[0]
+        if len(assign.targets) != 1 or not isinstance(assign.targets[0], ast.Name) or assign.targets[0].id != "result":
+            raise ValueError("Code must assign to 'result'")
+        value = self._eval_expr(assign.value, variables)
+        return value
+
     async def _handle_template_request(self, msg: Msg) -> None:
         request_id = "unknown"
         try:
@@ -40,9 +85,7 @@ class CodeGenerationService:
             logger.info("CodeGenerationService received request ID %s", request_id)
 
             code = Template(template_text).safe_substitute(**variables)
-            local_ns: Dict[str, Any] = {}
-            exec(code, {}, local_ns)
-            result = local_ns.get("result")
+            result = self._safe_execute(code, variables)
 
             payload = CodeGeneratedPayload(
                 code=code,
