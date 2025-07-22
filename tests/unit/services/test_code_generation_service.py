@@ -61,3 +61,18 @@ async def test_handle_template_request(monkeypatch):
     assert subject == EventSubjects.CODE_GENERATED
     assert sent_payload.input_id == "a"
     assert sent_payload.result == "3"
+
+
+@pytest.mark.asyncio
+async def test_rejects_unsafe_code(monkeypatch):
+    service = CodeGenerationService(DummyNATS(), DummyJS())
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    payload = CodeTemplatePayload(template="result = __import__('os').system('echo hi')", variables={}, input_id="b")
+    msg = DummyMsg(payload.to_json())
+    await service._handle_template_request(msg)
+
+    assert msg.acked
+    pub = service._publisher
+    assert not pub.published
