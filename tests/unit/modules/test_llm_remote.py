@@ -278,3 +278,13 @@ async def test_handle_memory_event_with_mock_session(monkeypatch):
     subject, sent_payload = llm._publisher.published[0]
     assert subject == EventSubjects.RESPONSE_GENERATED
     assert sent_payload.final_response == "resp"
+
+
+@pytest.mark.asyncio
+async def test_generate_uses_dspy_pipeline(monkeypatch):
+    monkeypatch.setenv("USE_DSPY", "1")
+    monkeypatch.setattr(llm_remote, "build_qa_pipeline", lambda: lambda q: "pipe")
+    llm = create_llm(monkeypatch)
+    result = await llm._generate("query")
+    assert result == "pipe"
+    await llm._session.close()
