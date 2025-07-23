@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -43,7 +44,13 @@ class MemoryService(BaseService):
         )
         settings = settings or get_settings()
         if memory is None:
-            memory = create_memory_backend(settings=settings)
+            backend = os.getenv("DT_MEMORY_BACKEND", "tiered").lower()
+            if backend == "ume":
+                from ..memory.ume_backend import create_ume_memory
+
+                memory = create_ume_memory(settings=settings)
+            else:
+                memory = create_memory_backend(settings=settings)
         self._memory = memory
 
     @classmethod
