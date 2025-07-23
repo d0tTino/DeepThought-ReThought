@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from dataclasses import dataclass
 from importlib import metadata
 from typing import Callable, Tuple
 
 import torch
-from datasets import Dataset, load_dataset as hf_load_dataset
+from datasets import Dataset
+from datasets import load_dataset as hf_load_dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
@@ -26,10 +28,12 @@ __all__ = [
     "_hf_model_loader",
     "_hf_dataset_loader",
     "create_trainer",
+    "run_training",
     "run",
     "estimate_vram",
     "parse_args",
     "main",
+    "TrainingConfig",
 ]
 
 
@@ -38,6 +42,24 @@ logger = logging.getLogger(__name__)
 
 _MODEL_GROUP = "dtrt.model_loaders"
 _DATASET_GROUP = "dtrt.dataset_loaders"
+
+
+@dataclass
+class TrainingConfig:
+    """Configuration options for :func:`run_training`."""
+
+    model_path: str | None = None
+    dataset_path: str = "databricks/databricks-dolly-15k"
+    model_loader: str = "hf"
+    dataset_loader: str = "hf"
+    bits: int = 4
+    output_dir: str = "./results/lora-adapter"
+    max_seq_length: int = 2048
+    pack_sequences: str | bool = "off"
+    epochs: float = 1.0
+    batch_size: int = 2
+    lr: float = 2e-4
+    resume: bool = False
 
 
 def _resolve_plugin(group: str, name: str) -> Callable:
@@ -239,30 +261,49 @@ def estimate_vram(
     return (param_bytes + activation_bytes) / (1024**3)
 
 
-def run(args: argparse.Namespace) -> int:
-    """Execute training using high level helper functions."""
-    model, tokenizer = load_model(args.model_path, args.bits, loader=args.model_loader)
+def run_training(config: TrainingConfig) -> int:
+    """Execute training using :class:`TrainingConfig`."""
+    model, tokenizer = load_model(config.model_path, config.bits, loader=config.model_loader)
     train_ds, eval_ds = load_dataset(
-        args.dataset_path,
+        config.dataset_path,
         tokenizer,
-        max_seq_length=args.max_seq_length,
-        pack_sequences=args.pack_sequences,
-        loader=args.dataset_loader,
+        max_seq_length=config.max_seq_length,
+        pack_sequences=config.pack_sequences,
+        loader=config.dataset_loader,
     )
     trainer, _ = create_trainer(
         model,
         tokenizer,
         train_ds,
         eval_ds,
-        args.output_dir,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        lr=args.lr,
+        config.output_dir,
+        epochs=config.epochs,
+        batch_size=config.batch_size,
+        lr=config.lr,
     )
-    trainer.train(resume_from_checkpoint=args.resume)
+    trainer.train(resume_from_checkpoint=config.resume)
     trainer.save_model()
     trainer.save_state()
     return 0
+
+
+def run(args: argparse.Namespace) -> int:
+    """Execute training using high level helper functions."""
+    cfg = TrainingConfig(
+        model_path=args.model_path,
+        dataset_path=args.dataset_path,
+        model_loader=args.model_loader,
+        dataset_loader=args.dataset_loader,
+        bits=args.bits,
+        output_dir=args.output_dir,
+        max_seq_length=args.max_seq_length,
+        pack_sequences=args.pack_sequences,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        resume=args.resume,
+    )
+    return run_training(cfg)
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -354,7 +395,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Estimated VRAM requirement: {vram:.2f} GB")
         if args.estimate_only:
             return 0
-    return run(args)
+    cfg = TrainingConfig(
+        model_path=args.model_path,
+        dataset_path=args.dataset_path,
+        model_loader=args.model_loader,
+        dataset_loader=args.dataset_loader,
+        bits=args.bits,
+        output_dir=args.output_dir,
+        max_seq_length=args.max_seq_length,
+        pack_sequences=args.pack_sequences,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        resume=args.resume,
+    )
+    return run_training(cfg)
 
 
 if __name__ == "__main__":
