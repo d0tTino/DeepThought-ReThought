@@ -25,22 +25,48 @@ class MemoryService(BaseService):
 
     def __init__(
         self,
-        nats_client: NATS,
-        js_context: JetStreamContext,
-        settings: Settings,
+        nats_client: Optional[NATS] = None,
+        js_context: Optional[JetStreamContext] = None,
+        settings: Settings | None = None,
         memory: Optional[TieredMemory] = None,
+        *,
+        nats_url: str | None = None,
+        connect_retries: int = 1,
+        connect_timeout: float = 2.0,
     ) -> None:
-        super().__init__(nats_client, js_context)
+        super().__init__(
+            nats_client,
+            js_context,
+            nats_url=nats_url,
+            connect_retries=connect_retries,
+            connect_timeout=connect_timeout,
+        )
+        settings = settings or get_settings()
         if memory is None:
             memory = create_memory_backend(settings=settings)
         self._memory = memory
 
     @classmethod
-    def from_config(cls, nats_client: NATS, js_context: JetStreamContext) -> "MemoryService":
+    def from_config(
+        cls,
+        nats_client: Optional[NATS] = None,
+        js_context: Optional[JetStreamContext] = None,
+        *,
+        nats_url: str | None = None,
+        connect_retries: int = 1,
+        connect_timeout: float = 2.0,
+    ) -> "MemoryService":
         """Return a service with backends configured from environment variables."""
 
         settings = get_settings()
-        return cls(nats_client, js_context, settings)
+        return cls(
+            nats_client,
+            js_context,
+            settings,
+            nats_url=nats_url,
+            connect_retries=connect_retries,
+            connect_timeout=connect_timeout,
+        )
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
