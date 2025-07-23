@@ -44,4 +44,14 @@ Import `grafana/deepthought_metrics.json` to view two panels:
 - **Inputs Total per Service** - rate of `inputs_total` events.
 - **Average Latency Seconds** - calculated from `input_latency_seconds`.
 
+The metrics server also exposes counters for rule evaluations. Snapshots of the
+`rule_evaluations_total` metric can be visualized with the dashboard utility:
+
+```bash
+python tools/dashboard_rules.py path/to/metrics --show
+```
+
+This plots the evaluation count for each rule over time. When using Grafana you
+can create an additional panel with the expression `rate(rule_evaluations_total[1m])`.
+
 These dashboards let you track throughput and latency for each service.
