@@ -4,10 +4,12 @@ from .cognitive_core_service import CognitiveCoreService
 from .db_manager import DBManager
 from .file_graph_dal import FileGraphDAL
 from .persona_manager import PersonaManager
+from .social_graph_service import SocialGraphService
 
 __all__ = [
     "FileGraphDAL",
     "CognitiveCoreService",
     "PersonaManager",
     "DBManager",
+    "SocialGraphService",
 ]
