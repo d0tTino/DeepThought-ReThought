@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -10,16 +13,18 @@ from nats.js.client import JetStreamContext
 
 from ..config import Settings, get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
-from ..graph import GraphConnector, GraphDAL, GraphDALBackend, Neo4jConnector
+from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
-from ..memory.vector_store import create_vector_store
+from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
+from ..search import OfflineSearch
 from .base import BaseService
+from .db_manager import DBManager
 
 logger = logging.getLogger(__name__)
 
 
-class KnowledgeGraphService(BaseService):
-    """Service persisting interactions in a graph database via GraphDAL."""
+class CognitiveCoreService(BaseService):
+    """Unified service for vector, graph and relational memory."""
 
     def __init__(
         self,
@@ -27,6 +32,8 @@ class KnowledgeGraphService(BaseService):
         js_context: Optional[JetStreamContext] = None,
         settings: Settings | None = None,
         memory: Optional[TieredMemory] = None,
+        db: Optional[DBManager] = None,
+        search: OfflineSearch | None = None,
         *,
         nats_url: str | None = None,
         connect_retries: int = 1,
@@ -41,32 +48,44 @@ class KnowledgeGraphService(BaseService):
         )
         self._settings = settings or get_settings()
         if memory is None:
-            store = create_vector_store(
-                backend=self._settings.vector_backend,
-                use_gpu=self._settings.vector_use_gpu,
-            )
-            if self._settings.graph_backend.lower() == "neo4j":
-                connector = Neo4jConnector(
-                    host=self._settings.neo4j_host,
-                    port=self._settings.neo4j_port,
-                    username=self._settings.neo4j_user,
-                    password=self._settings.neo4j_password,
-                )
-            else:
-                connector = GraphConnector(
-                    host=self._settings.mg_host,
-                    port=self._settings.mg_port,
-                    username=self._settings.mg_user,
-                    password=self._settings.mg_password,
-                )
-            backend = GraphDALBackend(GraphDAL(connector))
-            memory = TieredMemory(
-                store,
-                backend,
-                capacity=self._settings.memory_capacity,
-                top_k=self._settings.memory_top_k,
-            )
+            memory = create_memory_backend(settings=self._settings)
         self._memory = memory
+        self._db = db or DBManager()
+        if search is None:
+            db_path = self._settings.search_db
+            if db_path:
+                if not os.path.exists(db_path):
+                    try:
+                        search = OfflineSearch.create_index(db_path, [])
+                    except ValueError:
+                        logger.warning("No documents available for search index; disabling offline search")
+                        search = None
+                else:
+                    search = OfflineSearch(db_path)
+        self._search = search
+        self._top_k = self._settings.memory_top_k
+
+    def retrieve_context(self, prompt: str) -> List[str]:
+        memory_facts = self._memory.retrieve_context(prompt) if self._memory else []
+        search_facts: List[str] = []
+        if self._search:
+            try:
+                search_facts = self._search.search(prompt, limit=self._top_k)
+            except Exception:  # pragma: no cover - defensive
+                logger.error("Offline search failed", exc_info=True)
+        merged: List[str] = []
+        seen = set()
+        for item in memory_facts + search_facts:
+            if item not in seen:
+                seen.add(item)
+                merged.append(item)
+        return merged
+
+    async def _db_context(self) -> List[str]:
+        rows = await self._db.recall_user("user")
+        data = [m[1] for m in rows]
+        start = -self._top_k
+        return data[start:]
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -79,12 +98,22 @@ class KnowledgeGraphService(BaseService):
             user_input = data.get("user_input")
             if not isinstance(input_id, str) or not isinstance(user_input, str):
                 raise ValueError("Invalid input payload fields")
-            logger.info("KnowledgeGraphService received input %s", input_id)
+            logger.info("CognitiveCoreService received input %s", input_id)
 
             self._memory.store_interaction(user_input)
-            facts = self._memory.retrieve_context(user_input)
+            await self._db.store_memory("user", user_input)
+            await self._db.log_interaction("user", None)
+
+            mem_facts = self.retrieve_context(user_input)
+            db_facts = await self._db_context()
+            facts: List[str] = []
+            seen = set()
+            for item in mem_facts + db_facts:
+                if item not in seen:
+                    seen.add(item)
+                    facts.append(item)
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={"facts": facts, "source": "knowledge_graph"},
+                retrieved_knowledge={"facts": facts, "source": "cognitive_core"},
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
@@ -95,9 +124,12 @@ class KnowledgeGraphService(BaseService):
                 use_jetstream=True,
                 timeout=10.0,
             )
-            logger.info("KnowledgeGraphService published memory event %s", input_id)
+            logger.info("CognitiveCoreService published memory event %s", input_id)
             if hasattr(msg, "ack") and callable(msg.ack):
-                await msg.ack()
+                try:
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message", exc_info=True)
         except (json.JSONDecodeError, ValueError) as e:
             logger.error("Invalid InputReceived payload: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
@@ -111,7 +143,7 @@ class KnowledgeGraphService(BaseService):
                 except Exception:
                     logger.error("Failed to ack message after error", exc_info=True)
         except Exception as e:  # pragma: no cover - defensive
-            logger.error("Error in KnowledgeGraphService: %s", e, exc_info=True)
+            logger.error("Error in CognitiveCoreService handler: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
@@ -124,9 +156,10 @@ class KnowledgeGraphService(BaseService):
                     logger.error("Failed to ack message after error", exc_info=True)
         finally:
             duration = time.perf_counter() - start
-            logger.info("KnowledgeGraphService processed input in %.3fs", duration)
+            INPUTS_TOTAL.labels(service="cognitive_core_service").inc()
+            INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(duration)
 
-    async def start(self, durable_name: str = "knowledge_graph_listener") -> bool:
+    async def start(self, durable_name: str = "cognitive_core_listener") -> bool:
         self._subscriptions.clear()
         self.add_subscription(
             subject=EventSubjects.INPUT_RECEIVED,
@@ -136,7 +169,7 @@ class KnowledgeGraphService(BaseService):
         )
         started = await super().start()
         if started:
-            logger.info("KnowledgeGraphService subscribed to %s", EventSubjects.INPUT_RECEIVED)
+            logger.info("CognitiveCoreService subscribed to %s", EventSubjects.INPUT_RECEIVED)
         return started
 
     async def stop(self) -> None:
@@ -151,9 +184,14 @@ class KnowledgeGraphService(BaseService):
                 connector.close()
         except Exception:
             logger.error("Failed to close graph connector", exc_info=True)
+        if hasattr(self._db, "close"):
+            try:
+                await self._db.close()
+            except Exception:
+                logger.error("Failed to close DB connection", exc_info=True)
         await super().stop()
 
-    async def __aenter__(self) -> "KnowledgeGraphService":
+    async def __aenter__(self) -> "CognitiveCoreService":
         await self.start()
         return self
 
