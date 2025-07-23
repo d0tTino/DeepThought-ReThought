@@ -109,6 +109,8 @@ Run ``dtrt finetune --help`` to see all available options.
 
 The CLI is also available as ``dtrt-finetune`` for convenience.
 For a GPU-free demo, see the [Colab notebook](docs/Finetune_CPU.ipynb).
+For a step-by-step walkthrough with VRAM estimation and sequence packing, see
+[docs/notebooks/fine_tune_demo.md](docs/notebooks/fine_tune_demo.md).
 
 ### Docker Finetune
 
