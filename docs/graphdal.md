@@ -107,6 +107,24 @@ export DT_GRAPH_BACKEND=noop
 python examples/graph_memory_demo.py
 ```
 
+### CRUD Demo with Sample Data
+
+`graph_memory_demo.py` also demonstrates basic create, read, update and delete
+operations. It loads a tiny dataset of interactions from
+`examples/data/sample_graph_data.txt`:
+
+```text
+Alice met Bob
+Bob chatted with Carol
+Carol saw Dave
+```
+
+Running the script with either backend will insert these facts, update a sample
+node and then delete it before performing a context retrieval query.
+
+Install the testing dependencies with `pip install -r requirements-ci.txt`
+before running the demo or executing the test suite.
+
 ### Orchestrator Configuration
 
 Start the `knowledge_graph` service via the orchestrator by writing an
