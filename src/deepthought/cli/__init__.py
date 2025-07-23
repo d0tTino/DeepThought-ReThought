@@ -121,9 +121,7 @@ def init_project(
         os.chdir(dest)
         init_service(
             name,
-            template_name=(
-                "bus_service" if language == "python" else f"bus_service_{language}"
-            ),
+            template_name=("bus_service" if language == "python" else f"bus_service_{language}"),
             stream_name=stream_name,
             tls_cert=tls_cert,
             tls_key=tls_key,
@@ -154,9 +152,7 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
         init_service(
             args.name,
             template_name=(
-                template
-                if getattr(args, "language", "python") == "python"
-                else f"{template}_{args.language}"
+                template if getattr(args, "language", "python") == "python" else f"{template}_{args.language}"
             ),
             stream_name=getattr(args, "stream_name", None),
             tls_cert=getattr(args, "tls_cert", None),
@@ -169,37 +165,35 @@ def _cmd_init_service(args: argparse.Namespace) -> None:
 
 def _cmd_finetune(args: argparse.Namespace) -> int:
     training = import_module("deepthought.train")
-    argv = [
-        "--dataset-path",
-        args.dataset_path,
-        "--bits",
-        str(args.bits),
-        "--output-dir",
-        args.output_dir,
-        "--model-loader",
-        args.model_loader,
-        "--dataset-loader",
-        args.dataset_loader,
-        "--max-seq-length",
-        str(args.max_seq_length),
-        "--epochs",
-        str(args.epochs),
-        "--batch-size",
-        str(args.batch_size),
-        "--lr",
-        str(args.lr),
-    ]
-    if args.model_path:
-        argv[0:0] = ["--model-path", args.model_path]
-    if args.pack_sequences != "off":
-        argv.extend(["--pack-sequences", args.pack_sequences])
-    if args.estimate_only:
-        argv.append("--estimate-only")
-    elif args.estimate_vram:
-        argv.append("--estimate-vram")
-    if args.resume:
-        argv.append("--resume")
-    return training.main(argv)
+    cfg = training.TrainingConfig(
+        model_path=args.model_path,
+        dataset_path=args.dataset_path,
+        model_loader=args.model_loader,
+        dataset_loader=args.dataset_loader,
+        bits=args.bits,
+        output_dir=args.output_dir,
+        max_seq_length=args.max_seq_length,
+        pack_sequences=args.pack_sequences,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        resume=args.resume,
+    )
+
+    if args.estimate_vram or args.estimate_only:
+        model, _ = training.load_model(cfg.model_path, cfg.bits, loader=cfg.model_loader)
+        vram = training.estimate_vram(
+            model,
+            batch_size=cfg.batch_size,
+            seq_length=cfg.max_seq_length,
+            gradient_accumulation_steps=8,
+            bits=cfg.bits,
+        )
+        print(f"Estimated VRAM requirement: {vram:.2f} GB")
+        if args.estimate_only:
+            return 0
+
+    return training.run_training(cfg)
 
 
 def _cmd_orchestrate(args: argparse.Namespace) -> int:

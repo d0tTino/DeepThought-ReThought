@@ -15,7 +15,7 @@ def test_finetune_estimate_only(tmp_path: Path, monkeypatch) -> None:
     cfg = GPT2Config(n_embd=4, n_layer=1, n_head=1, vocab_size=10)
     dummy_model = AutoModelForCausalLM.from_config(cfg)
     monkeypatch.setattr(AutoModelForCausalLM, "from_pretrained", lambda *a, **k: dummy_model)
-    monkeypatch.setattr(train, "run", lambda args: 0)
+    monkeypatch.setattr(train, "run_training", lambda cfg: 0)
 
     dataset = Path(__file__).resolve().parents[1] / "data" / "finetune_sample.jsonl"
     out_dir = tmp_path / "model"
