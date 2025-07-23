@@ -28,4 +28,6 @@ pyyaml
 faiss-cpu
 prometheus-client
 
-pyperplan>=2.1\nl2p==0.2.2
+pyperplan>=2.1
+l2p==0.2.2
+git+https://github.com/d0tTino/UME.git@dev
