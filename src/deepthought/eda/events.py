@@ -37,6 +37,10 @@ class EventSubjects:
     CODE_TEMPLATE_REQUEST = "dtr.codegen.template_request"
     CODE_GENERATED = "dtr.codegen.generated"
 
+    # Planning events
+    PLAN_REQUESTED = "dtr.plan.requested"
+    PLAN_GENERATED = "dtr.plan.generated"
+
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
     # e.g., METRICS = "dtr.metrics.reported"
@@ -115,5 +119,23 @@ class CodeGeneratedPayload(EventPayload):
 
     code: str
     result: str
+    input_id: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+@dataclass
+class PlanRequestedPayload(EventPayload):
+    """Payload requesting a plan for a goal."""
+
+    goal: str
+    input_id: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+@dataclass
+class PlanGeneratedPayload(EventPayload):
+    """Payload containing a generated plan."""
+
+    plan: list[str]
     input_id: Optional[str] = None
     timestamp: Optional[str] = None

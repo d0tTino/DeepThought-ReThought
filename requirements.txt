@@ -28,3 +28,4 @@ pyyaml
 faiss-cpu
 prometheus-client
 
+pyperplan>=2.1\nl2p==0.2.2
