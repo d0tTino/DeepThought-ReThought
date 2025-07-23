@@ -12,8 +12,14 @@ from .base import BaseService
 class RewardManagerService(BaseService):
     """Service wrapper for :class:`RewardManager`."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext) -> None:
-        super().__init__(nats_client, js_context)
+    def __init__(
+        self,
+        nats_client: NATS,
+        js_context: JetStreamContext,
+        *,
+        connect_retries: int = 1,
+    ) -> None:
+        super().__init__(nats_client, js_context, connect_retries=connect_retries)
         ledger = Ledger(nats_client, js_context)
         token = os.getenv("DISCORD_TOKEN", "")
         self._manager = RewardManager(self._subscriber, ledger, self._publisher, token)

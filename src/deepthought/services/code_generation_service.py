@@ -5,7 +5,7 @@ import logging
 import operator
 from datetime import datetime, timezone
 from string import Template
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -23,8 +23,22 @@ logger = logging.getLogger(__name__)
 class CodeGenerationService(BaseService):
     """Simple template-based code generation service."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext) -> None:
-        super().__init__(nats_client, js_context)
+    def __init__(
+        self,
+        nats_client: Optional[NATS] = None,
+        js_context: Optional[JetStreamContext] = None,
+        *,
+        nats_url: str | None = None,
+        connect_retries: int = 1,
+        connect_timeout: float = 2.0,
+    ) -> None:
+        super().__init__(
+            nats_client,
+            js_context,
+            nats_url=nats_url,
+            connect_retries=connect_retries,
+            connect_timeout=connect_timeout,
+        )
 
     _bin_ops = {
         ast.Add: operator.add,

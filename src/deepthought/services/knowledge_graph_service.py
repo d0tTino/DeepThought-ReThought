@@ -23,12 +23,22 @@ class KnowledgeGraphService(BaseService):
 
     def __init__(
         self,
-        nats_client: NATS,
-        js_context: JetStreamContext,
+        nats_client: Optional[NATS] = None,
+        js_context: Optional[JetStreamContext] = None,
         settings: Settings | None = None,
         memory: Optional[TieredMemory] = None,
+        *,
+        nats_url: str | None = None,
+        connect_retries: int = 1,
+        connect_timeout: float = 2.0,
     ) -> None:
-        super().__init__(nats_client, js_context)
+        super().__init__(
+            nats_client,
+            js_context,
+            nats_url=nats_url,
+            connect_retries=connect_retries,
+            connect_timeout=connect_timeout,
+        )
         self._settings = settings or get_settings()
         if memory is None:
             store = create_vector_store(
