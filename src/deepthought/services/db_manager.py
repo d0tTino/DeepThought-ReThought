@@ -7,6 +7,28 @@ import os
 
 import aiosqlite
 
+SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
+if SENTIMENT_BACKEND == "vader":
+    try:
+        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+        _sentiment = SentimentIntensityAnalyzer()
+
+        def analyze_sentiment(text: str) -> float:
+            return _sentiment.polarity_scores(text)["compound"]
+
+    except Exception:  # pragma: no cover - dependency missing
+        from textblob import TextBlob
+
+        def analyze_sentiment(text: str) -> float:
+            return TextBlob(text).sentiment.polarity
+
+else:
+    from textblob import TextBlob
+
+    def analyze_sentiment(text: str) -> float:
+        return TextBlob(text).sentiment.polarity
+
 from ..config import get_settings
 
 # Default database path used when none is provided.
@@ -16,6 +38,8 @@ DB_PATH = get_settings().social_graph_db
 MAX_MEMORY_LENGTH = 1000
 MAX_THEORY_LENGTH = 256
 MAX_PROMPT_LENGTH = 2000
+AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
+AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
 
 
 class DBManager:
@@ -158,14 +182,20 @@ class DBManager:
             "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
             (str(user_id), str(target_id) if target_id is not None else None),
         )
-        await self._db.execute(
-            """
-            INSERT INTO affinity (user_id, score)
-            VALUES (?, 1)
-            ON CONFLICT(user_id) DO UPDATE SET score=affinity.score + 1
-            """,
-            (str(user_id),),
+        delta = (
+            self._affinity_delta(sentiment_score)
+            if sentiment_score is not None
+            else AFFINITY_POS_DELTA
         )
+        if delta:
+            await self._db.execute(
+                """
+                INSERT INTO affinity (user_id, score)
+                VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET score=affinity.score + ?
+                """,
+                (str(user_id), delta, delta),
+            )
         if target_id is not None:
             await self._db.execute(
                 """
@@ -392,7 +422,19 @@ class DBManager:
             row = await cur.fetchone()
             return bool(row[0]) if row else False
 
-    async def adjust_affinity(self, user_id: int, delta: int) -> None:
+    def _affinity_delta(self, value: float) -> int:
+        if -1 <= float(value) <= 1:
+            if value > 0:
+                return AFFINITY_POS_DELTA
+            if value < 0:
+                return AFFINITY_NEG_DELTA
+            return 0
+        return int(value)
+
+    async def adjust_affinity(self, user_id: int, delta: float) -> None:
+        delta_int = self._affinity_delta(delta)
+        if not delta_int:
+            return
         await self.connect()
         assert self._db
         await self._db.execute(
@@ -401,7 +443,7 @@ class DBManager:
             VALUES (?, ?)
             ON CONFLICT(user_id) DO UPDATE SET score=affinity.score + ?
             """,
-            (str(user_id), delta, delta),
+            (str(user_id), delta_int, delta_int),
         )
         await self._db.commit()
 
