@@ -27,3 +27,6 @@ datasets>=2.14.0
 peft>=0.5.0
 pyperplan>=2.1
 l2p==0.2.2
+dspy
+psl
+deepproblog

@@ -14,11 +14,21 @@ from pathlib import Path
 # Common documentation file extensions to ignore
 DOC_EXTENSIONS = {".md", ".markdown", ".mdown", ".rst", ".txt"}
 
+# Directories that should always trigger tests when modified
+CODE_DIRS = {
+    "src/deepthought/psl",
+    "src/deepthought/neuralsymbolic",
+    "src/deepthought/pipeline",
+    "src/deepthought/planning",
+}
+
 
 def is_doc_file(path: str) -> bool:
     """Return True if the path looks like documentation."""
     p = Path(path)
     suffix = p.suffix.lower()
+    if any(path.startswith(d + "/") or path == d for d in CODE_DIRS):
+        return False
     return suffix in DOC_EXTENSIONS or path.startswith("docs/")
 
 
@@ -49,6 +59,15 @@ def main() -> None:
     result = subprocess.run(diff_args, stdout=subprocess.PIPE, check=True)
 
     changed_files = [f for f in result.stdout.decode().splitlines() if f]
+
+    # If any file is within CODE_DIRS, treat as code change
+    if any(
+        f.startswith(d + "/") or f == d
+        for f in changed_files
+        for d in CODE_DIRS
+    ):
+        print("true")
+        sys.exit(0)
 
     # If all changed files are docs, tests are unnecessary
     if changed_files and all(is_doc_file(f) for f in changed_files):
