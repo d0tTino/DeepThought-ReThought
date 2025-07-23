@@ -43,7 +43,8 @@ def _compose_cmd():
 
 
 @pytest.mark.asyncio
-async def test_bus_project(tmp_path: Path):
+@pytest.mark.parametrize("language", ["python", "go", "ts"])
+async def test_bus_project(tmp_path: Path, language: str) -> None:
     compose = _compose_cmd()
     if compose is None:
         pytest.skip("Docker compose not available")
@@ -51,7 +52,17 @@ async def test_bus_project(tmp_path: Path):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
     subprocess.run(
-        [sys.executable, "-m", "deepthought.cli", "bus", "init", "project", "demo"],
+        [
+            sys.executable,
+            "-m",
+            "deepthought.cli",
+            "bus",
+            "init",
+            "project",
+            "demo",
+            "--language",
+            language,
+        ],
         cwd=tmp_path,
         stdout=subprocess.PIPE,
         text=True,
@@ -60,7 +71,11 @@ async def test_bus_project(tmp_path: Path):
     )
     compose_file = tmp_path / "demo" / "docker-compose.yml"
 
-    proc = subprocess.run(compose + ["-f", str(compose_file), "up", "-d"], capture_output=True, text=True)
+    proc = subprocess.run(
+        compose + ["-f", str(compose_file), "up", "-d", "--build"],
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         pytest.skip(f"Could not start compose: {proc.stderr}")
     try:
