@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import Any, List
 
-import networkx as nx
+import importlib
 
 from ..graph import GraphBackend
 
@@ -15,6 +17,10 @@ class FileGraphDAL:
     """Simple file-backed graph storage using NetworkX."""
 
     def __init__(self, graph_file: str = "graph_memory.json") -> None:
+        try:
+            self._nx = importlib.import_module("networkx")
+        except Exception as exc:
+            raise ImportError("networkx is required for FileGraphDAL") from exc
         self._graph_file = graph_file
         dir_path = os.path.dirname(graph_file)
         if dir_path:
@@ -23,24 +29,24 @@ class FileGraphDAL:
         if os.path.exists(graph_file):
             self._graph = self._read_graph()
         else:
-            self._graph = nx.DiGraph()
+            self._graph = self._nx.DiGraph()
             self._write_graph()
         logger.info("FileGraphDAL initialized with file %s", graph_file)
 
-    def _read_graph(self) -> nx.DiGraph:
+    def _read_graph(self) -> Any:
         try:
             with open(self._graph_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return nx.readwrite.json_graph.node_link_graph(data)
+            return self._nx.readwrite.json_graph.node_link_graph(data)
         except Exception as e:
             logger.error("Failed to read graph file %s: %s", self._graph_file, e, exc_info=True)
             # If the file is corrupt, reset it so future loads succeed
-            self._graph = nx.DiGraph()
+            self._graph = self._nx.DiGraph()
             self._write_graph()
             return self._graph
 
     def _write_graph(self) -> None:
-        data = nx.readwrite.json_graph.node_link_data(self._graph)
+        data = self._nx.readwrite.json_graph.node_link_data(self._graph)
         with open(self._graph_file, "w", encoding="utf-8") as f:
             json.dump(data, f)
 

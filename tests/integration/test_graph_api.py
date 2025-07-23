@@ -26,6 +26,7 @@ sys.modules.setdefault("nats.js.client", fake_nats.js.client)
 
 fake_nx = types.ModuleType("networkx")
 fake_nx.DiGraph = object
+fake_nx.__spec__ = importlib.machinery.ModuleSpec("networkx", loader=None)
 sys.modules.setdefault("networkx", fake_nx)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))

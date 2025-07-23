@@ -4,6 +4,8 @@ import types
 
 fake_nx = types.ModuleType("networkx")
 fake_nx.DiGraph = object
+import importlib.machinery
+fake_nx.__spec__ = importlib.machinery.ModuleSpec("networkx", loader=None)
 sys.modules.setdefault("networkx", fake_nx)
 from types import SimpleNamespace
 

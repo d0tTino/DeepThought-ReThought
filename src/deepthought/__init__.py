@@ -44,3 +44,6 @@ try:  # pragma: no cover - optional dependency may be missing
     from . import neuromorphic  # type: ignore  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
     neuromorphic = None  # type: ignore
+
+# risk scoring utilities rely only on builtin dependencies
+from . import risk  # noqa: F401

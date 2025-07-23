@@ -49,6 +49,8 @@ fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
 fake_nx = types.ModuleType("networkx")
 setattr(fake_nx, "DiGraph", object)
+import importlib.machinery
+fake_nx.__spec__ = importlib.machinery.ModuleSpec("networkx", loader=None)
 fake_prom = types.ModuleType("prometheus_client")
 
 
