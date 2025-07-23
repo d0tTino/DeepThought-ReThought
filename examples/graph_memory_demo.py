@@ -7,6 +7,7 @@ import os
 import time
 
 from deepthought.graph import GraphConnector, GraphDAL, Neo4jConnector
+import uuid
 from deepthought.memory.hierarchical import HierarchicalMemory
 from deepthought.memory.vector_store import create_vector_store
 
@@ -37,11 +38,9 @@ def main() -> None:
     dal = _create_dal(backend_name)
     memory = HierarchicalMemory(store, dal)
 
-    facts = [
-        "Alice met Bob",
-        "Bob chatted with Carol",
-        "Carol saw Dave",
-    ]
+    data_path = os.path.join(os.path.dirname(__file__), "data", "sample_graph_data.txt")
+    with open(data_path, "r", encoding="utf-8") as f:
+        facts = [line.strip() for line in f if line.strip()]
 
     store.add_texts(facts)
     for fact in facts:
@@ -52,6 +51,26 @@ def main() -> None:
             dal.merge_next_edge(src, dst)
         except Exception:  # pragma: no cover - demo only
             logger.error("Failed to store %s", fact, exc_info=True)
+
+    # Basic CRUD example using GraphDAL helper methods
+    alice_id = str(uuid.uuid4())
+    dal.add_entity("Person", {"id": alice_id, "name": "Alice"})
+    row = dal.get_entity("Person", "id", alice_id)
+    logger.info("Created entity: %s", row)
+
+    dal.query_subgraph(
+        "MATCH (n:Person {id: $id}) SET n.name = 'Alice Cooper'",
+        {"id": alice_id},
+    )
+    row = dal.get_entity("Person", "id", alice_id)
+    logger.info("Updated entity: %s", row)
+
+    dal.query_subgraph(
+        "MATCH (n:Person {id: $id}) DETACH DELETE n",
+        {"id": alice_id},
+    )
+    row = dal.get_entity("Person", "id", alice_id)
+    logger.info("Deleted entity lookup returned: %s", row)
 
     start = time.perf_counter()
     ctx = memory.retrieve_context("Alice")
