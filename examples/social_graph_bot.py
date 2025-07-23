@@ -75,13 +75,21 @@ from nats.js.client import JetStreamContext
 
 SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
 if SENTIMENT_BACKEND == "vader":
-    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+    try:
+        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-    _sentiment = SentimentIntensityAnalyzer()
+        _sentiment = SentimentIntensityAnalyzer()
 
-    def analyze_sentiment(text: str) -> float:
-        """Return the compound sentiment score using VADER."""
-        return _sentiment.polarity_scores(text)["compound"]
+        def analyze_sentiment(text: str) -> float:
+            """Return the compound sentiment score using VADER."""
+            return _sentiment.polarity_scores(text)["compound"]
+
+    except Exception:  # pragma: no cover - optional dependency missing
+        from textblob import TextBlob
+
+        def analyze_sentiment(text: str) -> float:
+            """Fallback to TextBlob sentiment polarity."""
+            return TextBlob(text).sentiment.polarity
 
 else:
     from textblob import TextBlob
@@ -144,6 +152,8 @@ IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "5"))
 PLAYFUL_REPLY_TIMEOUT_MINUTES = int(os.getenv("PLAYFUL_REPLY_TIMEOUT_MINUTES", "5"))
 REFLECTION_CHECK_SECONDS = int(os.getenv("REFLECTION_CHECK_SECONDS", "300"))
 SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
+AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
+AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
 
 # Optional bot-to-bot chatter configuration
 # Accepts values like "true", "1", or "yes" (case-insensitive)
@@ -365,7 +375,8 @@ async def is_do_not_mock(user_id: int) -> bool:
     return await db_manager.is_do_not_mock(user_id)
 
 
-async def adjust_affinity(user_id: int, delta: int) -> None:
+async def adjust_affinity(user_id: int, delta: float) -> None:
+    """Adjust ``user_id`` affinity using ``delta`` or a sentiment score."""
     await db_manager.adjust_affinity(user_id, delta)
 
 

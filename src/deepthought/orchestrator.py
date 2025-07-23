@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 import ssl
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from importlib import metadata
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
@@ -97,8 +97,8 @@ async def run(config_path: str) -> None:
     if not service_classes and not crew_specs and not graph_specs:
         logger.warning("No services, crews or graphs found in config")
         return
-    crew_factories = [_load_callable(s) for s in crew_specs]
-    graph_factories: list[Callable[[], Awaitable[Any]]] = [
+    crew_factories = [_load_callable(s) for s in crew_specs]  # noqa: F841
+    graph_factories: list[Callable[[], Awaitable[Any]]] = [  # noqa: F841
         _load_callable(s) for s in graph_specs
     ]
     nc, js = await _connect_nats()
@@ -125,7 +125,7 @@ async def run(config_path: str) -> None:
             stack.push_async_callback(nc.drain)
         stack.push_async_callback(sub.unsubscribe_all)
         instances = []
-        crews = []
+        crews = []  # noqa: F841 - reserved for future use
         graph_tasks = []
         for cls in service_classes:
             inst = cls(nc, js)
