@@ -47,16 +47,18 @@ The orchestrator starts multiple services with a single NATS connection. Each se
 
 3. **Write a configuration file**
 
-   Create `orchestrator.yaml` listing the services to launch:
+   Create `orchestrator.yaml` listing the services to launch.
+   Temporary crews or LangGraph graphs can be added using callables
+   referenced as `module:function` strings:
 
    ```yaml
    services:
      - memory
      - knowledge_graph
-     - llm_remote
-     - codegen
-     - output_handler
-     - reward_manager
+   crews:
+     - examples.crew_demo:create_demo_crew
+   graphs:
+     - examples.multi_agent_demo:run_graph
    ```
 
    `llm_remote` requires the `LLM_ENDPOINT` variable pointing to a running
