@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
+from rdflib.namespace import RDF
 
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..graph import GraphDAL
+from ..ontology import OntologyManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +25,17 @@ logger = logging.getLogger(__name__)
 class KnowledgeGraphMemory:
     """Parse user input into a graph stored in Memgraph."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, dal: GraphDAL) -> None:
+    def __init__(
+        self,
+        nats_client: NATS,
+        js_context: JetStreamContext,
+        dal: GraphDAL,
+        ontology: Optional[OntologyManager] = None,
+    ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._dal = dal
+        self._ontology = ontology
 
     def _parse_input(self, text: str) -> Tuple[List[str], List[Tuple[str, str]]]:
         words = [w for w in text.strip().split() if w]
@@ -39,6 +48,26 @@ class KnowledgeGraphMemory:
             self._dal.merge_entity(name)
         for src, dst in edges:
             self._dal.merge_next_edge(src, dst)
+        if self._ontology is not None:
+            from rdflib import Namespace
+            from rdflib.namespace import OWL
+
+            ex = Namespace("http://deepthought.local/graph#")
+            for name in nodes:
+                self._ontology.add_triples(
+                    [
+                        (ex[name], RDF.type, OWL.NamedIndividual),
+                        (ex[name], RDF.type, ex.Entity),
+                    ]
+                )
+            for src, dst in edges:
+                self._ontology.add_triple(ex[src], ex.next, ex[dst])
+
+    def infer_facts(self) -> List[Tuple[str, str, str]]:
+        """Return inferred triples from the ontology."""
+        if self._ontology is None:
+            return []
+        return self._ontology.infer_facts()
 
     async def _handle_input_event(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -55,8 +84,9 @@ class KnowledgeGraphMemory:
             nodes, edges = self._parse_input(user_input)
             self._store(nodes, edges)
 
+            facts = self.infer_facts()
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={"facts": [], "source": "knowledge_graph"},
+                retrieved_knowledge={"facts": facts, "source": "knowledge_graph"},
                 input_id=input_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
@@ -67,7 +97,10 @@ class KnowledgeGraphMemory:
                 timeout=10.0,
             )
             await msg.ack()
-        except (json.JSONDecodeError, ValueError) as e:  # pragma: no cover - validation errors
+        except (
+            json.JSONDecodeError,
+            ValueError,
+        ) as e:  # pragma: no cover - validation errors
             logger.error("Invalid InputReceived payload: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
@@ -93,7 +126,9 @@ class KnowledgeGraphMemory:
                 except nats.errors.Error:
                     logger.error("Failed to ack message after error", exc_info=True)
 
-    async def start_listening(self, durable_name: str = "knowledge_graph_listener") -> bool:
+    async def start_listening(
+        self, durable_name: str = "knowledge_graph_listener"
+    ) -> bool:
         if not self._subscriber:
             logger.error("Subscriber not initialized for KnowledgeGraphMemory.")
             return False
@@ -104,13 +139,19 @@ class KnowledgeGraphMemory:
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info("KnowledgeGraphMemory subscribed to %s", EventSubjects.INPUT_RECEIVED)
+            logger.info(
+                "KnowledgeGraphMemory subscribed to %s", EventSubjects.INPUT_RECEIVED
+            )
             return True
         except nats.errors.Error as e:  # pragma: no cover - network failure
-            logger.error("KnowledgeGraphMemory failed to subscribe: %s", e, exc_info=True)
+            logger.error(
+                "KnowledgeGraphMemory failed to subscribe: %s", e, exc_info=True
+            )
             return False
         except Exception as e:  # pragma: no cover - network failure
-            logger.error("KnowledgeGraphMemory failed to subscribe: %s", e, exc_info=True)
+            logger.error(
+                "KnowledgeGraphMemory failed to subscribe: %s", e, exc_info=True
+            )
             return False
 
     async def stop_listening(self) -> None:
