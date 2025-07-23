@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from string import Template
 from typing import Any, Dict
 
-import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
@@ -16,18 +15,16 @@ from ..eda.events import (
     CodeGeneratedPayload,
     EventSubjects,
 )
-from ..eda.publisher import Publisher
-from ..eda.subscriber import Subscriber
+from .base import BaseService
 
 logger = logging.getLogger(__name__)
 
 
-class CodeGenerationService:
+class CodeGenerationService(BaseService):
     """Simple template-based code generation service."""
 
     def __init__(self, nats_client: NATS, js_context: JetStreamContext) -> None:
-        self._publisher = Publisher(nats_client, js_context)
-        self._subscriber = Subscriber(nats_client, js_context)
+        super().__init__(nats_client, js_context)
 
     _bin_ops = {
         ast.Add: operator.add,
@@ -155,31 +152,20 @@ class CodeGenerationService:
                     logger.error("Failed to ack message after error", exc_info=True)
 
     async def start(self, durable_name: str = "codegen_listener") -> bool:
-        if self._subscriber is None:
-            logger.error("Subscriber not initialized for CodeGenerationService.")
-            return False
-        try:
-            await self._subscriber.subscribe(
-                subject=EventSubjects.CODE_TEMPLATE_REQUEST,
-                handler=self._handle_template_request,
-                use_jetstream=True,
-                durable=durable_name,
-            )
+        self._subscriptions.clear()
+        self.add_subscription(
+            subject=EventSubjects.CODE_TEMPLATE_REQUEST,
+            handler=self._handle_template_request,
+            use_jetstream=True,
+            durable=durable_name,
+        )
+        started = await super().start()
+        if started:
             logger.info("CodeGenerationService subscribed to %s", EventSubjects.CODE_TEMPLATE_REQUEST)
-            return True
-        except nats.errors.Error as e:
-            logger.error("CodeGenerationService failed to subscribe: %s", e, exc_info=True)
-            return False
-        except Exception as e:
-            logger.error("CodeGenerationService failed to subscribe: %s", e, exc_info=True)
-            return False
+        return started
 
     async def stop(self) -> None:
-        if self._subscriber:
-            await self._subscriber.unsubscribe_all()
-            logger.info("CodeGenerationService stopped listening.")
-        else:
-            logger.warning("Cannot stop listening - no subscriber available.")
+        await super().stop()
 
     async def __aenter__(self) -> "CodeGenerationService":
         await self.start()
