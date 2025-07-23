@@ -10,16 +10,15 @@ from nats.js.client import JetStreamContext
 
 from ..config import Settings, get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
-from ..eda.publisher import Publisher
-from ..eda.subscriber import Subscriber
 from ..graph import GraphConnector, GraphDAL, GraphDALBackend, Neo4jConnector
 from ..memory.tiered import TieredMemory
 from ..memory.vector_store import create_vector_store
+from .base import BaseService
 
 logger = logging.getLogger(__name__)
 
 
-class KnowledgeGraphService:
+class KnowledgeGraphService(BaseService):
     """Service persisting interactions in a graph database via GraphDAL."""
 
     def __init__(
@@ -29,9 +28,7 @@ class KnowledgeGraphService:
         settings: Settings | None = None,
         memory: Optional[TieredMemory] = None,
     ) -> None:
-        self._publisher = Publisher(nats_client, js_context)
-        self._subscriber = Subscriber(nats_client, js_context)
-        self._nc = nats_client
+        super().__init__(nats_client, js_context)
         self._settings = settings or get_settings()
         if memory is None:
             store = create_vector_store(
@@ -120,28 +117,19 @@ class KnowledgeGraphService:
             logger.info("KnowledgeGraphService processed input in %.3fs", duration)
 
     async def start(self, durable_name: str = "knowledge_graph_listener") -> bool:
-        if self._subscriber is None:
-            logger.error("Subscriber not initialized for KnowledgeGraphService.")
-            return False
-        try:
-            await self._subscriber.subscribe(
-                subject=EventSubjects.INPUT_RECEIVED,
-                handler=self._handle_input,
-                use_jetstream=True,
-                durable=durable_name,
-            )
+        self._subscriptions.clear()
+        self.add_subscription(
+            subject=EventSubjects.INPUT_RECEIVED,
+            handler=self._handle_input,
+            use_jetstream=True,
+            durable=durable_name,
+        )
+        started = await super().start()
+        if started:
             logger.info("KnowledgeGraphService subscribed to %s", EventSubjects.INPUT_RECEIVED)
-            return True
-        except Exception as e:  # pragma: no cover - network failure
-            logger.error("KnowledgeGraphService failed to subscribe: %s", e, exc_info=True)
-            return False
+        return started
 
     async def stop(self) -> None:
-        if self._subscriber:
-            await self._subscriber.unsubscribe_all()
-            logger.info("KnowledgeGraphService stopped listening.")
-        else:
-            logger.warning("Cannot stop listening - no subscriber available.")
         try:
             backend = getattr(self._memory, "graph_backend", None)
             connector = None
@@ -153,8 +141,7 @@ class KnowledgeGraphService:
                 connector.close()
         except Exception:
             logger.error("Failed to close graph connector", exc_info=True)
-        if getattr(self, "_nc", None) and getattr(self._nc, "is_connected", False):
-            await self._nc.drain()
+        await super().stop()
 
     async def __aenter__(self) -> "KnowledgeGraphService":
         await self.start()

@@ -4,15 +4,12 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-import nats
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 from ..config import Settings, get_settings
 from ..eda.events import EventSubjects, MemoryRetrievedPayload
-from ..eda.publisher import Publisher
-from ..eda.subscriber import Subscriber
 from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
@@ -20,7 +17,10 @@ from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 logger = logging.getLogger(__name__)
 
 
-class MemoryService:
+from .base import BaseService
+
+
+class MemoryService(BaseService):
     """Service that stores and retrieves interactions using :class:`TieredMemory`."""
 
     def __init__(
@@ -30,9 +30,7 @@ class MemoryService:
         settings: Settings,
         memory: Optional[TieredMemory] = None,
     ) -> None:
-        self._publisher = Publisher(nats_client, js_context)
-        self._subscriber = Subscriber(nats_client, js_context)
-        self._nc = nats_client
+        super().__init__(nats_client, js_context)
         if memory is None:
             memory = create_memory_backend(settings=settings)
         self._memory = memory
@@ -104,31 +102,19 @@ class MemoryService:
             INPUT_LATENCY_SECONDS.labels(service="memory_service").observe(duration)
 
     async def start(self, durable_name: str = "memory_service_listener") -> bool:
-        if self._subscriber is None:
-            logger.error("Subscriber not initialized for MemoryService.")
-            return False
-        try:
-            await self._subscriber.subscribe(
-                subject=EventSubjects.INPUT_RECEIVED,
-                handler=self._handle_input,
-                use_jetstream=True,
-                durable=durable_name,
-            )
+        self._subscriptions.clear()
+        self.add_subscription(
+            subject=EventSubjects.INPUT_RECEIVED,
+            handler=self._handle_input,
+            use_jetstream=True,
+            durable=durable_name,
+        )
+        started = await super().start()
+        if started:
             logger.info("MemoryService subscribed to %s", EventSubjects.INPUT_RECEIVED)
-            return True
-        except nats.errors.Error as e:
-            logger.error("MemoryService failed to subscribe: %s", e, exc_info=True)
-            return False
-        except Exception as e:
-            logger.error("MemoryService failed to subscribe: %s", e, exc_info=True)
-            return False
+        return started
 
     async def stop(self) -> None:
-        if self._subscriber:
-            await self._subscriber.unsubscribe_all()
-            logger.info("MemoryService stopped listening.")
-        else:
-            logger.warning("Cannot stop listening - no subscriber available.")
         try:
             backend = getattr(self._memory, "graph_backend", None)
             connector = None
@@ -140,8 +126,7 @@ class MemoryService:
                 connector.close()
         except Exception:
             logger.error("Failed to close graph connector", exc_info=True)
-        if getattr(self, "_nc", None) and getattr(self._nc, "is_connected", False):
-            await self._nc.drain()
+        await super().stop()
 
     async def __aenter__(self) -> "MemoryService":
         await self.start()
