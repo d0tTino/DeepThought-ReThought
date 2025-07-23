@@ -9,8 +9,6 @@ from deepthought.services import DBManager, PersonaManager
 @pytest.mark.asyncio
 async def test_persona_changes_with_affinity(tmp_path):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
-    await sg.db_manager.connect()
-    await sg.db_manager.init_db()
 
     pm = PersonaManager(sg.db_manager, friendly=5, playful=2)
     user = "u1"
@@ -29,8 +27,6 @@ async def test_persona_changes_with_affinity(tmp_path):
 @pytest.mark.asyncio
 async def test_choose_prompt_uses_persona(tmp_path, monkeypatch):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
-    await sg.db_manager.connect()
-    await sg.db_manager.init_db()
 
     pm = PersonaManager(sg.db_manager, friendly=2, playful=1)
     user = "u1"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import random
 
 from .db_manager import DBManager
@@ -20,8 +21,24 @@ class PersonaManager:
         self._playful = playful
         self._descriptions = descriptions or {}
 
+        # Initialize the database once. If an event loop is running we
+        # schedule the task and await it on first use. Otherwise we
+        # perform the initialization synchronously.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # no running loop
+            loop = None
+
+        if loop and loop.is_running():
+            self._init_task = loop.create_task(self._db.init_db())
+        else:  # pragma: no cover - typically executed outside tests
+            asyncio.run(self._db.init_db())
+            self._init_task = None
+
     async def get_persona(self, user_id: int) -> str:
-        await self._db.init_db()
+        if self._init_task is not None:
+            await self._init_task
+            self._init_task = None
         affinity = await self._db.get_affinity(user_id)
         if affinity >= self._friendly:
             return "friendly"
