@@ -569,6 +569,30 @@ Two lightweight reference modules show how components can interact through NATS:
 4. The `OutputHandler` (or another consumer) can then deliver the response to the user.
 
 
+
+## DSPy Pipelines
+
+The optional DSPy integration exposes a simple question answering pipeline built
+with the `dspy-ai` library. Set `USE_DSPY=true` before launching the
+`RemoteLLM` service to route prompts through this pipeline. See
+[docs/dspy_pipeline_quickstart.md](docs/dspy_pipeline_quickstart.md) for a
+minimal example and setup instructions.
+
+## CrewAI Swarms
+
+`TemporaryCrew` provides a lightweight wrapper for spawning short-lived CrewAI
+crews from the orchestrator. Add a callable returning a crew under `crews:` in
+your orchestrator configuration to run it once. A quick demonstration is
+available in
+[docs/crewai_swarm_quickstart.md](docs/crewai_swarm_quickstart.md).
+
+## Planning
+
+Planning helpers translate natural language goals to PDDL using L2P and compute
+action sequences with pyperplan. See
+[docs/planning_quickstart.md](docs/planning_quickstart.md) for a short tutorial
+and command-line demo.
+
 ## HTTP API
 
 A minimal FastAPI server provides HTTP access to the event system. Ensure a NATS server
