@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import AsyncExitStack
 import json
 import logging
 import ssl
+from contextlib import AsyncExitStack
 from importlib import metadata
 from pathlib import Path
 from typing import Any, Iterable
 
 from .config import get_settings
+from .eda import Publisher, Subscriber
+from .eda.events import (
+    EventSubjects,
+    PlanGeneratedPayload,
+    PlanRequestedPayload,
+)
+from .planning import planner, translator
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +88,39 @@ async def run(config_path: str) -> None:
         logger.warning("No services found for names %s", names)
         return
     nc, js = await _connect_nats()
+    pub = Publisher(nc, js)
+    sub = Subscriber(nc, js)
+    l2p = translator.L2PTranslator()
+
+    async def _handle_plan(msg):
+        try:
+            data = json.loads(msg.data.decode())
+            payload = PlanRequestedPayload.from_dict(data)
+            domain, problem = l2p.translate(payload.goal)
+            actions = planner.plan(domain, problem)
+            out = PlanGeneratedPayload(plan=actions, input_id=payload.input_id)
+            await pub.publish(EventSubjects.PLAN_GENERATED, out, use_jetstream=True)
+            await msg.ack()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Failed to generate plan: %s", exc, exc_info=True)
+            if hasattr(msg, "nak"):
+                await msg.nak()
+
     async with AsyncExitStack() as stack:
         if nc.is_connected:
             stack.push_async_callback(nc.drain)
+        stack.push_async_callback(sub.unsubscribe_all)
         instances = []
         for cls in service_classes:
             inst = cls(nc, js)
             await stack.enter_async_context(inst)
             instances.append(inst)
+        await sub.subscribe(
+            subject=EventSubjects.PLAN_REQUESTED,
+            handler=_handle_plan,
+            use_jetstream=True,
+            durable="planner",
+        )
         logger.info("Started %d services", len(instances))
         try:
             await asyncio.Event().wait()
