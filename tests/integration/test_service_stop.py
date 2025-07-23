@@ -8,6 +8,8 @@ sys.modules.setdefault("numpy", types.ModuleType("numpy"))
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 fake_nx = types.ModuleType("networkx")
 setattr(fake_nx, "DiGraph", object)
+import importlib.machinery
+fake_nx.__spec__ = importlib.machinery.ModuleSpec("networkx", loader=None)
 sys.modules.setdefault("networkx", fake_nx)
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
