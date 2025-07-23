@@ -16,6 +16,7 @@ from nats.js.client import JetStreamContext
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from ..pipeline.dspy_pipeline import build_qa_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,20 @@ class RemoteLLM:
         if not self._endpoint:
             raise ValueError("LLM_ENDPOINT environment variable must be set or passed to RemoteLLM")
         self._session = aiohttp.ClientSession()
+
+        use_dspy = os.getenv("USE_DSPY", "")
+        self._use_dspy = use_dspy.lower() in {"1", "true", "yes", "on"}
+        self._qa_pipeline = build_qa_pipeline() if self._use_dspy else None
+
         logger.info("RemoteLLM initialized with endpoint %s", self._endpoint)
 
     async def _generate(self, prompt: str) -> str:
+        if self._use_dspy and self._qa_pipeline is not None:
+            result = self._qa_pipeline(prompt)
+            if not isinstance(result, str):
+                raise ValueError("Invalid DSPy response")
+            return result
+
         async with self._session.post(self._endpoint, json={"text": prompt}) as resp:
             resp.raise_for_status()
             data = await resp.json()
