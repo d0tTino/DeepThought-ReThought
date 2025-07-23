@@ -16,6 +16,7 @@ from ..eda.events import EventSubjects, MemoryRetrievedPayload
 from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
+from ..perception.social_perception import analyze as analyze_social
 from ..search import OfflineSearch
 from .base import BaseService
 from .db_manager import DBManager
@@ -103,6 +104,12 @@ class CognitiveCoreService(BaseService):
             self._memory.store_interaction(user_input)
             await self._db.store_memory("user", user_input)
             await self._db.log_interaction("user", None)
+            perception = analyze_social(user_input)
+            await self._db.store_memory("user", json.dumps(perception), topic="social_perception")
+            delta = perception.get("flirtation", 0.0) - (
+                perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
+            )
+            await self._db.adjust_affinity("user", delta)
 
             mem_facts = self.retrieve_context(user_input)
             db_facts = await self._db_context()

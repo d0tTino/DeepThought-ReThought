@@ -32,6 +32,34 @@ sys.modules.setdefault("prometheus_client", fake_prom)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
+torch_mod = types.ModuleType("torch")
+
+
+class _NoGrad:
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc, tb):
+        pass
+
+
+torch_mod.no_grad = lambda: _NoGrad()
+torch_mod.softmax = lambda t, dim=-1: t
+sys.modules.setdefault("torch", torch_mod)
+tb_mod = types.ModuleType("textblob")
+tb_mod.TextBlob = lambda text: types.SimpleNamespace(sentiment=types.SimpleNamespace(polarity=0.0))
+sys.modules.setdefault("textblob", tb_mod)
+tf_mod = types.ModuleType("transformers")
+tf_mod.AutoTokenizer = type("AutoTokenizer", (), {"from_pretrained": classmethod(lambda cls, p: cls())})
+tf_mod.AutoModelForSequenceClassification = type(
+    "AutoModelForSequenceClassification",
+    (),
+    {
+        "from_pretrained": classmethod(lambda cls, p: cls()),
+        "__call__": lambda self, **k: types.SimpleNamespace(logits=[[0, 0, 0]]),
+    },
+)
+sys.modules.setdefault("transformers", tf_mod)
 fake_nats = types.ModuleType("nats")
 fake_nats.__spec__ = importlib.machinery.ModuleSpec("nats", loader=None)
 fake_nats.aio = types.ModuleType("aio")
@@ -72,6 +100,7 @@ import json
 
 import pytest
 
+import deepthought.services.cognitive_core_service as cognitive_core_service
 from deepthought.config import Settings
 from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.services.cognitive_core_service import CognitiveCoreService
@@ -118,12 +147,20 @@ class DummyDB:
     def __init__(self):
         self.memories = []
         self.interactions = 0
+        self.affinity = 0.0
+        self.perceptions = []
 
     async def store_memory(self, user_id, memory, topic="", sentiment_score=None):
-        self.memories.append(memory)
+        if topic == "social_perception":
+            self.perceptions.append(json.loads(memory))
+        else:
+            self.memories.append(memory)
 
     async def log_interaction(self, user_id, target_id=None, sentiment_score=None):
         self.interactions += 1
+
+    async def adjust_affinity(self, user_id, delta):
+        self.affinity += delta
 
     async def recall_user(self, user_id):
         return [("", m) for m in self.memories]
@@ -146,6 +183,11 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     memory = DummyMemory()
     db = DummyDB()
     monkeypatch.setattr(
+        cognitive_core_service,
+        "analyze_social",
+        lambda text: {"flirtation": 0.2, "avoidance": 0.1, "manipulation": 0.0},
+    )
+    monkeypatch.setattr(
         CognitiveCoreService,
         "_publisher",
         DummyPublisher(DummyNATS(), DummyJS()),
@@ -164,6 +206,8 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     assert msg.acked
     assert memory.interactions == ["hello"]
     assert db.memories == ["hello"]
+    assert db.perceptions == [{"flirtation": 0.2, "avoidance": 0.1, "manipulation": 0.0}]
+    assert abs(db.affinity - 0.1) < 1e-6
     subject, sent_payload = service._publisher.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
