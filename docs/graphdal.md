@@ -179,3 +179,15 @@ print(context)
 
 `retrieve_context()` returns a list of strings merging the top matches from the
 vector store with recent facts from the graph.
+
+## Ontology Reasoning
+
+`OntologyManager` uses **rdflib** and **owlready2** to manage an OWL graph and run
+the HermiT reasoner. Install the optional dependencies with:
+
+```bash
+pip install rdflib owlready2
+```
+
+Java must be available so HermiT can execute. After adding triples you can call
+`infer_facts()` to obtain inferred class memberships.

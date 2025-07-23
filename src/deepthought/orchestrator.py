@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+
 import json
 import logging
 import ssl
 from contextlib import AsyncExitStack
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Awaitable, Callable, Iterable
 
 from .config import get_settings
 from .eda import Publisher, Subscriber
@@ -57,6 +58,13 @@ def _load_config(path: str) -> dict[str, Any]:
     return json.loads(text)
 
 
+def _load_callable(path: str) -> Callable[[], Any]:
+    """Import and return a callable specified as ``"module:function"``."""
+    mod_name, func_name = path.split(":", 1)
+    mod = __import__(mod_name, fromlist=[func_name])
+    return getattr(mod, func_name)
+
+
 async def _connect_nats():
     from nats.aio.client import Client as NATS
 
@@ -84,9 +92,15 @@ async def run(config_path: str) -> None:
     cfg = _load_config(config_path)
     names = cfg.get("services", [])
     service_classes = discover_services(names)
-    if not service_classes:
-        logger.warning("No services found for names %s", names)
+    crew_specs = cfg.get("crews", [])
+    graph_specs = cfg.get("graphs", [])
+    if not service_classes and not crew_specs and not graph_specs:
+        logger.warning("No services, crews or graphs found in config")
         return
+    crew_factories = [_load_callable(s) for s in crew_specs]
+    graph_factories: list[Callable[[], Awaitable[Any]]] = [
+        _load_callable(s) for s in graph_specs
+    ]
     nc, js = await _connect_nats()
     pub = Publisher(nc, js)
     sub = Subscriber(nc, js)
@@ -111,6 +125,8 @@ async def run(config_path: str) -> None:
             stack.push_async_callback(nc.drain)
         stack.push_async_callback(sub.unsubscribe_all)
         instances = []
+        crews = []
+        graph_tasks = []
         for cls in service_classes:
             inst = cls(nc, js)
             await stack.enter_async_context(inst)
@@ -122,7 +138,13 @@ async def run(config_path: str) -> None:
             durable="planner",
         )
         logger.info("Started %d services", len(instances))
+
         try:
             await asyncio.Event().wait()
         except (asyncio.CancelledError, KeyboardInterrupt):
             pass
+        finally:
+            for t in graph_tasks:
+                t.cancel()
+                with suppress(Exception):
+                    await t
