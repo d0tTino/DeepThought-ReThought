@@ -19,9 +19,8 @@ dtrt-finetune = "deepthought.train:main"
 [project.entry-points."deepthought.services"]
 demo = "deepthought.services.demo.service:DemoService"
 codegen = "deepthought.services.code_generation_service:CodeGenerationService"
-memory = "deepthought.services.memory_service:MemoryService"
+cognitive_core = "deepthought.services.cognitive_core_service:CognitiveCoreService"
 reward_manager = "deepthought.motivate.reward_manager:RewardManager"
-knowledge_graph = "deepthought.services.knowledge_graph_service:KnowledgeGraphService"
 
 
 
