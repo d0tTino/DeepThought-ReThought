@@ -127,8 +127,12 @@ async def run(config_path: str) -> None:
         instances = []
         crews = []  # noqa: F841 - reserved for future use
         graph_tasks = []
+        desires_file = cfg.get("desires_file", "desires.json")
         for cls in service_classes:
-            inst = cls(nc, js)
+            if cls.__name__ == "PlanningService":
+                inst = cls(nc, js, desires_file=desires_file)
+            else:
+                inst = cls(nc, js)
             await stack.enter_async_context(inst)
             instances.append(inst)
         await sub.subscribe(
