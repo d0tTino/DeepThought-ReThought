@@ -7,7 +7,7 @@ from typing import Optional
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
-from textblob import TextBlob
+from ..perception.social_perception import analyze as analyze_social
 
 from ..eda.events import EventSubjects
 from .base import BaseService
@@ -48,12 +48,14 @@ class SocialGraphService(BaseService):
             text = data.get("user_input")
             if not isinstance(text, str):
                 raise ValueError("user_input missing")
-            score = float(TextBlob(text).sentiment.polarity)
-            delta = 0
-            if score > 0:
-                delta = 1
-            elif score < 0:
-                delta = -1
+            perception = analyze_social(text)
+            await self._db.store_memory(
+                "user", json.dumps(perception), topic="social_perception"
+            )
+            delta = perception.get("flirtation", 0.0) - (
+                perception.get("avoidance", 0.0)
+                + perception.get("manipulation", 0.0)
+            )
             await self._db.adjust_affinity("user", delta)
             await self._persona.get_persona("user")
         except Exception:
