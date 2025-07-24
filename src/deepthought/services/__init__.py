@@ -5,6 +5,7 @@ from .db_manager import DBManager
 from .file_graph_dal import FileGraphDAL
 from .persona_manager import PersonaManager
 from .social_graph_service import SocialGraphService
+from .planning_service import PlanningService
 
 __all__ = [
     "FileGraphDAL",
@@ -12,4 +13,5 @@ __all__ = [
     "PersonaManager",
     "DBManager",
     "SocialGraphService",
+    "PlanningService",
 ]
