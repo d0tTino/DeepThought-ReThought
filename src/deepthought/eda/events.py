@@ -41,6 +41,9 @@ class EventSubjects:
     PLAN_REQUESTED = "dtr.plan.requested"
     PLAN_GENERATED = "dtr.plan.generated"
 
+    # BDI agent events
+    BDI_INTENTION = "dtr.bdi.intention"
+
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
     # e.g., METRICS = "dtr.metrics.reported"
@@ -139,3 +142,11 @@ class PlanGeneratedPayload(EventPayload):
     plan: list[str]
     input_id: Optional[str] = None
     timestamp: Optional[str] = None
+
+
+@dataclass
+class BDIIntentionPayload(EventPayload):
+    """Payload representing a BDI intention."""
+
+    goal: str
+    priority: int
