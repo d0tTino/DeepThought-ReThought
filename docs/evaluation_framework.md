@@ -15,3 +15,9 @@ responses against a golden dataset.
    the golden responses, and writes average latency and throughput metrics.
    If ratings are provided in the YAML file, the average rating is reported as
    `avg_rating` in the metrics JSON.
+
+## Contributing additional scenarios
+To expand the golden dataset, place YAML files under `tests/interaction_samples/golden/`.
+Each file should contain a list of interaction objects with `input`, `expected`, and `rating` fields.
+Ratings should be integers from 1 to 5.
+Use the existing samples as a reference.
