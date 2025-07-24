@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TypedDict
 
@@ -15,7 +16,11 @@ from prometheus_client import start_http_server
 from deepthought.metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from deepthought.modules import InputHandler, OutputHandler
 from deepthought.modules.llm_remote import RemoteLLM
-from deepthought.services import MemoryService
+
+try:
+    from deepthought.services import MemoryService
+except ImportError:  # older versions may lack MemoryService
+    MemoryService = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -63,20 +68,25 @@ async def main() -> None:
         model_proc = await asyncio.create_subprocess_exec(sys.executable, str(script))
         await asyncio.sleep(2.0)
 
-    memory_service = MemoryService.from_config(nc, js)
+    if MemoryService is not None:
+        mem_ctx = MemoryService.from_config(nc, js)
+    else:
+
+        @asynccontextmanager
+        async def mem_ctx():
+            yield
+
+        mem_ctx = mem_ctx()
     llm = RemoteLLM(nc, js)
 
     global input_handlers, output_handlers
     input_handlers = [InputHandler(nc, js) for _ in range(3)]
     output_handlers = [OutputHandler(nc, js) for _ in range(3)]
 
-    async with memory_service:
+    async with mem_ctx:
         await asyncio.gather(
             llm.start_listening(durable_name=f"llm_demo_{uuid.uuid4()}"),
-            *(
-                oh.start_listening(durable_name=f"out_demo_{i}_{uuid.uuid4()}")
-                for i, oh in enumerate(output_handlers)
-            ),
+            *(oh.start_listening(durable_name=f"out_demo_{i}_{uuid.uuid4()}") for i, oh in enumerate(output_handlers)),
         )
 
         await asyncio.sleep(1.0)

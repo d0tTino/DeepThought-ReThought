@@ -7,3 +7,5 @@ __pycache__/
 results/
 
 *.egg-info/
+
+social_graph.db

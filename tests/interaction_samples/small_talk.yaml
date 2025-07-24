@@ -1,0 +1,3 @@
+- input: "How are you?"
+  expected: "I'm fine, thanks!"
+  rating: 4

@@ -9,8 +9,9 @@ import json
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
+import yaml
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 
@@ -36,7 +37,21 @@ def _load_events(path: Path) -> List[dict]:
     return events
 
 
-async def _replay(path: Path, output: Path, metrics: Path, nats_url: str) -> None:
+def _load_golden(path: Path) -> List[dict]:
+    """Load golden interactions from YAML."""
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("Golden file must contain a list of interactions")
+    return data
+
+
+async def _replay(
+    path: Path,
+    output: Path,
+    metrics: Path,
+    nats_url: str,
+    golden: Optional[Path] = None,
+) -> None:
     events = _load_events(path)
     inputs = [e["payload"] for e in events if e.get("event") == "CHAT_RAW"]
     expected = [
@@ -44,6 +59,12 @@ async def _replay(path: Path, output: Path, metrics: Path, nats_url: str) -> Non
         for e in events
         if e.get("event") == "RESPONSE_GENERATED"
     ]
+
+    ratings: List[float] = []
+    if golden:
+        golden_data = _load_golden(golden)
+        expected = [item.get("expected", "") for item in golden_data]
+        ratings = [float(item.get("rating", 0.0)) for item in golden_data]
 
     nc = NATS()
     await nc.connect(servers=[nats_url])
@@ -94,6 +115,8 @@ async def _replay(path: Path, output: Path, metrics: Path, nats_url: str) -> Non
         "avg_latency": average_latency(trace),
         "actions_per_second": actions_per_second(trace),
     }
+    if ratings:
+        metrics_data["avg_rating"] = sum(ratings) / len(ratings)
     metrics.write_text(json.dumps(metrics_data))
 
 
@@ -120,9 +143,15 @@ async def main() -> None:
         default=Path("metrics.json"),
         help="Metrics output JSON",
     )
+    parser.add_argument(
+        "--golden",
+        "-g",
+        type=Path,
+        help="YAML file with golden interactions",
+    )
     args = parser.parse_args()
 
-    await _replay(args.trace, args.output, args.metrics, args.nats)
+    await _replay(args.trace, args.output, args.metrics, args.nats, args.golden)
 
 
 if __name__ == "__main__":
