@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Dict
 
+import os
+
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-MODEL_PATH = "path/to/social-perception-model"
+MODEL_PATH = os.getenv("SOCIAL_PERCEPTION_MODEL", "path/to/social-perception-model")
 LABELS = ["flirtation", "avoidance", "manipulation"]
 
 _tokenizer: AutoTokenizer | None = None
