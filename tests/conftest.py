@@ -23,6 +23,37 @@ try:  # pragma: no cover - optional dependency may be missing
 except Exception:
     pass
 
+# Provide a stub for the ``nats`` package when it is unavailable so modules
+# importing it (e.g. the event publisher) can be loaded during tests.
+try:  # pragma: no cover - optional dependency may be missing
+    import importlib.util
+
+    spec = importlib.util.find_spec("nats")
+except Exception:
+    spec = None
+
+if spec is None:
+    nats_stub = types.ModuleType("nats")
+    nats_stub.aio = types.ModuleType("aio")
+    aio_client_mod = types.ModuleType("client")
+    setattr(aio_client_mod, "Client", object)
+    nats_stub.aio.client = aio_client_mod
+    nats_stub.js = types.ModuleType("js")
+    js_client_mod = types.ModuleType("client")
+    setattr(js_client_mod, "JetStreamContext", object)
+    nats_stub.js.client = js_client_mod
+    msg_mod = types.ModuleType("msg")
+    setattr(msg_mod, "Msg", object)
+    nats_stub.aio.msg = msg_mod
+    nats_stub.errors = types.ModuleType("errors")
+    sys.modules.setdefault("nats", nats_stub)
+    sys.modules.setdefault("nats.aio", nats_stub.aio)
+    sys.modules.setdefault("nats.aio.client", nats_stub.aio.client)
+    sys.modules.setdefault("nats.aio.msg", nats_stub.aio.msg)
+    sys.modules.setdefault("nats.js", nats_stub.js)
+    sys.modules.setdefault("nats.js.client", nats_stub.js.client)
+    sys.modules.setdefault("nats.errors", nats_stub.errors)
+
 import pytest
 
 # Provide a lightweight stub of the social_graph_bot module. This allows tests
