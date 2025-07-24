@@ -7,6 +7,7 @@ from nats.js.client import JetStreamContext
 
 from ..eda.events import EventSubjects
 from ..eda.subscriber import Subscriber
+from ..perception.social_perception import analyze as analyze_social
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ class TraceRecorder:
             raise ValueError("outfile path must be provided")
         self._subscriber = Subscriber(nats_client, js_context)
         self._outfile = outfile
+        self._affinity = 0.0
         logger.info("TraceRecorder will write events to %s", outfile)
 
     async def _append(self, event: str, msg: Msg) -> None:
@@ -33,7 +35,29 @@ class TraceRecorder:
                     logger.error("Failed to NAK message", exc_info=True)
             return
 
-        record = {"event": event, "payload": data}
+        perception = None
+        try:
+            if isinstance(data, dict) and "user_input" in data:
+                perception = analyze_social(data["user_input"])
+            elif isinstance(data, str):
+                perception = analyze_social(data)
+        except Exception:  # noqa: BLE001 - perception analysis best effort
+            logger.error("Failed to analyze perception", exc_info=True)
+            perception = None
+
+        if perception:
+            delta = perception.get("flirtation", 0.0) - (
+                perception.get("avoidance", 0.0)
+                + perception.get("manipulation", 0.0)
+            )
+            self._affinity += delta
+
+        record = {
+            "event": event,
+            "payload": data,
+            "perception": perception,
+            "affinity": self._affinity,
+        }
         try:
             with open(self._outfile, "a", encoding="utf-8") as f:
                 json.dump(record, f)
@@ -50,7 +74,25 @@ class TraceRecorder:
 
     async def _append_raw(self, event: str, msg: Msg) -> None:
         data = msg.data.decode()
-        record = {"event": event, "payload": data}
+        perception = None
+        try:
+            perception = analyze_social(data)
+        except Exception:  # noqa: BLE001
+            logger.error("Failed to analyze perception", exc_info=True)
+
+        if perception:
+            delta = perception.get("flirtation", 0.0) - (
+                perception.get("avoidance", 0.0)
+                + perception.get("manipulation", 0.0)
+            )
+            self._affinity += delta
+
+        record = {
+            "event": event,
+            "payload": data,
+            "perception": perception,
+            "affinity": self._affinity,
+        }
         try:
             with open(self._outfile, "a", encoding="utf-8") as f:
                 json.dump(record, f)
