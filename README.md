@@ -547,6 +547,16 @@ A minimal notebook demonstrating retrieval-augmented generation is available at 
 
 
 
+## Social Perception
+
+Set the path to the social cue classifier with `SOCIAL_PERCEPTION_MODEL`:
+
+```bash
+export SOCIAL_PERCEPTION_MODEL=/path/to/social-perception-model
+```
+
+If unset, the default `path/to/social-perception-model` is used.
+
 ## Discord Bot Roadmap
 
 For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
