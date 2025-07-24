@@ -90,7 +90,7 @@ Grafana will be available on <http://localhost:3000> with the default password
 
 The `examples/end_to_end_demo.py` script shows how to run multiple services via
 the orchestrator. It launches a local NATS server and starts the
-`MemoryService`, `RemoteLLM`, `OutputHandler` and `RewardManager` services. A
+`CognitiveCoreService`, `RemoteLLM`, `OutputHandler` and `RewardManager` services. A
 sample message is then processed end-to-end.
 
 Run the demo with:

@@ -10,14 +10,14 @@ The project follows an event driven architecture built on NATS/JetStream. Compon
 sequenceDiagram
     participant User
     participant Bot
-    participant MemoryService
+    participant CognitiveCoreService
     participant HierarchicalService
     participant LLM
 
     User->>Bot: Message
     Bot->>NATS: INPUT_RECEIVED
-    NATS->>MemoryService: INPUT_RECEIVED
-    MemoryService->>NATS: MEMORY_RETRIEVED
+    NATS->>CognitiveCoreService: INPUT_RECEIVED
+    CognitiveCoreService->>NATS: MEMORY_RETRIEVED
     NATS->>HierarchicalService: MEMORY_RETRIEVED
     HierarchicalService->>LLM: Query
     LLM-->>HierarchicalService: Response
@@ -144,7 +144,7 @@ Customize the generated files to implement your service logic.
 
 ## Multi-Agent Demo
 
-The repository includes a demonstration of three lightweight agents exchanging messages using the `MemoryService` and a small HTTP LLM module. The agents are coordinated with a LangGraph state machine and live in `examples/multi_agent_demo.py`.
+The repository includes a demonstration of three lightweight agents exchanging messages using the `CognitiveCoreService` and a small HTTP LLM module. The agents are coordinated with a LangGraph state machine and live in `examples/multi_agent_demo.py`.
 
 Start a local NATS server with `./scripts/start_nats.sh` and create the JetStream stream:
 
