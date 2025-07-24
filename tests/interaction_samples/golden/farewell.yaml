@@ -1,0 +1,6 @@
+- input: "See you later"
+  expected: "Take care!"
+  rating: 4
+- input: "Good night"
+  expected: "Sweet dreams!"
+  rating: 5

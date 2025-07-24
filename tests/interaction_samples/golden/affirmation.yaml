@@ -1,0 +1,6 @@
+- input: "You can do it!"
+  expected: "Thanks for the encouragement!"
+  rating: 5
+- input: "Nice work"
+  expected: "I appreciate it!"
+  rating: 4

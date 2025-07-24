@@ -1,0 +1,6 @@
+- input: "What's the capital of France?"
+  expected: "Paris is the capital of France."
+  rating: 5
+- input: "Who wrote '1984'?"
+  expected: "George Orwell wrote '1984'."
+  rating: 5
