@@ -38,11 +38,27 @@ def _load_events(path: Path) -> List[dict]:
 
 
 def _load_golden(path: Path) -> List[dict]:
-    """Load golden interactions from YAML."""
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(data, list):
-        raise ValueError("Golden file must contain a list of interactions")
-    return data
+    """Return a list of golden interactions from ``path``.
+
+    ``path`` may refer to a single YAML file or a directory containing
+    multiple ``*.yaml`` files. When a directory is provided, the
+    interactions from all YAML files are concatenated in alphabetical
+    order.
+    """
+
+    def _read_one(file: Path) -> List[dict]:
+        data = yaml.safe_load(file.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            raise ValueError("Golden file must contain a list of interactions")
+        return data
+
+    if path.is_dir():
+        interactions: List[dict] = []
+        for file in sorted(path.glob("*.yaml")):
+            interactions.extend(_read_one(file))
+        return interactions
+
+    return _read_one(path)
 
 
 async def _replay(
@@ -147,7 +163,7 @@ async def main() -> None:
         "--golden",
         "-g",
         type=Path,
-        help="YAML file with golden interactions",
+        help="Path to golden YAML file or directory of YAML files",
     )
     args = parser.parse_args()
 
