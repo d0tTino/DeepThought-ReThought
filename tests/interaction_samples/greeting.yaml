@@ -1,0 +1,6 @@
+- input: "Hello"
+  expected: "Hi there!"
+  rating: 5
+- input: "Bye"
+  expected: "Goodbye!"
+  rating: 4
