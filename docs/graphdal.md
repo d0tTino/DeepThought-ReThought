@@ -54,9 +54,9 @@ Both connectors read these environment variables automatically when no
 explicit parameters are provided and will retry connecting a few times
 before failing.
 
-## Example Memory Service
+## Example CognitiveCore Service
 
-Start the unified `MemoryService` which configures its backends from environment variables:
+Start the unified `CognitiveCoreService` which configures its backends from environment variables:
 
 ```bash
 python - <<'PY'
@@ -65,7 +65,7 @@ import asyncio
 from nats.aio.client import Client as NATS
 
 from deepthought.config import get_settings
-from deepthought.services import MemoryService
+from deepthought.services import CognitiveCoreService
 
 
 async def main():
@@ -74,7 +74,7 @@ async def main():
     await nc.connect(servers=[settings.nats_url])
     js = nc.jetstream()
 
-    service = MemoryService.from_config(nc, js)
+    service = CognitiveCoreService.from_config(nc, js)
     await service.start()
     await asyncio.Event().wait()
 

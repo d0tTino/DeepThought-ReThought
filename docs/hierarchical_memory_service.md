@@ -8,7 +8,7 @@ This document outlines the design of the experimental hierarchical memory system
 2. **GraphMemory** – wraps `TieredMemory` with a file-backed graph database.
 3. **KnowledgeGraphMemory** – persists structured facts in Memgraph using the GraphDAL layer.
 
-The `MemoryService` coordinates these layers through a single `TieredMemory` instance.
+The `CognitiveCoreService` coordinates these layers through a single `TieredMemory` instance.
 When an `INPUT_RECEIVED` event arrives the service stores the text and publishes a
 `MEMORY_RETRIEVED` event with the combined context.
 
@@ -103,7 +103,7 @@ set in a configuration file.
 
 ``DT_GRAPH_BACKEND`` selects the knowledge graph backend. Supported values include
 ``memgraph``, ``neo4j`` and ``noop``. These variables are read by both
-``HierarchicalService.from_chroma`` and ``MemoryService`` when initializing the
+``HierarchicalService.from_chroma`` and ``CognitiveCoreService`` when initializing the
 backends.
 
 ### Graph Backend
