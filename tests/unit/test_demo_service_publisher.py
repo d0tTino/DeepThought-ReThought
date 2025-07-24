@@ -37,7 +37,7 @@ sys.modules.setdefault("deepthought.services.db_manager", dummy_db_manager)
 modules = {
     "deepthought.services.file_graph_dal": "FileGraphDAL",
     "deepthought.services.hierarchical_service": "HierarchicalService",
-    "deepthought.services.memory_service": "MemoryService",
+    "deepthought.services.cognitive_core_service": "CognitiveCoreService",
     "deepthought.services.persona_manager": "PersonaManager",
     "deepthought.services.social_graph_service": "SocialGraphService",
 }
