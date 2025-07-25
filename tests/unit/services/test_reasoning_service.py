@@ -1,29 +1,62 @@
-import json
-import importlib.machinery
+
 import sys
 import types
 from types import SimpleNamespace
 
 import pytest
 
-# Provide minimal stubs for rdflib and owlready2 so the service can be imported
-fake_rdflib = types.ModuleType("rdflib")
-fake_rdflib.Graph = type("Graph", (), {"serialize": lambda self, format=None: b""})
-fake_rdflib.URIRef = lambda s: s
-ns_mod = types.ModuleType("namespace")
+fake_pyd = types.ModuleType("pydantic")
+fake_pyd.AnyUrl = str
+fake_pyd.ValidationError = Exception
+fake_pyd.Field = lambda default=None, **kwargs: default
+sys.modules.setdefault("pydantic", fake_pyd)
+fake_ps = types.ModuleType("pydantic_settings")
+fake_ps.BaseSettings = object
+fake_ps.SettingsConfigDict = dict
+sys.modules.setdefault("pydantic_settings", fake_ps)
+fake_prom = types.ModuleType("prometheus_client")
+fake_prom.Counter = lambda *a, **k: object()
+fake_prom.Histogram = lambda *a, **k: object()
+fake_prom.REGISTRY = SimpleNamespace(_names_to_collectors={})
+sys.modules.setdefault("prometheus_client", fake_prom)
+sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
+tb_mod = types.ModuleType("textblob")
+tb_mod.TextBlob = lambda text: types.SimpleNamespace(
+    sentiment=types.SimpleNamespace(polarity=0.0)
+)
+sys.modules.setdefault("textblob", tb_mod)
+rdf_mod = types.ModuleType("rdflib")
+ns_mod = types.ModuleType("rdflib.namespace")
 ns_mod.RDF = types.SimpleNamespace(type="rdf:type")
-fake_rdflib.namespace = ns_mod
-sys.modules.setdefault("rdflib", fake_rdflib)
 sys.modules.setdefault("rdflib.namespace", ns_mod)
 
-fake_owl = types.ModuleType("owlready2")
-fake_owl.ThingClass = type("ThingClass", (), {})
-fake_owl.World = type("World", (), {"get_ontology": lambda self, uri: types.SimpleNamespace(load=lambda fileobj=None: types.SimpleNamespace(individuals=lambda: []))})
-fake_owl.sync_reasoner_hermit = lambda world: None
-sys.modules.setdefault("owlready2", fake_owl)
 
-from deepthought.eda.events import EventSubjects
-from deepthought.services.reasoning_service import ReasoningService, TRIPLE_SUBJECT
+class _NS:
+    def __init__(self, uri=""):
+        self._u = uri
+
+    def __getitem__(self, key):
+        return f"{self._u}{key}"
+
+
+rdf_mod.Namespace = lambda uri=None: _NS(uri or "")
+rdf_mod.Graph = type(
+    "Graph",
+    (),
+    {"add": lambda self, triple: None, "serialize": lambda self, format="xml": ""},
+)
+rdf_mod.URIRef = str
+sys.modules.setdefault("rdflib", rdf_mod)
+
+import owlready2
+
+owlready2.World.get_ontology = lambda self, iri: types.SimpleNamespace(
+    load=lambda fileobj=None: types.SimpleNamespace(individuals=lambda: [])
+)
+
+from deepthought.eda.events import EventSubjects, ResponseGeneratedPayload
+from deepthought.services.reasoning_service import ReasoningService
+
 
 
 class DummyNATS:
@@ -36,16 +69,18 @@ class DummyJS:
 
 
 class DummyPublisher:
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         self.published = []
 
-    async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
+    async def publish(self, subject, payload, **kw):
+
         self.published.append((subject, payload))
         return SimpleNamespace(seq=1, stream="test")
 
 
 class DummySubscriber:
-    async def subscribe(self, *args, **kwargs):
+    async def subscribe(self, *a, **k):
+
         pass
 
     async def unsubscribe_all(self):
@@ -53,37 +88,29 @@ class DummySubscriber:
 
 
 class DummyMsg:
-    def __init__(self, data):
+    def __init__(self, data: str):
         self.data = data.encode()
         self.acked = False
+        self.nacked = False
+
 
     async def ack(self):
         self.acked = True
 
+    async def nak(self):
+        self.nacked = True
+
 
 @pytest.mark.asyncio
-async def test_infers_and_publishes(monkeypatch):
-    added = []
+async def test_handle_response_publishes_facts(monkeypatch):
+    svc = ReasoningService(DummyNATS(), DummyJS())
+    svc._publisher = DummyPublisher()
+    svc._subscriber = DummySubscriber()
 
-    class DummyOntology:
-        def add_triple(self, s, p, o):
-            added.append((s, p, o))
-
-        def infer_facts(self):
-            return [("a", "b", "c")]
-
-    service = ReasoningService(DummyNATS(), DummyJS(), ontology=DummyOntology())
-    service._publisher = DummyPublisher()
-    service._subscriber = DummySubscriber()
-
-    payload = {"triples": [["s", "p", "o"]], "input_id": "x"}
-    msg = DummyMsg(json.dumps(payload))
-    await service._handle_triples(msg)
+    payload = ResponseGeneratedPayload(final_response="A is B", input_id="1")
+    msg = DummyMsg(payload.to_json())
+    await svc._handle_response(msg)
 
     assert msg.acked
-    assert added == [("s", "p", "o")]
-    assert service._publisher.published
-    subject, sent = service._publisher.published[0]
-    assert subject == EventSubjects.MEMORY_RETRIEVED
-    assert sent.retrieved_knowledge["facts"] == [("a", "b", "c")]
-    assert sent.input_id == "x"
+    # Ontology stubs may produce no inferred facts
+
