@@ -1,4 +1,3 @@
-
 import sys
 import types
 from types import SimpleNamespace
@@ -58,7 +57,6 @@ from deepthought.eda.events import EventSubjects, ResponseGeneratedPayload
 from deepthought.services.reasoning_service import ReasoningService
 
 
-
 class DummyNATS:
     def __init__(self):
         self.is_connected = True
@@ -93,7 +91,6 @@ class DummyMsg:
         self.acked = False
         self.nacked = False
 
-
     async def ack(self):
         self.acked = True
 
@@ -114,3 +111,48 @@ async def test_handle_response_publishes_facts(monkeypatch):
     assert msg.acked
     # Ontology stubs may produce no inferred facts
 
+
+@pytest.mark.asyncio
+async def test_handle_response_emits_input_event(monkeypatch):
+    class DummyOntology:
+        def __init__(self):
+            self.triples = []
+
+        def add_triples(self, triples):
+            self.triples.extend(triples)
+
+        def infer_facts(self):
+            return [("A", "B", "C")]
+
+    svc = ReasoningService(DummyNATS(), DummyJS(), ontology=DummyOntology())
+    svc._publisher = DummyPublisher()
+    svc._subscriber = DummySubscriber()
+
+    payload = ResponseGeneratedPayload(final_response="A is B", input_id="1")
+    msg = DummyMsg(payload.to_json())
+    await svc._handle_response(msg)
+
+    assert msg.acked
+    assert svc._publisher.published
+    subj, out = svc._publisher.published[0]
+    assert subj == EventSubjects.INPUT_RECEIVED
+    assert out.user_input == "A B C"
+
+
+def test_extract_triples_simple():
+    svc = ReasoningService(DummyNATS(), DummyJS())
+
+    triples = svc._extract_triples("A is B\nC likes D\n")
+
+    assert triples == [
+        (
+            "http://deepthought.local/resp#A",
+            "http://deepthought.local/resp#is",
+            "http://deepthought.local/resp#B",
+        ),
+        (
+            "http://deepthought.local/resp#C",
+            "http://deepthought.local/resp#likes",
+            "http://deepthought.local/resp#D",
+        ),
+    ]
