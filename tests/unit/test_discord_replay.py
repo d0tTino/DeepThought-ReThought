@@ -81,3 +81,16 @@ async def test_replay_generates_metrics(tmp_path: Path, monkeypatch):
     assert "bleu" in data
     assert "rouge_l" in data
     assert data.get("avg_rating") == pytest.approx(5.0)
+
+
+def test_load_golden_returns_ratings(tmp_path: Path):
+    sample = tmp_path / "golden.yaml"
+    sample.write_text(
+        "- input: 'Hi'\n  expected: 'Hello'\n  rating: 4\n- input: 'Bye'\n  expected: 'Goodbye'\n  rating: 2\n",
+        encoding="utf-8",
+    )
+
+    expected, ratings = dr._load_golden(sample)
+
+    assert expected == ["Hello", "Goodbye"]
+    assert ratings == [4.0, 2.0]
