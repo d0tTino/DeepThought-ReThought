@@ -66,6 +66,33 @@ class CognitiveCoreService(BaseService):
         self._search = search
         self._top_k = self._settings.memory_top_k
 
+    @classmethod
+    def from_config(
+        cls,
+        nats_client: Optional[NATS] = None,
+        js_context: Optional[JetStreamContext] = None,
+        settings: Settings | None = None,
+        *,
+        nats_url: str | None = None,
+        connect_retries: int = 1,
+        connect_timeout: float = 2.0,
+    ) -> "CognitiveCoreService":
+        """Return an instance configured from ``Settings`` or environment."""
+
+        cfg = settings or get_settings()
+        memory = create_memory_backend(settings=cfg)
+        db = DBManager(cfg.social_graph_db)
+        return cls(
+            nats_client,
+            js_context,
+            cfg,
+            memory=memory,
+            db=db,
+            nats_url=nats_url,
+            connect_retries=connect_retries,
+            connect_timeout=connect_timeout,
+        )
+
     def retrieve_context(self, prompt: str) -> List[str]:
         memory_facts = self._memory.retrieve_context(prompt) if self._memory else []
         search_facts: List[str] = []
