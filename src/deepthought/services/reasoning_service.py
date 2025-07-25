@@ -11,6 +11,7 @@ from nats.js.client import JetStreamContext
 from rdflib import Namespace
 
 from ..eda.events import EventSubjects, InputReceivedPayload, ResponseGeneratedPayload
+
 from ..ontology import OntologyManager
 from .base import BaseService
 
