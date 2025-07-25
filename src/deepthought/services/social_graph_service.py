@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Optional
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
-from ..perception.social_perception import analyze as analyze_social
+from .cognitive_core_service import CognitiveCoreService
 
 from ..eda.events import EventSubjects
 from .base import BaseService
@@ -26,6 +25,7 @@ class SocialGraphService(BaseService):
         js_context: Optional[JetStreamContext] = None,
         db_manager: Optional[DBManager] = None,
         persona_manager: Optional[PersonaManager] = None,
+        cognitive_core: CognitiveCoreService | None = None,
         *,
         nats_url: str | None = None,
         connect_retries: int = 1,
@@ -40,32 +40,17 @@ class SocialGraphService(BaseService):
         )
         self._db = db_manager or DBManager()
         self._persona = persona_manager or PersonaManager(self._db)
+        if cognitive_core is None:
+            raise ValueError("cognitive_core service is required")
+        self._core = cognitive_core
 
     async def _handle_input(self, msg: Msg) -> None:
         """Process an INPUT_RECEIVED message."""
         try:
-            data = json.loads(msg.data.decode())
-            text = data.get("user_input")
-            if not isinstance(text, str):
-                raise ValueError("user_input missing")
-            perception = analyze_social(text)
-            await self._db.store_memory(
-                "user", json.dumps(perception), topic="social_perception"
-            )
-            delta = perception.get("flirtation", 0.0) - (
-                perception.get("avoidance", 0.0)
-                + perception.get("manipulation", 0.0)
-            )
-            await self._db.adjust_affinity("user", delta)
+            await self._core._handle_input(msg)
             await self._persona.get_persona("user")
-        except Exception:
+        except Exception:  # pragma: no cover - defensive
             logger.error("Failed to handle input", exc_info=True)
-        finally:
-            if hasattr(msg, "ack") and callable(msg.ack):
-                try:
-                    await msg.ack()
-                except Exception:
-                    logger.error("Failed to ack message", exc_info=True)
 
     async def start(self, durable_name: str = "social_graph_service") -> bool:
         self._subscriptions.clear()
