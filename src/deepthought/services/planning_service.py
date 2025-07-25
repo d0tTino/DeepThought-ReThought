@@ -15,6 +15,7 @@ from ..eda.events import (
     PlanGeneratedPayload,
     PlanRequestedPayload,
 )
+from ..planning import L2PTranslator, plan
 from .base import BaseService
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class PlanningService(BaseService):
             connect_timeout=connect_timeout,
         )
         self._desires_file = desires_file
+        self._translator = L2PTranslator()
         self._desires: List[str] = []
         self._beliefs: List[str] = []
         self._load_desires()
@@ -52,11 +54,15 @@ class PlanningService(BaseService):
             ds = data.get("desires", [])
             if isinstance(ds, list):
                 self._desires = [str(d) for d in ds]
-            logger.info("Loaded %d desires from %s", len(self._desires), self._desires_file)
+            logger.info(
+                "Loaded %d desires from %s", len(self._desires), self._desires_file
+            )
         except FileNotFoundError:
             logger.warning("Desires file %s not found", self._desires_file)
         except Exception:  # pragma: no cover - defensive
-            logger.error("Failed to load desires file %s", self._desires_file, exc_info=True)
+            logger.error(
+                "Failed to load desires file %s", self._desires_file, exc_info=True
+            )
 
     async def _handle_memory(self, msg: Msg) -> None:
         try:
@@ -68,6 +74,26 @@ class PlanningService(BaseService):
                 await msg.ack()
         except Exception:  # pragma: no cover - defensive
             logger.error("Failed to process memory event", exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                await msg.nak()
+
+    async def _handle_plan_request(self, msg: Msg) -> None:
+        try:
+            data = json.loads(msg.data.decode())
+            payload = PlanRequestedPayload.from_dict(data)
+            domain, problem = self._translator.translate(payload.goal)
+            actions = plan(domain, problem)
+            out = PlanGeneratedPayload(plan=actions, input_id=payload.input_id)
+            await self._publisher.publish(
+                EventSubjects.PLAN_GENERATED,
+                out,
+                use_jetstream=True,
+                timeout=10.0,
+            )
+            if hasattr(msg, "ack") and callable(msg.ack):
+                await msg.ack()
+        except Exception:  # pragma: no cover - defensive
+            logger.error("Failed to generate plan", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 await msg.nak()
 
@@ -112,6 +138,12 @@ class PlanningService(BaseService):
             handler=self._handle_plan,
             use_jetstream=True,
             durable=f"{durable_name}_plan",
+        )
+        self.add_subscription(
+            subject=EventSubjects.PLAN_REQUESTED,
+            handler=self._handle_plan_request,
+            use_jetstream=True,
+            durable=f"{durable_name}_request",
         )
         started = await super().start()
         if started:
