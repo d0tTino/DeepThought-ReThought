@@ -17,7 +17,20 @@ _model: AutoModelForSequenceClassification | None = None
 
 
 def _load() -> None:
+    """Load model and tokenizer if available."""
     global _tokenizer, _model
+
+    if _tokenizer is not None and _model is not None:
+        return
+
+    if not MODEL_PATH or MODEL_PATH == "path/to/social-perception-model":
+        raise RuntimeError(
+            "SOCIAL_PERCEPTION_MODEL environment variable not set or empty"
+        )
+
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"Model path not found: {MODEL_PATH}")
+
     if _tokenizer is None:
         _tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
     if _model is None:
