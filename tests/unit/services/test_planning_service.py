@@ -214,3 +214,36 @@ async def test_plan_request_generates_plan(monkeypatch):
     assert subj == EventSubjects.PLAN_GENERATED
     assert out.plan == ["ok"]
     assert out.input_id == "z"
+
+
+@pytest.mark.asyncio
+async def test_planning_service_event_flow(monkeypatch, tmp_path):
+    class DummyTranslator:
+        def translate(self, goal):
+            return "d", "p"
+
+    monkeypatch.setattr(planning_service, "L2PTranslator", DummyTranslator)
+    monkeypatch.setattr(planning_service, "plan", lambda d, p: ["a1", "a2"])
+
+    cfg = tmp_path / "d.json"
+    cfg.write_text(json.dumps({"desires": ["go"]}), encoding="utf-8")
+
+    service = PlanningService(None, None, desires_file=str(cfg))
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    mem_payload = MemoryRetrievedPayload(
+        retrieved_knowledge={"facts": ["f"]}, input_id="1"
+    )
+    await service._handle_memory(DummyMsg(mem_payload.to_json()))
+    assert service._publisher.published
+    subj, plan_req = service._publisher.published[-1]
+    assert subj == EventSubjects.PLAN_REQUESTED
+
+    await service._handle_plan_request(DummyMsg(plan_req.to_json()))
+    subj2, plan_gen = service._publisher.published[-1]
+    assert subj2 == EventSubjects.PLAN_GENERATED
+
+    await service._handle_plan(DummyMsg(plan_gen.to_json()))
+    subjects = [s for s, _ in service._publisher.published[-2:]]
+    assert subjects == [EventSubjects.CHAT_RAW, EventSubjects.CHAT_RAW]
