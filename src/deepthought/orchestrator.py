@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-
 import json
 import logging
 import ssl
@@ -12,11 +11,7 @@ from typing import Any, Awaitable, Callable, Iterable
 
 from .config import get_settings
 from .eda import Publisher, Subscriber
-from .eda.events import (
-    EventSubjects,
-    PlanGeneratedPayload,
-    PlanRequestedPayload,
-)
+from .eda.events import EventSubjects, PlanGeneratedPayload, PlanRequestedPayload
 from .planning import planner, translator
 
 logger = logging.getLogger(__name__)
@@ -131,6 +126,8 @@ async def run(config_path: str) -> None:
         for cls in service_classes:
             if cls.__name__ == "PlanningService":
                 inst = cls(nc, js, desires_file=desires_file)
+            elif cls.__name__ == "ReasoningService":
+                inst = cls(nc, js)
             else:
                 inst = cls(nc, js)
             await stack.enter_async_context(inst)

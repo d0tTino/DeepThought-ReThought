@@ -22,6 +22,7 @@ codegen = "deepthought.services.code_generation_service:CodeGenerationService"
 cognitive_core = "deepthought.services.cognitive_core_service:CognitiveCoreService"
 reward_manager = "deepthought.motivate.reward_manager:RewardManager"
 planning = "deepthought.services.planning_service:PlanningService"
+reasoning = "deepthought.services.reasoning_service:ReasoningService"
 
 
 
