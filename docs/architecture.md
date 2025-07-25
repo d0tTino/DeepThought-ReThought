@@ -11,22 +11,19 @@ sequenceDiagram
     participant User
     participant Bot
     participant CognitiveCoreService
-    participant HierarchicalService
     participant LLM
 
     User->>Bot: Message
     Bot->>NATS: INPUT_RECEIVED
     NATS->>CognitiveCoreService: INPUT_RECEIVED
-    CognitiveCoreService->>NATS: MEMORY_RETRIEVED
-    NATS->>HierarchicalService: MEMORY_RETRIEVED
-    HierarchicalService->>LLM: Query
-    LLM-->>HierarchicalService: Response
-    HierarchicalService->>NATS: RESPONSE_GENERATED
+    CognitiveCoreService->>LLM: Query
+    LLM-->>CognitiveCoreService: Response
+    CognitiveCoreService->>NATS: RESPONSE_GENERATED
     NATS->>Bot: RESPONSE_GENERATED
     Bot-->>User: Reply
 ```
 
-The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events, retrieves knowledge from memory services and ultimately receives a `RESPONSE_GENERATED` message containing the model output.
+The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events, retrieves knowledge from the `CognitiveCoreService` and ultimately receives a `RESPONSE_GENERATED` message containing the model output.
 
 ## FAISS Setup
 

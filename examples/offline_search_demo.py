@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from deepthought.search import OfflineSearch
-from deepthought.services import HierarchicalService
+from deepthought.services import CognitiveCoreService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def main() -> None:
     index_path = Path("offline_demo.db")
     search = OfflineSearch.create_index(str(index_path), pairs)
 
-    service = HierarchicalService(DummyNATS(), DummyJS(), None, search=search)
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), search=search)
     results = service.retrieve_context("database")
     logger.info("Results: %s", results)
 
