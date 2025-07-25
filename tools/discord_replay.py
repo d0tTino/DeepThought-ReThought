@@ -37,26 +37,40 @@ def _load_events(path: Path) -> List[dict]:
     return events
 
 
-def _load_golden(path: Path) -> List[dict]:
-    """Return a list of golden interactions from ``path``.
+def _load_golden(path: Path) -> tuple[List[str], List[float]]:
+    """Return expected replies and ratings from ``path``.
 
     ``path`` may refer to a single YAML file or a directory containing
-    multiple ``*.yaml`` files. When a directory is provided, the
-    interactions from all YAML files are concatenated in alphabetical
-    order.
+    multiple ``*.yaml`` files. When a directory is provided, the data from
+    all YAML files are concatenated in alphabetical order.
     """
 
-    def _read_one(file: Path) -> List[dict]:
+    def _read_one(file: Path) -> tuple[List[str], List[float]]:
         data = yaml.safe_load(file.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise ValueError("Golden file must contain a list of interactions")
-        return data
+
+        expected: List[str] = []
+        ratings: List[float] = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            expected.append(item.get("expected", ""))
+            try:
+                ratings.append(float(item.get("rating", 0.0)))
+            except (TypeError, ValueError):
+                ratings.append(0.0)
+
+        return expected, ratings
 
     if path.is_dir():
-        interactions: List[dict] = []
+        all_expected: List[str] = []
+        all_ratings: List[float] = []
         for file in sorted(path.glob("*.yaml")):
-            interactions.extend(_read_one(file))
-        return interactions
+            exp, rat = _read_one(file)
+            all_expected.extend(exp)
+            all_ratings.extend(rat)
+        return all_expected, all_ratings
 
     return _read_one(path)
 
@@ -110,9 +124,7 @@ async def _replay(
 
     ratings: List[float] = []
     if golden:
-        golden_data = _load_golden(_resolve_golden_path(golden))
-        expected = [item.get("expected", "") for item in golden_data]
-        ratings = [float(item.get("rating", 0.0)) for item in golden_data]
+        expected, ratings = _load_golden(_resolve_golden_path(golden))
 
     nc = NATS()
     await nc.connect(servers=[nats_url])
