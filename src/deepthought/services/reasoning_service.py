@@ -4,15 +4,14 @@ import json
 import logging
 from typing import List, Optional, Tuple
 from uuid import uuid4
-v
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 from rdflib import Namespace
 
-from ..eda.events import EventSubjects, InputReceivedPayload, ResponseGeneratedPayload
-v
+from ..eda.events import (EventSubjects, InputReceivedPayload,
+                          ResponseGeneratedPayload)
 from ..ontology import OntologyManager
 from .base import BaseService
 
@@ -22,14 +21,12 @@ logger = logging.getLogger(__name__)
 class ReasoningService(BaseService):
     """Infer new knowledge from LLM responses."""
 
-
     def __init__(
         self,
         nats_client: Optional[NATS] = None,
         js_context: Optional[JetStreamContext] = None,
         ontology: OntologyManager | None = None,
         *,
-
         nats_url: str | None = None,
         connect_retries: int = 1,
         connect_timeout: float = 2.0,
@@ -85,13 +82,11 @@ class ReasoningService(BaseService):
             if hasattr(msg, "nak") and callable(msg.nak):
                 await msg.nak()
 
-
     async def start(self, durable_name: str = "reasoning_service") -> bool:
         self._subscriptions.clear()
         self.add_subscription(
             subject=EventSubjects.RESPONSE_GENERATED,
             handler=self._handle_response,
-
             use_jetstream=True,
             durable=durable_name,
         )
