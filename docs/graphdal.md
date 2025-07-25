@@ -56,7 +56,8 @@ before failing.
 
 ## Example CognitiveCore Service
 
-Start the unified `CognitiveCoreService` which configures its backends from environment variables:
+Start the unified `CognitiveCoreService` which configures its backends from environment variables.
+Use the convenience constructor to load settings automatically:
 
 ```bash
 python - <<'PY'

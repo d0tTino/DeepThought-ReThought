@@ -10,8 +10,8 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 from rdflib import Namespace
 
-from ..eda.events import (EventSubjects, InputReceivedPayload,
-                          ResponseGeneratedPayload)
+from ..eda.events import EventSubjects, InputReceivedPayload, ResponseGeneratedPayload
+
 from ..ontology import OntologyManager
 from .base import BaseService
 
@@ -53,9 +53,7 @@ class ReasoningService(BaseService):
                 continue
             subj, pred = parts[0], parts[1]
             obj = "_".join(parts[2:])
-            triples.append(
-                (str(self._ns[subj]), str(self._ns[pred]), str(self._ns[obj]))
-            )
+            triples.append((str(self._ns[subj]), str(self._ns[pred]), str(self._ns[obj])))
         return triples
 
     async def _handle_response(self, msg: Msg) -> None:
@@ -92,9 +90,7 @@ class ReasoningService(BaseService):
         )
         started = await super().start()
         if started:
-            logger.info(
-                "ReasoningService subscribed to %s", EventSubjects.RESPONSE_GENERATED
-            )
+            logger.info("ReasoningService subscribed to %s", EventSubjects.RESPONSE_GENERATED)
 
         return started
 
