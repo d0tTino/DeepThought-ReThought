@@ -61,6 +61,36 @@ def _load_golden(path: Path) -> List[dict]:
     return _read_one(path)
 
 
+def _persona_from_affinity(value: float, friendly: int = 5, playful: int = 2) -> str:
+    """Return persona name for ``value`` using default thresholds."""
+
+    if value >= friendly:
+        return "friendly"
+    if value >= playful:
+        return "playful"
+    return "snarky"
+
+
+def _resolve_golden_path(path: Path) -> Path:
+    """Return an existing golden path.
+
+    If ``path`` does not exist, look for a YAML file with the same name
+    under ``tests/interaction_samples/golden``.
+    """
+
+    if path.exists():
+        return path
+
+    base = Path("tests/interaction_samples/golden")
+    candidate = base / path
+    if candidate.suffix == "":
+        candidate = candidate.with_suffix(".yaml")
+    if candidate.exists():
+        return candidate
+
+    raise FileNotFoundError(f"Golden interactions not found: {path}")
+
+
 async def _replay(
     path: Path,
     output: Path,
@@ -69,7 +99,9 @@ async def _replay(
     golden: Optional[Path] = None,
 ) -> None:
     events = _load_events(path)
-    inputs = [e["payload"] for e in events if e.get("event") == "CHAT_RAW"]
+    chat_events = [e for e in events if e.get("event") == "CHAT_RAW"]
+    inputs = [e["payload"] for e in chat_events]
+    affinities = [float(e.get("affinity", 0.0)) for e in chat_events]
     expected = [
         e["payload"].get("final_response", "")
         for e in events
@@ -78,7 +110,7 @@ async def _replay(
 
     ratings: List[float] = []
     if golden:
-        golden_data = _load_golden(golden)
+        golden_data = _load_golden(_resolve_golden_path(golden))
         expected = [item.get("expected", "") for item in golden_data]
         ratings = [float(item.get("rating", 0.0)) for item in golden_data]
 
@@ -105,14 +137,15 @@ async def _replay(
     )
 
     try:
-        for state in inputs:
+        for state, affinity in zip(inputs, affinities):
             start = datetime.utcnow()
             await publisher.publish(
                 EventSubjects.CHAT_RAW, state, use_jetstream=True, timeout=10.0
             )
             action = await queue.get()
             latency = (datetime.utcnow() - start).total_seconds()
-            record_event(trace, state, action, 0.0, latency)
+            persona = _persona_from_affinity(affinity)
+            record_event(trace, state, action, 0.0, latency, persona, affinity)
             responses.append(action)
     finally:
         await subscriber.unsubscribe_all()
@@ -163,7 +196,7 @@ async def main() -> None:
         "--golden",
         "-g",
         type=Path,
-        help="Path to golden YAML file or directory of YAML files",
+        help="Path or name of golden YAML file or directory of YAML files",
     )
     args = parser.parse_args()
 
