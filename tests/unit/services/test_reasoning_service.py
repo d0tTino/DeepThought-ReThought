@@ -1,3 +1,4 @@
+
 import sys
 import types
 from types import SimpleNamespace
@@ -57,6 +58,7 @@ from deepthought.eda.events import EventSubjects, ResponseGeneratedPayload
 from deepthought.services.reasoning_service import ReasoningService
 
 
+
 class DummyNATS:
     def __init__(self):
         self.is_connected = True
@@ -71,12 +73,14 @@ class DummyPublisher:
         self.published = []
 
     async def publish(self, subject, payload, **kw):
+
         self.published.append((subject, payload))
         return SimpleNamespace(seq=1, stream="test")
 
 
 class DummySubscriber:
     async def subscribe(self, *a, **k):
+
         pass
 
     async def unsubscribe_all(self):
@@ -88,6 +92,7 @@ class DummyMsg:
         self.data = data.encode()
         self.acked = False
         self.nacked = False
+
 
     async def ack(self):
         self.acked = True
@@ -108,3 +113,4 @@ async def test_handle_response_publishes_facts(monkeypatch):
 
     assert msg.acked
     # Ontology stubs may produce no inferred facts
+
