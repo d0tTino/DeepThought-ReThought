@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 from deepthought.search import OfflineSearch
-from deepthought.services import HierarchicalService
+from deepthought.services import CognitiveCoreService
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ def main() -> None:
     pairs = [(d["title"], d["content"]) for d in docs]
 
     search = OfflineSearch.create_index("rag_demo.db", pairs)
-    service = HierarchicalService(DummyNATS(), DummyJS(), None, search=search)
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), search=search)
 
     for question in ["What is SQLite?", "Where is Python used?"]:
         ctx = service.retrieve_context(question)

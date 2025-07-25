@@ -42,15 +42,15 @@ With these services running you can start your application and the memory servic
 ## Exporting the Graph
 
 After evaluating an interaction trace with `tools/replay.py` you may want to
-inspect the knowledge graph. The `HierarchicalService` exposes a
+inspect the knowledge graph. The `CognitiveCoreService` exposes a
 `dump_graph(path)` method that writes the current graph in DOT format. Provide a
 directory where the `graph.dot` file should be created:
 
 ```python
-from deepthought.services import HierarchicalService
+from deepthought.services import CognitiveCoreService
 
 # use the configured vector backend ("chroma" or "faiss")
-service = HierarchicalService.from_chroma(
+service = CognitiveCoreService.from_chroma(
     DummyNATS(),
     DummyJS(),
     graph_backend_name="memgraph",
@@ -67,7 +67,7 @@ dot -Tpng graph_exports/graph.dot -o graph.png
 
 ## Migration to TieredMemory
 
-The `HierarchicalService` now relies on the `TieredMemory` layer for context retrieval. Create a `TieredMemory` instance and pass it to the service or use `HierarchicalService.from_chroma()` which constructs one automatically using the configured vector backend.
+The `CognitiveCoreService` now relies on the `TieredMemory` layer for context retrieval. Create a `TieredMemory` instance and pass it to the service or use `CognitiveCoreService.from_chroma()` which constructs one automatically using the configured vector backend.
 
 ## Offline Search
 
@@ -81,7 +81,7 @@ search = OfflineSearch.create_index(
     "wiki.db",
     [("Title1", "Article text..."), ("Title2", "More text...")],
 )
-service = HierarchicalService(DummyNATS(), DummyJS(), memory, search=search)
+service = CognitiveCoreService(DummyNATS(), DummyJS(), memory, search=search)
 ```
 
 Set ``DT_SEARCH_DB`` in your configuration file to load the index automatically.
@@ -102,13 +102,12 @@ and ``graph_backend`` fields of ``deepthought.config.Settings``. They may also b
 set in a configuration file.
 
 ``DT_GRAPH_BACKEND`` selects the knowledge graph backend. Supported values include
-``memgraph``, ``neo4j`` and ``noop``. These variables are read by both
-``HierarchicalService.from_chroma`` and ``CognitiveCoreService`` when initializing the
-backends.
+``memgraph``, ``neo4j`` and ``noop``. These variables are read by
+``CognitiveCoreService.from_chroma`` when initializing the backends.
 
 ### Graph Backend
 
-``HierarchicalService.from_chroma`` takes a ``graph_backend_name`` string such as
+``CognitiveCoreService.from_chroma`` takes a ``graph_backend_name`` string such as
 ``"memgraph"`` or ``"noop"``. The default connects to Memgraph using the
 configuration keys ``DT_MG_HOST``, ``DT_MG_PORT``, ``DT_MG_USER`` and
 ``DT_MG_PASSWORD``. Pass ``"noop"`` to disable graph persistence during testing.
@@ -130,5 +129,5 @@ export DT_NEO4J_USER=neo4j
 export DT_NEO4J_PASSWORD=test
 ```
 
-Then pass ``graph_backend_name="neo4j"`` to ``HierarchicalService.from_chroma``.
+Then pass ``graph_backend_name="neo4j"`` to ``CognitiveCoreService.from_chroma``.
 
