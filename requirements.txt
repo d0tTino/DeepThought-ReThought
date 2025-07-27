@@ -30,4 +30,5 @@ prometheus-client
 
 pyperplan>=2.1
 l2p==0.2.2
-git+https://github.com/d0tTino/UME.git@dev
+UME @ git+https://github.com/d0tTino/UME.git@dev
+rdflib

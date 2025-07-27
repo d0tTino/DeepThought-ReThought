@@ -30,3 +30,4 @@ l2p==0.2.2
 dspy
 psl
 deepproblog
+rdflib
