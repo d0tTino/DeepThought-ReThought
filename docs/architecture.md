@@ -25,6 +25,29 @@ sequenceDiagram
 
 The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events, retrieves knowledge from the `CognitiveCoreService` and ultimately receives a `RESPONSE_GENERATED` message containing the model output.
 
+## Unified CognitiveCoreService
+
+`CognitiveCoreService` combines the vector store, knowledge graph and
+relational database layers behind a single interface. Internally it relies on
+`TieredMemory` for contextual retrieval and a lightweight `DBManager` for
+tracking interactions. An optional `OfflineSearch` index may be attached to
+augment memory with local documents.
+
+When an `INPUT_RECEIVED` event arrives the service stores the text in each
+backend, queries for relevant context and publishes `MEMORY_RETRIEVED`. Downstream
+services subscribe to this subject and may then respond with
+`RESPONSE_GENERATED` or other events.
+
+```python
+from deepthought.eda.events import EventSubjects
+from deepthought.services import CognitiveCoreService
+
+core = CognitiveCoreService.from_config()
+await core.start()
+await core.publisher.publish(EventSubjects.INPUT_RECEIVED,
+                             {"input_id": "42", "user_input": "hello"})
+```
+
 ## FAISS Setup
 
 `FaissVectorStore` in `src/deepthought/memory/vector_store.py` offers a lightweight vector database for similarity search. To enable it:
