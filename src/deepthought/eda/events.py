@@ -44,6 +44,9 @@ class EventSubjects:
     # BDI agent events
     BDI_INTENTION = "dtr.bdi.intention"
 
+    # Warning events
+    WARNING = "dtr.warning"
+
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
     # e.g., METRICS = "dtr.metrics.reported"
@@ -150,3 +153,11 @@ class BDIIntentionPayload(EventPayload):
 
     goal: str
     priority: int
+
+
+@dataclass
+class WarningPayload(EventPayload):
+    """Payload for ontology or system warnings."""
+
+    message: str
+    facts: Optional[list[tuple[str, str, str]]] = None

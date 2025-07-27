@@ -18,6 +18,10 @@ fake_prom.Counter = lambda *a, **k: object()
 fake_prom.Histogram = lambda *a, **k: object()
 fake_prom.REGISTRY = SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
+sys.modules.setdefault("pyperplan", types.ModuleType("pyperplan"))
+planning_stub = types.ModuleType("planning_service")
+planning_stub.PlanningService = object
+sys.modules.setdefault("deepthought.services.planning_service", planning_stub)
 sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 tb_mod = types.ModuleType("textblob")
 tb_mod.TextBlob = lambda text: types.SimpleNamespace(
@@ -124,6 +128,9 @@ async def test_handle_response_emits_input_event(monkeypatch):
         def infer_facts(self):
             return [("A", "B", "C")]
 
+        def verify_triples(self, triples):
+            return triples, []
+
     svc = ReasoningService(DummyNATS(), DummyJS(), ontology=DummyOntology())
     svc._publisher = DummyPublisher()
     svc._subscriber = DummySubscriber()
@@ -156,3 +163,35 @@ def test_extract_triples_simple():
             "http://deepthought.local/resp#D",
         ),
     ]
+
+
+@pytest.mark.asyncio
+async def test_warning_on_contradiction(monkeypatch):
+    class DummyOntology:
+        def add_triples(self, triples):
+            pass
+
+        def infer_facts(self):
+            return [("A", "B", "C"), ("A", "B", "D")]
+
+        def verify_triples(self, triples):
+            valid = [triples[0]]
+            contradictory = [triples[1]]
+            return valid, contradictory
+
+    svc = ReasoningService(DummyNATS(), DummyJS(), ontology=DummyOntology())
+    svc._publisher = DummyPublisher()
+    svc._subscriber = DummySubscriber()
+
+    payload = ResponseGeneratedPayload(final_response="X is Y", input_id="1")
+    msg = DummyMsg(payload.to_json())
+    await svc._handle_response(msg)
+
+    assert msg.acked
+    subjects = [s for s, _ in svc._publisher.published]
+    assert EventSubjects.WARNING in subjects
+    assert EventSubjects.INPUT_RECEIVED in subjects
+    inp = next(
+        p for s, p in svc._publisher.published if s == EventSubjects.INPUT_RECEIVED
+    )
+    assert inp.user_input == "A B C"

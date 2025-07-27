@@ -10,8 +10,8 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 from rdflib import Namespace
 
-from ..eda.events import EventSubjects, InputReceivedPayload, ResponseGeneratedPayload
-
+from ..eda.events import (EventSubjects, InputReceivedPayload,
+                          ResponseGeneratedPayload, WarningPayload)
 from ..ontology import OntologyManager
 from .base import BaseService
 
@@ -53,7 +53,9 @@ class ReasoningService(BaseService):
                 continue
             subj, pred = parts[0], parts[1]
             obj = "_".join(parts[2:])
-            triples.append((str(self._ns[subj]), str(self._ns[pred]), str(self._ns[obj])))
+            triples.append(
+                (str(self._ns[subj]), str(self._ns[pred]), str(self._ns[obj]))
+            )
         return triples
 
     async def _handle_response(self, msg: Msg) -> None:
@@ -65,14 +67,28 @@ class ReasoningService(BaseService):
                 self._ontology.add_triples(triples)
                 facts = self._ontology.infer_facts()
                 if facts:
-                    text = "; ".join(" ".join(t) for t in facts)
-                    out = InputReceivedPayload(user_input=text, input_id=str(uuid4()))
-                    await self._publisher.publish(
-                        EventSubjects.INPUT_RECEIVED,
-                        out,
-                        use_jetstream=True,
-                        timeout=10.0,
-                    )
+                    valid, contradictions = self._ontology.verify_triples(facts)
+                    if contradictions:
+                        warn = WarningPayload(
+                            message="Contradictory facts", facts=contradictions
+                        )
+                        await self._publisher.publish(
+                            EventSubjects.WARNING,
+                            warn,
+                            use_jetstream=True,
+                            timeout=10.0,
+                        )
+                    if valid:
+                        text = "; ".join(" ".join(t) for t in valid)
+                        out = InputReceivedPayload(
+                            user_input=text, input_id=str(uuid4())
+                        )
+                        await self._publisher.publish(
+                            EventSubjects.INPUT_RECEIVED,
+                            out,
+                            use_jetstream=True,
+                            timeout=10.0,
+                        )
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except Exception as exc:  # pragma: no cover - defensive
@@ -90,7 +106,9 @@ class ReasoningService(BaseService):
         )
         started = await super().start()
         if started:
-            logger.info("ReasoningService subscribed to %s", EventSubjects.RESPONSE_GENERATED)
+            logger.info(
+                "ReasoningService subscribed to %s", EventSubjects.RESPONSE_GENERATED
+            )
 
         return started
 
