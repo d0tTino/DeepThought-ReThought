@@ -40,3 +40,25 @@ class OntologyManager:
                 if isinstance(cls, ThingClass):
                     facts.append((ind.iri, str(RDF.type), cls.iri))
         return facts
+
+    def verify_triple(self, triple: Triple) -> bool:
+        """Return ``True`` if the triple does not contradict existing knowledge."""
+        subj, pred, obj = triple
+        s_ref, p_ref, o_ref = URIRef(str(subj)), URIRef(str(pred)), URIRef(str(obj))
+        for _, _, existing_obj in self.graph.triples((s_ref, p_ref, None)):
+            if existing_obj != o_ref:
+                return False
+        return True
+
+    def verify_triples(
+        self, triples: Iterable[Triple]
+    ) -> tuple[list[Triple], list[Triple]]:
+        """Split triples into valid and contradictory lists."""
+        valid: list[Triple] = []
+        contradictory: list[Triple] = []
+        for t in triples:
+            if self.verify_triple(t):
+                valid.append(t)
+            else:
+                contradictory.append(t)
+        return valid, contradictory
