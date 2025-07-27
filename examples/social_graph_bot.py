@@ -71,6 +71,7 @@ except Exception:  # pragma: no cover - optional dependency
     )
 
 import nats
+from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
@@ -101,8 +102,13 @@ else:
 
 try:
     from deepthought.config import get_settings
-    from deepthought.eda.events import EventSubjects, InputReceivedPayload
+    from deepthought.eda.events import (
+        EventSubjects,
+        InputReceivedPayload,
+        PlanRequestedPayload,
+    )
     from deepthought.eda.publisher import Publisher
+    from deepthought.eda.subscriber import Subscriber
 except Exception:  # pragma: no cover - optional dependency
     from types import SimpleNamespace
 
@@ -114,8 +120,17 @@ except Exception:  # pragma: no cover - optional dependency
 
     class EventSubjects(SimpleNamespace):
         INPUT_RECEIVED = "dtr.input.received"
+        PLAN_REQUESTED = "dtr.plan.requested"
+        CHAT_RAW = "chat.raw"
 
     class InputReceivedPayload:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        def to_json(self) -> str:
+            return "{}"
+
+    class PlanRequestedPayload:
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
 
@@ -127,6 +142,16 @@ except Exception:  # pragma: no cover - optional dependency
             self._nc = None
 
         async def publish(self, *args, **kwargs) -> None:
+            return None
+
+    class Subscriber:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def subscribe(self, *args, **kwargs) -> None:
+            return None
+
+        async def unsubscribe_all(self) -> None:
             return None
 
 
@@ -145,6 +170,7 @@ NATS_URL = get_settings().nats_url
 _nats_client: nats.aio.client.Client | None = None
 _js_context: JetStreamContext | None = None
 _input_publisher: Publisher | None = None
+_subscriber: Subscriber | None = None
 
 # Configuration values
 MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
@@ -286,18 +312,20 @@ async def send_to_prism(data: dict) -> None:
 
 
 async def _ensure_nats() -> None:
-    """Initialize NATS client and publisher if not already connected."""
-    global _nats_client, _js_context, _input_publisher
-    if _input_publisher is not None:
+    """Initialize NATS client, publisher and subscriber if needed."""
+    global _nats_client, _js_context, _input_publisher, _subscriber
+    if _input_publisher is not None and _subscriber is not None:
         return
     try:
         settings = get_settings()
         _nats_client = await nats.connect(servers=[settings.nats_url])
         _js_context = _nats_client.jetstream()
         _input_publisher = Publisher(_nats_client, _js_context)
+        _subscriber = Subscriber(_nats_client, _js_context)
     except Exception as exc:  # pragma: no cover - connection issues
         logger.warning("Failed to connect to NATS: %s", exc)
         _input_publisher = None
+        _subscriber = None
 
 
 async def publish_input_received(text: str) -> None:
@@ -324,6 +352,24 @@ async def publish_input_received(text: str) -> None:
         )
     except Exception as exc:  # pragma: no cover - publish error
         logger.warning("Failed to publish INPUT_RECEIVED: %s", exc)
+
+
+async def publish_plan_requested(goal: str, input_id: str | None = None) -> None:
+    """Publish a PLAN_REQUESTED event for ``goal``."""
+    await _ensure_nats()
+    if _input_publisher is None:
+        logger.warning("Dropping PLAN_REQUESTED event because NATS publisher is unavailable")
+        return
+    payload = PlanRequestedPayload(goal=goal, input_id=input_id)
+    try:
+        await _input_publisher.publish(
+            EventSubjects.PLAN_REQUESTED,
+            payload,
+            use_jetstream=True,
+            timeout=5.0,
+        )
+    except Exception as exc:  # pragma: no cover - publish error
+        logger.warning("Failed to publish PLAN_REQUESTED: %s", exc)
 
 
 async def store_theory(subject_id: int, theory: str, confidence: float) -> None:
@@ -479,9 +525,11 @@ async def process_goals(bot: "SocialGraphBot") -> None:
                     delay = int(delay_str)
                 except ValueError:
                     logger.warning("Invalid goal format: %s", goal)
+                    await publish_plan_requested(goal)
                 else:
                     when = discord.utils.utcnow().replace(tzinfo=timezone.utc) + timedelta(seconds=delay)
                     bot.scheduler_service.schedule_reminder(message, when, str(uuid.uuid4()))
+                    await publish_plan_requested(message)
             await asyncio.sleep(1)
         except asyncio.CancelledError:
             logger.info("process_goals cancelled")
@@ -598,11 +646,26 @@ class SocialGraphBot(discord.Client):
         self.goal_scheduler = GoalScheduler()
         self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
         self.persona_manager = PersonaManager(db_manager)
+        self._subscriber: Subscriber | None = None
 
     async def setup_hook(self) -> None:
         await db_manager.connect()
         await init_db()
         self.persona_manager = PersonaManager(db_manager)
+
+        await _ensure_nats()
+        if _nats_client is not None and _js_context is not None:
+            try:
+                self._subscriber = Subscriber(_nats_client, _js_context)
+                await self._subscriber.subscribe(
+                    subject=EventSubjects.CHAT_RAW,
+                    handler=self._handle_chat_raw,
+                    use_jetstream=True,
+                    durable="social_bot_chat",
+                )
+            except Exception as exc:  # pragma: no cover - subscription error
+                logger.warning("Failed to subscribe to CHAT_RAW: %s", exc)
+                self._subscriber = None
 
         self._bg_tasks.append(self.loop.create_task(monitor_channels(self, self.monitor_channel_id)))
         self._bg_tasks.append(self.loop.create_task(process_deep_reflections(self)))
@@ -700,6 +763,20 @@ class SocialGraphBot(discord.Client):
         if hasattr(self, "process_commands"):
             await self.process_commands(message)
 
+    async def _handle_chat_raw(self, msg: Msg) -> None:
+        """Send CHAT_RAW text to the monitored channel."""
+        text = msg.data.decode()
+        channel = self.get_channel(self.monitor_channel_id)
+        try:
+            if channel is not None:
+                await channel.send(text)
+            if hasattr(msg, "ack") and callable(msg.ack):
+                await msg.ack()
+        except Exception:  # pragma: no cover - defensive
+            logger.error("Failed to handle CHAT_RAW", exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                await msg.nak()
+
     async def close(self) -> None:
         """Cancel background tasks and close external connections."""
         for task in self._bg_tasks:
@@ -709,13 +786,17 @@ class SocialGraphBot(discord.Client):
         if self.scheduler_service is not None:
             await self.scheduler_service.stop()
             self.scheduler_service = None
+        if self._subscriber is not None:
+            await self._subscriber.unsubscribe_all()
+            self._subscriber = None
         await db_manager.close()
-        global _nats_client, _js_context, _input_publisher
+        global _nats_client, _js_context, _input_publisher, _subscriber
         if _nats_client is not None and not _nats_client.is_closed:
             await _nats_client.close()
         _nats_client = None
         _js_context = None
         _input_publisher = None
+        _subscriber = None
         await super().close()
 
 
