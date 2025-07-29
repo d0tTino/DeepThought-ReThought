@@ -116,3 +116,22 @@ Example using the sample traces in `tests/traces/`:
 PYTHONPATH=src python tools/discord_replay.py tests/traces/trial.json \
     --output reply.jsonl --metrics metrics.json
 ```
+
+## Running the Test Suite
+
+The CI workflow installs pinned versions of all dependencies. To reproduce the
+same environment locally run:
+
+```bash
+pip install -r requirements-ci.txt
+```
+
+Once the integration services are running you can execute the tests with:
+
+```bash
+PYTHONPATH=src pytest
+```
+
+Some tests cover optional components that are skipped unless those extras are
+installed (for example the metrics dashboard requires `matplotlib`). Install any
+optional packages used by your code to achieve full test coverage.
