@@ -17,10 +17,10 @@ textblob==0.17.1
 pre-commit==4.2.0
 vaderSentiment==3.3.2
 sentence-transformers==2.7.0
-uvicorn
-PyYAML
-faiss-cpu
-prometheus-client
+uvicorn==0.30.1
+PyYAML==6.0.2
+faiss-cpu==1.11.0.post1
+prometheus-client==0.22.1
 setuptools
 streamlit
 datasets>=2.14.0
@@ -31,3 +31,5 @@ dspy
 psl
 deepproblog
 rdflib
+httpx==0.28.1
+requests==2.32.4
