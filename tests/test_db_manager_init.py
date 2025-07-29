@@ -14,6 +14,7 @@ from deepthought.services.db_manager import DBManager
 TABLES = [
     "interactions",
     "affinity",
+    "trust",
     "memories",
     "theories",
     "queued_tasks",
