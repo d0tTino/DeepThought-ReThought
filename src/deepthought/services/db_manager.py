@@ -29,6 +29,7 @@ else:
     def analyze_sentiment(text: str) -> float:
         return TextBlob(text).sentiment.polarity
 
+
 from ..config import get_settings
 
 # Default database path used when none is provided.
@@ -57,6 +58,12 @@ class DBManager:
         CREATE TABLE IF NOT EXISTS affinity (
             user_id TEXT PRIMARY KEY,
             score INTEGER DEFAULT 0
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS trust (
+            user_id TEXT PRIMARY KEY,
+            score REAL DEFAULT 0
         )
         """,
         """
@@ -182,11 +189,7 @@ class DBManager:
             "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
             (str(user_id), str(target_id) if target_id is not None else None),
         )
-        delta = (
-            self._affinity_delta(sentiment_score)
-            if sentiment_score is not None
-            else AFFINITY_POS_DELTA
-        )
+        delta = self._affinity_delta(sentiment_score) if sentiment_score is not None else AFFINITY_POS_DELTA
         if delta:
             await self._db.execute(
                 """
@@ -456,6 +459,29 @@ class DBManager:
         ) as cur:
             row = await cur.fetchone()
             return int(row[0]) if row else 0
+
+    async def adjust_trust(self, user_id: int, delta: float) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO trust (user_id, score)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET score=trust.score + ?
+            """,
+            (str(user_id), float(delta), float(delta)),
+        )
+        await self._db.commit()
+
+    async def get_trust(self, user_id: int) -> float:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT score FROM trust WHERE user_id=?",
+            (str(user_id),),
+        ) as cur:
+            row = await cur.fetchone()
+            return float(row[0]) if row else 0.0
 
     async def get_relationship(self, user_id: int, target_id: int):
         await self.connect()
