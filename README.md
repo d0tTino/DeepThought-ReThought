@@ -575,7 +575,7 @@ export ALLOW_DECEPTION=true
 ```
 
 ```python
-cover = maybe_deceptive_reply("What are your plans?")
+cover = await maybe_deceptive_reply(123, "What are your plans?")
 ```
 
 ### BDI Planning

@@ -152,6 +152,14 @@ class DBManager:
             created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS lies (
+            user_id TEXT,
+            question TEXT,
+            reply TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
     ]
 
     def __init__(self, db_path: str = DB_PATH) -> None:
@@ -298,6 +306,33 @@ class DBManager:
             (str(subject_id),),
         ) as cur:
             return await cur.fetchall()
+
+    async def store_lie(self, user_id: int, question: str, reply: str) -> None:
+        """Store a fabricated ``reply`` for ``question`` asked by ``user_id``."""
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError("question must be a non-empty string")
+        if not isinstance(reply, str) or not reply.strip():
+            raise ValueError("reply must be a non-empty string")
+
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "INSERT INTO lies (user_id, question, reply) VALUES (?, ?, ?)",
+            (str(user_id), question, reply),
+        )
+        await self._db.commit()
+
+    async def get_last_lie(self, user_id: int, question: str) -> str | None:
+        """Return the most recent fabricated reply for ``question`` by ``user_id``."""
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT reply FROM lies WHERE user_id=? AND question=? "
+            "ORDER BY rowid DESC LIMIT 1",
+            (str(user_id), question),
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
 
     async def update_sentiment_trend(
         self,
