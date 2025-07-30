@@ -16,6 +16,7 @@ from deepthought.services.db_manager import (MAX_MEMORY_LENGTH,
                                              MAX_PROMPT_LENGTH,
                                              MAX_THEORY_LENGTH, DBManager)
 from deepthought.services.moderation import is_allowed
+from deepthought.services.manipulative_detection import manipulation_score
 from deepthought.services.scheduler import SchedulerService
 
 try:
@@ -839,6 +840,11 @@ class SocialGraphBot(discord.Client):
         await update_sentiment_trend(
             message.author.id, message.channel.id, sentiment_score
         )
+
+        manip_score = manipulation_score(message.content)
+        if manip_score > 0:
+            await db_manager.adjust_trust(message.author.id, -manip_score)
+            log_thought(self, f"Manipulation score: {manip_score:+.2f}")
 
         result = await who_is_active(message.channel)
         if len(result) == 3:
