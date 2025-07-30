@@ -545,6 +545,49 @@ Each new goal also triggers a `PLAN_REQUESTED` event on the message bus. The
 `PlanningService` responds with `CHAT_RAW` actions that the bot echoes to the
 monitor channel.
 
+### Trust System and Thought Logging
+
+The example bot maintains a per-user *trust score* in its SQLite database. Use
+`adjust_trust` to change a user's score and `get_trust` to retrieve it:
+
+```python
+await db_manager.adjust_trust("u1", 0.5)
+score = await db_manager.get_trust("u1")
+```
+
+Manipulation attempts are flagged by the social perception classifier. The bot
+records its internal assessments in a private channel when
+`THOUGHT_CHANNEL` is set:
+
+```bash
+export THOUGHT_CHANNEL=9876543210
+```
+
+```python
+log_thought(bot, "Sentiment looks suspicious")
+```
+
+When `ALLOW_DECEPTION=true`, the bot may conceal its plans by sending a preset
+message instead of the real intention:
+
+```bash
+export ALLOW_DECEPTION=true
+```
+
+```python
+cover = maybe_deceptive_reply("What are your plans?")
+```
+
+### BDI Planning
+
+`GoalScheduler` converts queued goals into BDI intentions. Each intention is
+published on the message bus so other services can react:
+
+```python
+intention = scheduler.next_intention()
+await publisher.publish(EventSubjects.BDI_INTENTION, intention)
+```
+
 ### RAG Demo Notebook
 
 A minimal notebook demonstrating retrieval-augmented generation is available at [docs/notebooks/rag_demo.ipynb](docs/notebooks/rag_demo.ipynb). It compares a plain prompt with additional context retrieved via `HierarchicalService`. Run `python examples/rag_demo.py` to load the sample dataset and print example retrieval results.
