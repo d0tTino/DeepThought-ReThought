@@ -444,11 +444,17 @@ export MONITOR_CHANNEL=1234567890
 export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
 export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
 export SENTIMENT_BACKEND=vader  # optional, defaults to textblob
+export USER_REPLY_RATE_SECONDS=3                # optional rate limit per user
+export PLAYFUL_REPLY_TIMEOUT_MINUTES=5          # bot-to-bot reply cooldown
+export MAX_BOT_SPEAKERS=2                       # ignore chatter when too many bots talk
 ```
 
 `DISCORD_TOKEN` and `MONITOR_CHANNEL` are required. `NATS_URL` must also be set
 to a valid NATS server address if the default `nats://localhost:4222` is not
-appropriate. All other variables are optional.
+appropriate. All other variables are optional. `USER_REPLY_RATE_SECONDS`
+controls how quickly the bot may respond to the same user, while
+`PLAYFUL_REPLY_TIMEOUT_MINUTES` and `MAX_BOT_SPEAKERS` regulate bot-to-bot
+conversations.
 
 Set `SENTIMENT_BACKEND` to either `textblob` or `vader` to choose the library
 used for sentiment analysis. Any other value falls back to `textblob`.
@@ -530,7 +536,14 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
 
 Set the `IDLE_TIMEOUT_MINUTES` environment variable to control the inactivity
 threshold. By default the bot waits five minutes before sending a prompt.
-Enable bot-to-bot chatter by setting `BOT_CHAT_ENABLED=true`.
+Enable bot-to-bot chatter by setting `BOT_CHAT_ENABLED=true`. Set
+`PLAYFUL_REPLY_TIMEOUT_MINUTES` to enforce a cooldown before responding to other
+bots and `MAX_BOT_SPEAKERS` to cap the number of active bots.
+
+### Rate Limiting
+
+Replies to each user are throttled by `UserRateLimiter`. Adjust
+`USER_REPLY_RATE_SECONDS` to change the minimum delay between responses.
 
 ### Example Goals
 
@@ -557,7 +570,9 @@ score = await db_manager.get_trust("u1")
 
 Manipulation attempts are flagged by the social perception classifier. The bot
 records its internal assessments in a private channel when
-`THOUGHT_CHANNEL` is set:
+`THOUGHT_CHANNEL` is set. Messages are scored with
+`manipulation_score`, and any positive value decreases the user's trust
+accordingly:
 
 ```bash
 export THOUGHT_CHANNEL=9876543210
@@ -568,7 +583,8 @@ log_thought(bot, "Sentiment looks suspicious")
 ```
 
 When `ALLOW_DECEPTION=true`, the bot may conceal its plans by sending a preset
-message instead of the real intention:
+message instead of the real intention. The chosen reply is stored so repeated
+probes receive the same cover story:
 
 ```bash
 export ALLOW_DECEPTION=true
@@ -577,6 +593,9 @@ export ALLOW_DECEPTION=true
 ```python
 cover = await maybe_deceptive_reply(123, "What are your plans?")
 ```
+
+Each deceptive response is recorded in the `deception` memory table for later
+review.
 
 ### BDI Planning
 

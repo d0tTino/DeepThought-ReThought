@@ -60,3 +60,12 @@ The `examples/social_graph_bot.py` script logs user interactions in a SQLite dat
 
 The knowledge graph memory uses GraphDAL to persist data in Memgraph. Start Memgraph with `docker run --rm -p 7687:7687 memgraph/memgraph` and see [docs/graphdal.md](graphdal.md) for a full example service.
 
+## Additional Safety Features
+
+Recent iterations introduced several controls to moderate conversations:
+
+* **Manipulative language detection** – incoming messages are scored by `manipulation_score`. Higher scores lower the sender's trust value and are logged in the thoughts channel.
+* **Rate limiting** – replies are throttled with `UserRateLimiter`. Tune the delay via the `USER_REPLY_RATE_SECONDS` environment variable.
+* **Deception memory** – when `ALLOW_DECEPTION=true`, the bot answers probing questions with a predefined message. Each deceptive reply is stored for future reference.
+* **Bot-to-bot cooldown** – to prevent chatter loops, set `PLAYFUL_REPLY_TIMEOUT_MINUTES` and cap active bots with `MAX_BOT_SPEAKERS`.
+
