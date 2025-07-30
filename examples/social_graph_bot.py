@@ -19,6 +19,7 @@ from deepthought.perception.manipulative_detection import detect_manipulation
 from deepthought.services.moderation import is_allowed
 from deepthought.services.manipulative_detection import manipulation_score
 from deepthought.services.scheduler import SchedulerService
+from deepthought.utils import UserRateLimiter
 
 try:
     import discord
@@ -194,6 +195,7 @@ INTENTION_PUBLISH_SECONDS = int(os.getenv("INTENTION_PUBLISH_SECONDS", "5"))
 SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
 AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
 AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
+USER_REPLY_RATE_SECONDS = float(os.getenv("USER_REPLY_RATE_SECONDS", "3"))
 
 # Optional channel for thought logging
 _THOUGHT_CHANNEL = os.getenv("THOUGHT_CHANNEL")
@@ -307,6 +309,7 @@ def maybe_deceptive_reply(text: str) -> str | None:
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
 persona_manager = PersonaManager(db_manager)
+reply_limiter = UserRateLimiter(1, USER_REPLY_RATE_SECONDS)
 
 
 async def init_db(db_path: str | None = None) -> None:
@@ -864,6 +867,9 @@ class SocialGraphBot(discord.Client):
 
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
             # Too many bots talking and we're not addressed directly
+            return
+
+        if not reply_limiter.allow(str(message.author.id)):
             return
 
         async with message.channel.typing():
