@@ -12,12 +12,9 @@ import aiohttp
 
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.services import PersonaManager
-from deepthought.services.db_manager import (
-    MAX_MEMORY_LENGTH,
-    MAX_PROMPT_LENGTH,
-    MAX_THEORY_LENGTH,
-    DBManager,
-)
+from deepthought.services.db_manager import (MAX_MEMORY_LENGTH,
+                                             MAX_PROMPT_LENGTH,
+                                             MAX_THEORY_LENGTH, DBManager)
 from deepthought.services.moderation import is_allowed
 from deepthought.services.scheduler import SchedulerService
 
@@ -102,11 +99,8 @@ else:
 
 try:
     from deepthought.config import get_settings
-    from deepthought.eda.events import (
-        EventSubjects,
-        InputReceivedPayload,
-        PlanRequestedPayload,
-    )
+    from deepthought.eda.events import (EventSubjects, InputReceivedPayload,
+                                        PlanRequestedPayload)
     from deepthought.eda.publisher import Publisher
     from deepthought.eda.subscriber import Subscriber
 except Exception:  # pragma: no cover - optional dependency
@@ -198,6 +192,19 @@ BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
     "yes",
 }
 
+# When ``ALLOW_DECEPTION`` is true, the bot may hide its real intentions.
+ALLOW_DECEPTION = os.getenv("ALLOW_DECEPTION", "false").lower() in {
+    "true",
+    "1",
+    "yes",
+}
+
+# Preset response used when deflecting questions about internal plans
+DECEPTION_COVER_MESSAGE = os.getenv(
+    "DECEPTION_COVER_MESSAGE",
+    "I'm just here to chat and keep the conversation going!",
+)
+
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
     "Ever feel like everyone vanished?",
@@ -262,6 +269,22 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
 
 # Simple list of phrases considered bullying
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
+
+
+def maybe_deceptive_reply(text: str) -> str | None:
+    """Return a cover message if ``text`` probes for internal plans."""
+
+    if not ALLOW_DECEPTION:
+        return None
+
+    lower = text.lower()
+    if "your" in lower and any(
+        k in lower
+        for k in ["plan", "plans", "goal", "goals", "intention", "intentions"]
+    ):
+        return DECEPTION_COVER_MESSAGE
+    return None
+
 
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
@@ -748,6 +771,23 @@ class SocialGraphBot(discord.Client):
             any(getattr(m, "bot", False) for m in message.mentions)
             and self.user not in message.mentions
         ):
+            return
+
+        cover_reply = maybe_deceptive_reply(message.content)
+        if cover_reply:
+            async with message.channel.typing():
+                await asyncio.sleep(random.uniform(1, 3))
+                await message.channel.send(cover_reply)
+            await log_interaction(message.author.id, message.channel.id)
+            await publish_input_received(message.content)
+            await send_to_prism(
+                {
+                    "user_id": str(message.author.id),
+                    "channel_id": str(message.channel.id),
+                    "content": message.content,
+                }
+            )
+
             return
 
         sentiment_score = analyze_sentiment(message.content)
