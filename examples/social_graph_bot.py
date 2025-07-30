@@ -15,6 +15,7 @@ from deepthought.services import PersonaManager
 from deepthought.services.db_manager import (MAX_MEMORY_LENGTH,
                                              MAX_PROMPT_LENGTH,
                                              MAX_THEORY_LENGTH, DBManager)
+from deepthought.perception.manipulative_detection import detect_manipulation
 from deepthought.services.moderation import is_allowed
 from deepthought.services.scheduler import SchedulerService
 
@@ -839,6 +840,13 @@ class SocialGraphBot(discord.Client):
         await update_sentiment_trend(
             message.author.id, message.channel.id, sentiment_score
         )
+
+        manip_type = detect_manipulation(message.content)
+        if manip_type:
+            await db_manager.adjust_trust(message.author.id, -0.5)
+            logger.info(
+                "Manipulation detected (%s) from %s", manip_type, message.author.id
+            )
 
         result = await who_is_active(message.channel)
         if len(result) == 3:
