@@ -143,6 +143,15 @@ class DBManager:
             last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS intentions (
+            intention_id INTEGER PRIMARY KEY,
+            goal TEXT,
+            priority INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'pending',
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
     ]
 
     def __init__(self, db_path: str = DB_PATH) -> None:
@@ -399,6 +408,37 @@ class DBManager:
         await self._db.execute(
             "UPDATE summary_goals SET status='done' WHERE task_id=?",
             (task_id,),
+        )
+        await self._db.commit()
+
+    async def add_intention(self, goal: str, priority: int) -> int:
+        """Queue an intention with ``goal`` and ``priority``."""
+        await self.connect()
+        assert self._db
+        cur = await self._db.execute(
+            "INSERT INTO intentions (goal, priority) VALUES (?, ?)",
+            (goal, int(priority)),
+        )
+        await self._db.commit()
+        return cur.lastrowid
+
+    async def list_pending_intentions(self):
+        """Return pending intentions sorted by priority."""
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT intention_id, goal, priority FROM intentions "
+            "WHERE status='pending' ORDER BY priority DESC, intention_id"
+        ) as cur:
+            return await cur.fetchall()
+
+    async def mark_intention_done(self, intention_id: int) -> None:
+        """Mark an intention as completed."""
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "UPDATE intentions SET status='done' WHERE intention_id=?",
+            (intention_id,),
         )
         await self._db.commit()
 

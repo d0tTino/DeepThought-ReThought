@@ -2,9 +2,10 @@ from __future__ import annotations
 
 """Simple priority-based goal scheduler."""
 
+import asyncio
 import heapq
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from .eda.events import BDIIntentionPayload, EventSubjects
 from .eda.publisher import Publisher
@@ -14,17 +15,39 @@ from .eda.publisher import Publisher
 class ScheduledGoal:
     priority: int
     goal: str = field(compare=False)
+    intention_id: Optional[int] = field(default=None, compare=False)
+
+
+from .services.db_manager import DBManager
 
 
 class GoalScheduler:
     """Maintain a priority queue of goals."""
 
-    def __init__(self) -> None:
+    def __init__(self, db_manager: DBManager | None = None) -> None:
         self._heap: List[ScheduledGoal] = []
+        self._db_manager = db_manager
 
     def add_goal(self, goal: str, priority: int) -> None:
         """Schedule ``goal`` with ``priority`` (higher runs first)."""
         heapq.heappush(self._heap, ScheduledGoal(-priority, goal))
+
+    async def queue_intention(self, goal: str, priority: int) -> int | None:
+        """Schedule and persist an intention."""
+        intention_id: int | None = None
+        if self._db_manager is not None:
+            intention_id = await self._db_manager.add_intention(goal, priority)
+        heapq.heappush(self._heap, ScheduledGoal(-priority, goal, intention_id))
+        return intention_id
+
+    async def load_pending_intentions(self) -> int:
+        """Load pending intentions from the database into the queue."""
+        if self._db_manager is None:
+            return 0
+        rows = await self._db_manager.list_pending_intentions()
+        for iid, goal, priority in rows:
+            heapq.heappush(self._heap, ScheduledGoal(-priority, goal, iid))
+        return len(rows)
 
     def next_goal(self) -> str | None:
         """Pop the highest priority goal or ``None``."""
@@ -37,6 +60,12 @@ class GoalScheduler:
         if not self._heap:
             return None
         scheduled = heapq.heappop(self._heap)
+        if self._db_manager is not None and scheduled.intention_id is not None:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._db_manager.mark_intention_done(scheduled.intention_id))
+            except RuntimeError:
+                asyncio.run(self._db_manager.mark_intention_done(scheduled.intention_id))
         return BDIIntentionPayload(goal=scheduled.goal, priority=-scheduled.priority)
 
     async def publish_intentions(self, publisher: Publisher) -> int:

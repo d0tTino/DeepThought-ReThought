@@ -99,8 +99,12 @@ else:
 
 try:
     from deepthought.config import get_settings
-    from deepthought.eda.events import (EventSubjects, InputReceivedPayload,
-                                        PlanRequestedPayload)
+    from deepthought.eda.events import (
+        EventSubjects,
+        InputReceivedPayload,
+        PlanRequestedPayload,
+        BDIIntentionPayload,
+    )
     from deepthought.eda.publisher import Publisher
     from deepthought.eda.subscriber import Subscriber
 except Exception:  # pragma: no cover - optional dependency
@@ -130,6 +134,17 @@ except Exception:  # pragma: no cover - optional dependency
 
         def to_json(self) -> str:
             return "{}"
+
+    class BDIIntentionPayload:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        def to_json(self) -> str:
+            return "{}"
+
+        @classmethod
+        def from_dict(cls, data):
+            return cls(**data)
 
     class Publisher:
         def __init__(self, *args, **kwargs) -> None:
@@ -173,6 +188,7 @@ MAX_BOT_SPEAKERS = int(os.getenv("MAX_BOT_SPEAKERS", "2"))
 IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "5"))
 PLAYFUL_REPLY_TIMEOUT_MINUTES = int(os.getenv("PLAYFUL_REPLY_TIMEOUT_MINUTES", "5"))
 REFLECTION_CHECK_SECONDS = int(os.getenv("REFLECTION_CHECK_SECONDS", "300"))
+INTENTION_PUBLISH_SECONDS = int(os.getenv("INTENTION_PUBLISH_SECONDS", "5"))
 SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
 AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
 AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
@@ -611,6 +627,20 @@ async def process_goals(bot: "SocialGraphBot") -> None:
             break
 
 
+async def process_intentions(bot: "SocialGraphBot") -> None:
+    """Background task that publishes stored intentions."""
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            await bot.goal_scheduler.load_pending_intentions()
+            if _input_publisher is not None:
+                await bot.goal_scheduler.publish_intentions(_input_publisher)
+            await asyncio.sleep(INTENTION_PUBLISH_SECONDS)
+        except asyncio.CancelledError:
+            logger.info("process_intentions cancelled")
+            break
+
+
 def evaluate_triggers(message: discord.Message) -> List[Tuple[str, float]]:
     """Return a list of (theory, confidence) pairs inferred from a message."""
     theories: List[Tuple[str, float]] = []
@@ -727,7 +757,7 @@ class SocialGraphBot(discord.Client):
         super().__init__(*args, intents=intents, **kwargs)
         self.monitor_channel_id = monitor_channel_id
         self._bg_tasks: list[asyncio.Task] = []
-        self.goal_scheduler = GoalScheduler()
+        self.goal_scheduler = GoalScheduler(db_manager)
         self.scheduler_service: SchedulerService | None = (
             None  # noqa: F821 - optional feature
         )
@@ -749,6 +779,12 @@ class SocialGraphBot(discord.Client):
                     use_jetstream=True,
                     durable="social_bot_chat",
                 )
+                await self._subscriber.subscribe(
+                    subject=EventSubjects.BDI_INTENTION,
+                    handler=self._handle_bdi_intention,
+                    use_jetstream=True,
+                    durable="social_bot_intention",
+                )
             except Exception as exc:  # pragma: no cover - subscription error
                 logger.warning("Failed to subscribe to CHAT_RAW: %s", exc)
                 self._subscriber = None
@@ -758,6 +794,7 @@ class SocialGraphBot(discord.Client):
         )
         self._bg_tasks.append(self.loop.create_task(process_deep_reflections(self)))
         self._bg_tasks.append(self.loop.create_task(process_goals(self)))
+        self._bg_tasks.append(self.loop.create_task(process_intentions(self)))
 
     async def on_ready(self) -> None:
         """Log basic information once the bot connects."""
@@ -887,6 +924,19 @@ class SocialGraphBot(discord.Client):
                 await msg.ack()
         except Exception:  # pragma: no cover - defensive
             logger.error("Failed to handle CHAT_RAW", exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                await msg.nak()
+
+    async def _handle_bdi_intention(self, msg: Msg) -> None:
+        """React to BDI_INTENTION events by logging them."""
+        try:
+            data = json.loads(msg.data.decode())
+            payload = BDIIntentionPayload.from_dict(data)
+            logger.info("Received intention: %s", payload.goal)
+            if hasattr(msg, "ack") and callable(msg.ack):
+                await msg.ack()
+        except Exception:  # pragma: no cover - defensive
+            logger.error("Failed to handle BDI_INTENTION", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 await msg.nak()
 
