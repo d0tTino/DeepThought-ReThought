@@ -177,6 +177,13 @@ SENTIMENT_THRESHOLD = float(os.getenv("SENTIMENT_THRESHOLD", "0.3"))
 AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
 AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
 
+# Optional channel for thought logging
+_THOUGHT_CHANNEL = os.getenv("THOUGHT_CHANNEL")
+try:
+    THOUGHT_CHANNEL_ID = int(_THOUGHT_CHANNEL) if _THOUGHT_CHANNEL else None
+except ValueError:
+    THOUGHT_CHANNEL_ID = None
+
 # Optional bot-to-bot chatter configuration
 # Accepts values like "true", "1", or "yes" (case-insensitive)
 BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
@@ -361,6 +368,31 @@ async def _ensure_nats() -> None:
         logger.warning("Failed to connect to NATS: %s", exc)
         _input_publisher = None
         _subscriber = None
+
+
+async def _send_thought(bot: discord.Client, text: str) -> None:
+    """Send ``text`` to the THOUGHT_CHANNEL if configured."""
+    if THOUGHT_CHANNEL_ID is None:
+        return
+    channel = bot.get_channel(THOUGHT_CHANNEL_ID)
+    if channel is None:
+        logger.warning("Thought channel %s not found", THOUGHT_CHANNEL_ID)
+        return
+    try:
+        await channel.send(text)
+    except Exception as exc:  # pragma: no cover - send failure
+        logger.warning("Failed to send thought: %s", exc)
+
+
+def log_thought(bot: discord.Client, text: str) -> None:
+    """Schedule ``text`` to be sent to the THOUGHT_CHANNEL asynchronously."""
+    if THOUGHT_CHANNEL_ID is None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # pragma: no cover - no loop available
+        return
+    loop.create_task(_send_thought(bot, text))
 
 
 async def publish_input_received(text: str) -> None:
@@ -755,9 +787,11 @@ class SocialGraphBot(discord.Client):
                     "content": message.content,
                 }
             )
+
             return
 
         sentiment_score = analyze_sentiment(message.content)
+        log_thought(self, f"Sentiment score: {sentiment_score:+.2f}")
         topic = "message" if abs(sentiment_score) > SENTIMENT_THRESHOLD else ""
         await store_memory(
             message.author.id,
