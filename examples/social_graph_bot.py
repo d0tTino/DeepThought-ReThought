@@ -285,15 +285,27 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
 
 
-def maybe_deceptive_reply(text: str) -> str | None:
-    """Return a cover message if ``text`` probes for internal plans."""
+async def maybe_deceptive_reply(user_id: int, text: str) -> str | None:
+    """Return a cover message if ``text`` probes for internal plans.
+
+    The selected response is stored so repeated questions receive the same
+    answer.
+    """
 
     if not ALLOW_DECEPTION:
         return None
 
     lower = text.lower()
-    if "your" in lower and any(k in lower for k in ["plan", "plans", "goal", "goals", "intention", "intentions"]):
-        return DECEPTION_COVER_MESSAGE
+    if "your" in lower and any(
+        k in lower
+        for k in ["plan", "plans", "goal", "goals", "intention", "intentions"]
+    ):
+        reply = await db_manager.get_last_lie(user_id, text)
+        if reply is None:
+            reply = DECEPTION_COVER_MESSAGE
+            await db_manager.store_lie(user_id, text, reply)
+        return reply
+
     return None
 
 
@@ -490,6 +502,14 @@ async def set_do_not_mock(user_id: int, flag: bool = True) -> None:
 
 async def is_do_not_mock(user_id: int) -> bool:
     return await db_manager.is_do_not_mock(user_id)
+
+
+async def store_lie(user_id: int, question: str, reply: str) -> None:
+    await db_manager.store_lie(user_id, question, reply)
+
+
+async def get_last_lie(user_id: int, question: str) -> str | None:
+    return await db_manager.get_last_lie(user_id, question)
 
 
 async def adjust_affinity(user_id: int, delta: float) -> None:
@@ -774,7 +794,7 @@ class SocialGraphBot(discord.Client):
         if any(getattr(m, "bot", False) for m in message.mentions) and self.user not in message.mentions:
             return
 
-        cover_reply = maybe_deceptive_reply(message.content)
+        cover_reply = await maybe_deceptive_reply(message.author.id, message.content)
         if cover_reply:
             async with message.channel.typing():
                 await asyncio.sleep(random.uniform(1, 3))

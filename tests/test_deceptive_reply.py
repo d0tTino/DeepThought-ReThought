@@ -10,7 +10,34 @@ pytest.importorskip("discord")
 
 def reload_sg(monkeypatch):
     monkeypatch.setitem(os.environ, "ALLOW_DECEPTION", "1")
+    import types
     import sys
+
+    fake_pyperplan = types.ModuleType("pyperplan")
+    pddl_mod = types.ModuleType("pyperplan.pddl")
+    parser_mod = types.ModuleType("pyperplan.pddl.parser")
+    parser_mod.Parser = object
+    pddl_mod.parser = parser_mod
+    fake_pyperplan.pddl = pddl_mod
+    fake_pyperplan.planner = types.SimpleNamespace(_ground=lambda *a, **k: None)
+    fake_pyperplan.search = types.SimpleNamespace(
+        breadth_first_search=lambda *a, **k: []
+    )
+
+    sys.modules.setdefault("pyperplan", fake_pyperplan)
+    sys.modules.setdefault("pyperplan.pddl", pddl_mod)
+    sys.modules.setdefault("pyperplan.pddl.parser", parser_mod)
+    sys.modules.setdefault("pyperplan.planner", fake_pyperplan.planner)
+    sys.modules.setdefault("pyperplan.search", fake_pyperplan.search)
+
+    rdflib_mod = types.ModuleType("rdflib")
+    rdflib_mod.Namespace = object
+    rdflib_mod.Graph = object
+    rdflib_mod.URIRef = object
+    sys.modules.setdefault("rdflib", rdflib_mod)
+    ns_mod = types.ModuleType("rdflib.namespace")
+    ns_mod.RDF = object
+    sys.modules.setdefault("rdflib.namespace", ns_mod)
 
     sys.modules.pop("examples.social_graph_bot", None)
     return importlib.import_module("examples.social_graph_bot")
@@ -61,13 +88,20 @@ class DummyMessage:
 
 
 @pytest.mark.asyncio
-async def test_maybe_deceptive_reply(monkeypatch):
+async def test_maybe_deceptive_reply(monkeypatch, tmp_path):
     sg = reload_sg(monkeypatch)
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
     assert sg.ALLOW_DECEPTION is True
-    assert (
-        sg.maybe_deceptive_reply("what are your plans?") == sg.DECEPTION_COVER_MESSAGE
-    )
-    assert sg.maybe_deceptive_reply("hello") is None
+    reply1 = await sg.maybe_deceptive_reply(1, "what are your plans?")
+    assert reply1 == sg.DECEPTION_COVER_MESSAGE
+    reply2 = await sg.maybe_deceptive_reply(1, "what are your plans?")
+    assert reply2 == sg.DECEPTION_COVER_MESSAGE
+    assert await sg.maybe_deceptive_reply(1, "hello") is None
+
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
