@@ -1,7 +1,12 @@
 import os
+import shutil
 import socket
+import subprocess
+import time
 from typing import Optional
 from urllib.parse import urlparse
+
+import pytest
 
 DEFAULT_NATS_PORT = 4222
 
@@ -60,3 +65,37 @@ def neo4j_available(host: str | None = None, port: int | None = None) -> bool:
             return True
     except Exception:
         return False
+
+
+def _find_free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("localhost", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture(scope="module")
+def nats_server(tmp_path_factory):
+    """Run a temporary NATS server with JetStream enabled."""
+    if shutil.which("nats-server") is None:
+        pytest.skip("nats-server executable not found")
+    port = _find_free_port()
+    data_dir = tmp_path_factory.mktemp("nats-data")
+    proc = subprocess.Popen(
+        ["nats-server", "-js", "-p", str(port), "-sd", str(data_dir)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    for _ in range(20):
+        if nats_server_available(f"nats://localhost:{port}"):
+            break
+        time.sleep(0.25)
+    else:
+        proc.terminate()
+        raise RuntimeError("nats-server failed to start")
+    yield f"nats://localhost:{port}"
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
