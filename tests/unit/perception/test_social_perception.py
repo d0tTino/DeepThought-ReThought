@@ -1,7 +1,8 @@
 import importlib
+import logging
+import os
 import sys
 import types
-import os
 
 import pytest
 
@@ -119,7 +120,7 @@ def test_env_model_path(monkeypatch):
     assert paths["model"] == "/tmp/custom-model"
 
 
-def test_missing_env_var(monkeypatch):
+def test_missing_env_var(monkeypatch, caplog):
     tf_mod = types.ModuleType("transformers")
 
     class DummyTokenizer:
@@ -166,11 +167,15 @@ def test_missing_env_var(monkeypatch):
     sp = importlib.import_module("deepthought.perception.social_perception")
     importlib.reload(sp)
 
-    with pytest.raises(RuntimeError):
-        sp.analyze("hello")
+    with caplog.at_level(logging.WARNING):
+        result = sp.analyze("hello")
+
+    neutral = 1.0 / len(sp.LABELS)
+    assert result == {label: pytest.approx(neutral) for label in sp.LABELS}
+    assert any("SOCIAL_PERCEPTION_MODEL" in r.getMessage() for r in caplog.records)
 
 
-def test_missing_model_path(monkeypatch):
+def test_missing_model_path(monkeypatch, caplog):
     tf_mod = types.ModuleType("transformers")
 
     class DummyTokenizer:
@@ -217,5 +222,9 @@ def test_missing_model_path(monkeypatch):
     sp = importlib.import_module("deepthought.perception.social_perception")
     importlib.reload(sp)
 
-    with pytest.raises(FileNotFoundError):
-        sp.analyze("hello")
+    with caplog.at_level(logging.WARNING):
+        result = sp.analyze("hello")
+
+    neutral = 1.0 / len(sp.LABELS)
+    assert result == {label: pytest.approx(neutral) for label in sp.LABELS}
+    assert any("path not found" in r.getMessage() for r in caplog.records)
