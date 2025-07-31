@@ -59,7 +59,9 @@ class CognitiveCoreService(BaseService):
                     try:
                         search = OfflineSearch.create_index(db_path, [])
                     except ValueError:
-                        logger.warning("No documents available for search index; disabling offline search")
+                        logger.warning(
+                            "No documents available for search index; disabling offline search"
+                        )
                         search = None
                 else:
                     search = OfflineSearch(db_path)
@@ -131,8 +133,16 @@ class CognitiveCoreService(BaseService):
             self._memory.store_interaction(user_input)
             await self._db.store_memory("user", user_input)
             await self._db.log_interaction("user", None)
-            perception = analyze_social(user_input)
-            await self._db.store_memory("user", json.dumps(perception), topic="social_perception")
+            try:
+                perception = analyze_social(user_input)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.error(
+                    "Failed to analyze social perception: %s", e, exc_info=True
+                )
+                perception = {"flirtation": 0.0, "avoidance": 0.0, "manipulation": 0.0}
+            await self._db.store_memory(
+                "user", json.dumps(perception), topic="social_perception"
+            )
             delta = perception.get("flirtation", 0.0) - (
                 perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
             )
@@ -191,7 +201,9 @@ class CognitiveCoreService(BaseService):
         finally:
             duration = time.perf_counter() - start
             INPUTS_TOTAL.labels(service="cognitive_core_service").inc()
-            INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(duration)
+            INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(
+                duration
+            )
 
     async def start(self, durable_name: str = "cognitive_core_listener") -> bool:
         self._subscriptions.clear()
@@ -203,7 +215,9 @@ class CognitiveCoreService(BaseService):
         )
         started = await super().start()
         if started:
-            logger.info("CognitiveCoreService subscribed to %s", EventSubjects.INPUT_RECEIVED)
+            logger.info(
+                "CognitiveCoreService subscribed to %s", EventSubjects.INPUT_RECEIVED
+            )
         return started
 
     async def stop(self) -> None:
