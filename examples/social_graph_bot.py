@@ -1025,8 +1025,24 @@ def run(token: str, monitor_channel_id: int) -> None:
     bot.run(token)
 
 
+async def enqueue_goal(goal: str, priority: int = 1) -> None:
+    """Persist ``goal`` for later processing."""
+    await init_db()
+    await db_manager.add_intention(goal, priority)
+
+
 if __name__ == "__main__":
+    import argparse
+
     from deepthought.config import load_bot_env
 
-    env = load_bot_env()
-    run(env.DISCORD_TOKEN, env.MONITOR_CHANNEL)
+    parser = argparse.ArgumentParser(description="Run the SocialGraphBot")
+    parser.add_argument("--enqueue-goal", help="goal text to queue")
+    parser.add_argument("--priority", type=int, default=1, help="goal priority")
+    args = parser.parse_args()
+
+    if args.enqueue_goal:
+        asyncio.run(enqueue_goal(args.enqueue_goal, args.priority))
+    else:
+        env = load_bot_env()
+        run(env.DISCORD_TOKEN, env.MONITOR_CHANNEL)
