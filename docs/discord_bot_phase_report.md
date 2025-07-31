@@ -69,3 +69,20 @@ Recent iterations introduced several controls to moderate conversations:
 * **Deception memory** – when `ALLOW_DECEPTION=true`, the bot answers probing questions with a predefined message. Each deceptive reply is stored for future reference.
 * **Bot-to-bot cooldown** – to prevent chatter loops, set `PLAYFUL_REPLY_TIMEOUT_MINUTES` and cap active bots with `MAX_BOT_SPEAKERS`.
 
+## Local Social Perception and Thought Logging
+
+Download the social perception classifier and point `SOCIAL_PERCEPTION_MODEL` to the local weights:
+
+```bash
+pip install huggingface_hub
+huggingface-cli download myorg/social-cue-classifier --local-dir ./models/social_perception
+export SOCIAL_PERCEPTION_MODEL=$(pwd)/models/social_perception
+```
+
+Enable thought logging by specifying a channel ID:
+
+```bash
+export THOUGHT_CHANNEL=9876543210
+```
+
+When configured, the bot posts manipulation scores and other notes to this private channel.

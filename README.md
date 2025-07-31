@@ -578,6 +578,10 @@ accordingly:
 export THOUGHT_CHANNEL=9876543210
 ```
 
+Create a private channel for the bot and copy its numeric ID from Discord.
+Setting `THOUGHT_CHANNEL` allows the bot to post manipulation scores and
+other notes there.
+
 ```python
 log_thought(bot, "Sentiment looks suspicious")
 ```
@@ -615,10 +619,12 @@ A minimal notebook demonstrating retrieval-augmented generation is available at 
 
 ## Social Perception
 
-Set the path to the social cue classifier with `SOCIAL_PERCEPTION_MODEL`:
+Download the social perception classifier from Hugging Face and set the path for `SOCIAL_PERCEPTION_MODEL`:
 
 ```bash
-export SOCIAL_PERCEPTION_MODEL=/path/to/social-perception-model
+pip install huggingface_hub
+huggingface-cli download myorg/social-cue-classifier --local-dir ./models/social_perception
+export SOCIAL_PERCEPTION_MODEL=$(pwd)/models/social_perception
 ```
 
 If unset, the default `path/to/social-perception-model` is used.
