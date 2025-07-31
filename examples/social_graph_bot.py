@@ -889,10 +889,10 @@ class SocialGraphBot(discord.Client):
             message.author.id, message.channel.id, sentiment_score
         )
 
-        manip_score = manipulation_score(message.content)
-        if manip_score > 0:
-            await db_manager.adjust_trust(message.author.id, -manip_score)
-            log_thought(self, f"Manipulation score: {manip_score:+.2f}")
+        manip_category = manipulation_score(message.content)
+        if manip_category:
+            await db_manager.adjust_trust(message.author.id, -1.0)
+            log_thought(self, f"Manipulation detected: {manip_category}")
 
         result = await who_is_active(message.channel)
         if len(result) == 3:

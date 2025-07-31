@@ -1,23 +1,62 @@
 """Simple heuristic-based manipulation detector."""
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Iterable, Optional
 
-MANIPULATIVE_PHRASES: Dict[str, float] = {
-    "trust me": 0.8,
-    "for your own good": 0.7,
-    "if you": 0.5,
-    "only": 0.3,
+
+# Phrase lists grouped by manipulation category
+GUILT_TRIP_PHRASES: Iterable[str] = [
+    "after all i've done for you",
+    "you owe me",
+    "i thought you cared",
+    "if you really loved me",
+    "how could you do this",
+    "don't you care",
+    "think of everything i've sacrificed",
+]
+
+THREAT_PHRASES: Iterable[str] = [
+    "or else",
+    "you'll regret",
+    "i'll make you",
+    "i will hurt",
+    "i will harm",
+    "i'm going to report",
+    "you will be sorry",
+    "i'll ruin you",
+]
+
+FLATTERY_PHRASES: Iterable[str] = [
+    "you're the best",
+    "no one is as",
+    "you're amazing",
+    "you're incredible",
+    "you're perfect",
+    "trust me",
+    "you're so talented",
+    "i admire you so much",
+]
+
+# Mapping of category names to their phrases
+CATEGORY_PHRASES: Dict[str, Iterable[str]] = {
+    "guilt_tripping": GUILT_TRIP_PHRASES,
+    "threat": THREAT_PHRASES,
+    "excessive_flattery": FLATTERY_PHRASES,
 }
 
 
-def manipulation_score(text: str, phrases: Dict[str, float] | None = None) -> float:
-    """Return a manipulation score between 0 and 1 based on keyword matches."""
+def manipulation_score(
+    text: str, phrases: Dict[str, Iterable[str]] | None = None
+) -> Optional[str]:
+    """Return the detected manipulation category if any phrase matches."""
     if not isinstance(text, str):
-        return 0.0
+        return None
+
     lowered = text.lower()
-    scores = phrases or MANIPULATIVE_PHRASES
-    for phrase, score in scores.items():
-        if phrase in lowered:
-            return score
-    return 0.0
+    categories = phrases or CATEGORY_PHRASES
+    for category, plist in categories.items():
+        for phrase in plist:
+            if phrase in lowered:
+                return category
+
+    return None

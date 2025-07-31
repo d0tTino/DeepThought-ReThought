@@ -123,9 +123,10 @@ class DummyMessage:
 
 
 def test_manipulation_score_heuristics():
-    assert manipulation_score("trust me on this") == pytest.approx(0.8)
-    assert manipulation_score("this is for your own good") == pytest.approx(0.7)
-    assert manipulation_score("hello") == 0.0
+    assert manipulation_score("After all I've done for you") == "guilt_tripping"
+    assert manipulation_score("You'll regret this") == "threat"
+    assert manipulation_score("You're the best!") == "excessive_flattery"
+    assert manipulation_score("hello") is None
 
 
 @pytest.mark.asyncio
