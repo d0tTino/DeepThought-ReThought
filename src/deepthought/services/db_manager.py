@@ -165,6 +165,7 @@ class DBManager:
     def __init__(self, db_path: str = DB_PATH) -> None:
         self.db_path = db_path
         self._db: aiosqlite.Connection | None = None
+        self._initialized = False
 
     async def connect(self) -> None:
         if self._db is None:
@@ -172,6 +173,11 @@ class DBManager:
             if dir_path:
                 os.makedirs(dir_path, exist_ok=True)
             self._db = await aiosqlite.connect(self.db_path)
+            if not self._initialized:
+                for query in self.CREATE_TABLE_QUERIES:
+                    await self._db.execute(query)
+                await self._db.commit()
+                self._initialized = True
 
     async def close(self) -> None:
         if self._db is not None:
@@ -184,10 +190,6 @@ class DBManager:
 
     async def init_db(self) -> None:
         await self.connect()
-        assert self._db
-        for query in self.CREATE_TABLE_QUERIES:
-            await self._db.execute(query)
-        await self._db.commit()
 
     async def log_interaction(
         self,
@@ -206,7 +208,11 @@ class DBManager:
             "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
             (str(user_id), str(target_id) if target_id is not None else None),
         )
-        delta = self._affinity_delta(sentiment_score) if sentiment_score is not None else AFFINITY_POS_DELTA
+        delta = (
+            self._affinity_delta(sentiment_score)
+            if sentiment_score is not None
+            else AFFINITY_POS_DELTA
+        )
         if delta:
             await self._db.execute(
                 """
@@ -274,7 +280,9 @@ class DBManager:
             )
         await self._db.commit()
 
-    async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
+    async def store_theory(
+        self, subject_id: int, theory: str, confidence: float
+    ) -> None:
         if not isinstance(theory, str) or not theory.strip():
             raise ValueError("theory must be a non-empty string")
         if len(theory) > MAX_THEORY_LENGTH:
@@ -367,7 +375,9 @@ class DBManager:
         ) as cur:
             return await cur.fetchone()
 
-    async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
+    async def queue_deep_reflection(
+        self, user_id: int, context: dict, prompt: str
+    ) -> int:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
         if len(prompt) > MAX_PROMPT_LENGTH:
