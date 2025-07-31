@@ -752,6 +752,18 @@ PYTHONPATH=src pytest tests/
     This script installs dependencies, starts a local NATS server, sets up
     JetStream, and executes flake8 and pytest **only when code has changed**.
 
+## Running Tests
+
+Install the trimmed-down dependencies used in continuous integration:
+
+```bash
+pip install -r requirements-ci.txt
+python -m pytest
+```
+
+Tests that rely on optional services such as **NATS** or **Memgraph** will be
+skipped automatically when those services are not running.
+
 ## Continuous Integration
 
 The project includes a GitHub Actions workflow that runs `flake8` and
