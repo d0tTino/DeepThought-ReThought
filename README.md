@@ -751,6 +751,12 @@ PYTHONPATH=src pytest tests/
     ```
     This script installs dependencies, starts a local NATS server, sets up
     JetStream, and executes flake8 and pytest **only when code has changed**.
+8.  The GitHub Actions workflow follows the same pattern. Each job installs the
+    pinned dependencies with:
+    ```bash
+    pip install -r requirements-ci.txt
+    ```
+    before running `flake8` and `pytest` to ensure results match local runs.
 
 ## Running Tests
 
