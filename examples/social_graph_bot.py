@@ -200,6 +200,9 @@ AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
 AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
 USER_REPLY_RATE_SECONDS = float(os.getenv("USER_REPLY_RATE_SECONDS", "3"))
 BOT_COOLDOWN_SECONDS = int(os.getenv("BOT_COOLDOWN_SECONDS", "30"))
+MINIMAL_REPLY_THRESHOLD = float(os.getenv("MINIMAL_REPLY_THRESHOLD", "-5"))
+MINIMAL_REPLY_PROB = float(os.getenv("MINIMAL_REPLY_PROB", "0.05"))
+MINIMAL_REPLIES = ["...", "👍", "No"]
 
 # Optional channel for thought logging
 _THOUGHT_CHANNEL = os.getenv("THOUGHT_CHANNEL")
@@ -918,10 +921,14 @@ class SocialGraphBot(discord.Client):
                 async for recent in message.channel.history(limit=1):
                     if recent.id != message.id and getattr(recent.author, "bot", False):
                         return
-            persona = await self.persona_manager.get_persona(message.author.id)
-            reply = random.choice(
-                PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"])
-            )
+            trust = await db_manager.get_trust(message.author.id)
+            if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
+                reply = random.choice(MINIMAL_REPLIES)
+            else:
+                persona = await self.persona_manager.get_persona(message.author.id)
+                reply = random.choice(
+                    PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"])
+                )
             await message.channel.send(reply)
             if message.author.bot:
                 last_bot_reply_time = discord.utils.utcnow()
