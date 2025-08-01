@@ -36,7 +36,9 @@ async def test_dynamic_deceptive_reply(monkeypatch, tmp_path):
 
     if "transformers" not in sys.modules:
         sys.modules["transformers"] = types.ModuleType("transformers")
-    monkeypatch.setattr(sys.modules["transformers"], "pipeline", fake_pipeline, raising=False)
+    monkeypatch.setattr(
+        sys.modules["transformers"], "pipeline", fake_pipeline, raising=False
+    )
 
     r1 = await sg.maybe_deceptive_reply(1, "what are your plans?")
     r2 = await sg.maybe_deceptive_reply(1, "what are your goals?")

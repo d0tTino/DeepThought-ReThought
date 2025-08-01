@@ -2,6 +2,8 @@ import asyncio
 import importlib
 import os
 import random
+import sys
+import types
 
 import pytest
 
@@ -120,15 +122,33 @@ async def test_deception_memory_dynamic(monkeypatch, tmp_path):
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
 
+    call_count = {"n": 0}
+
+    def fake_pipeline(task, model=None):
+        assert task == "text-generation"
+
+        def gen(prompt, **kwargs):
+            call_count["n"] += 1
+            return [{"generated_text": f"lie{call_count['n']}"}]
+
+        return gen
+
+    if "transformers" not in sys.modules:
+        sys.modules["transformers"] = types.ModuleType("transformers")
+    monkeypatch.setattr(
+        sys.modules["transformers"], "pipeline", fake_pipeline, raising=False
+    )
+
     bot = sg.SocialGraphBot(monitor_channel_id=1)
     message = DummyMessage("Tell me your plan")
     await bot.on_message(message)
 
     dynamic_reply = message.channel.sent_messages[-1]
-    assert dynamic_reply in sg.DYNAMIC_COVER_REPLIES
+    assert dynamic_reply == "lie1"
 
     message2 = DummyMessage("Tell me your plan", message_id=11)
     await bot.on_message(message2)
 
     assert message2.channel.sent_messages[-1] == dynamic_reply
+    assert call_count["n"] == 1
     await sg.db_manager.close()
