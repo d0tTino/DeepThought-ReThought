@@ -8,7 +8,10 @@ from deepthought.cli import main
 
 def test_finetune_estimate_only(tmp_path: Path, monkeypatch) -> None:
     pytest.importorskip("torch")
-    pytest.importorskip("bitsandbytes")
+    try:
+        importlib.import_module("bitsandbytes")
+    except Exception as exc:
+        pytest.skip(f"bitsandbytes import failed: {exc}")
     from transformers import AutoModelForCausalLM, GPT2Config
 
     train = importlib.import_module("deepthought.train")

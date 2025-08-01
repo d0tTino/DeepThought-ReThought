@@ -11,7 +11,6 @@ from typing import List, Tuple
 import aiohttp
 
 from deepthought.goal_scheduler import GoalScheduler
-from deepthought.perception.manipulative_detection import detect_manipulation
 from deepthought.services import PersonaManager
 from deepthought.services.db_manager import (
     MAX_MEMORY_LENGTH,
