@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-"""Heuristic detection of manipulative language in text."""
+"""Detect manipulative language using heuristics or an optional model.
+
+Set the :envvar:`MANIP_MODEL_PATH` environment variable to load a
+Transformer-based text classifier. If unset, simple phrase heuristics
+are applied instead.
+"""
 
 import os
 from typing import Optional
