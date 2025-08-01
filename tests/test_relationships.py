@@ -18,9 +18,7 @@ async def test_relationship_table_and_updates(tmp_path):
     await sg.db_manager.init_db()
 
     async with aiosqlite.connect(str(tmp_path / "sg.db")) as db:
-        async with db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='relationships'"
-        ) as cur:
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='relationships'") as cur:
             row = await cur.fetchone()
     assert row is not None, "relationships table should exist"
 
@@ -58,9 +56,10 @@ def test_user_graph_edges_and_stats(tmp_path):
     assert dal.get_relationship("a", "b")[0] == 2
     assert dal.get_relationship("b", "a")[0] == 2
 
-    assert dal.get_mutual_affinity("a", "b") == 4
+    # mutual affinity counts actual messages between the pair
+    assert dal.get_mutual_affinity("a", "b") == 2
 
     stats = mem.get_relationship_stats("a", "b")
-    assert stats["mutual_affinity"] == 4
+    assert stats["mutual_affinity"] == 2
     assert stats["a_to_b"]["avg_sentiment"] == pytest.approx(0.15)
     assert stats["b_to_a"]["avg_sentiment"] == pytest.approx(0.15)
