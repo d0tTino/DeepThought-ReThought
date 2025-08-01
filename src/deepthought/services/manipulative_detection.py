@@ -1,8 +1,10 @@
 """Simple heuristic-based manipulation detector."""
+
 from __future__ import annotations
 
 from typing import Dict, Iterable, Optional
 
+from deepthought.perception.manipulative_detection import detect_manipulation
 
 # Phrase lists grouped by manipulation category
 GUILT_TRIP_PHRASES: Iterable[str] = [
@@ -48,13 +50,15 @@ CATEGORY_PHRASES: Dict[str, Iterable[str]] = {
 def manipulation_score(
     text: str, phrases: Dict[str, Iterable[str]] | None = None
 ) -> Optional[str]:
-    """Return the detected manipulation category if any phrase matches."""
+    """Return the detected manipulation category."""
     if not isinstance(text, str):
         return None
 
+    if phrases is None:
+        return detect_manipulation(text)
+
     lowered = text.lower()
-    categories = phrases or CATEGORY_PHRASES
-    for category, plist in categories.items():
+    for category, plist in phrases.items():
         for phrase in plist:
             if phrase in lowered:
                 return category
