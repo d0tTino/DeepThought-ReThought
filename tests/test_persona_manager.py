@@ -18,7 +18,7 @@ async def test_persona_changes_with_affinity(tmp_path):
     await sg.adjust_affinity(user, 2)
     assert await pm.get_persona(user) == "playful"
 
-    await sg.adjust_affinity(user, 3)
+    await sg.db_manager.adjust_trust(user, 3)
     assert await pm.get_persona(user) == "friendly"
 
     await sg.db_manager.close()
@@ -40,7 +40,7 @@ async def test_choose_prompt_uses_persona(tmp_path, monkeypatch):
     await sg.adjust_affinity(user, 1)
     assert await pm.choose_prompt(user, prompts) == "p"
 
-    await sg.adjust_affinity(user, 1)
+    await sg.db_manager.adjust_trust(user, 1)
     assert await pm.choose_prompt(user, prompts) == "f"
 
     # fallback to default when persona key missing
