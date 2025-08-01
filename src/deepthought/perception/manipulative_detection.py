@@ -2,7 +2,11 @@ from __future__ import annotations
 
 """Heuristic detection of manipulative language in text."""
 
+import os
 from typing import Optional
+
+_classifier = None
+_model_checked = False
 
 # Simple lists of phrases for each manipulation tactic
 GUILT_TRIP_PHRASES = [
@@ -31,8 +35,39 @@ FLATTERY_PHRASES = [
 ]
 
 
+def _get_classifier():
+    """Return a text classification pipeline if available."""
+    global _classifier, _model_checked
+    if _model_checked:
+        return _classifier
+    _model_checked = True
+    model_path = os.getenv("MANIP_MODEL_PATH")
+    if not model_path:
+        return None
+    try:  # pragma: no cover - optional dependency
+        from transformers import pipeline
+    except Exception:
+        return None
+    try:  # pragma: no cover - optional dependency
+        _classifier = pipeline("text-classification", model=model_path)
+    except Exception:
+        _classifier = None
+    return _classifier
+
+
 def detect_manipulation(text: str) -> Optional[str]:
-    """Return the manipulation category if any heuristic matches."""
+    """Return the manipulation category using a model or heuristics."""
+    classifier = _get_classifier()
+    if classifier is not None:
+        try:
+            result = classifier(text, truncation=True)
+            if isinstance(result, list) and result:
+                label = str(result[0].get("label", "")).lower()
+                if label and label != "none":
+                    return label
+        except Exception:  # pragma: no cover - model inference failure
+            pass
+
     lower = text.lower()
     for phrase in GUILT_TRIP_PHRASES:
         if phrase in lower:
