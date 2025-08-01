@@ -75,6 +75,7 @@ async def test_on_message_persona_changes_with_affinity(tmp_path, monkeypatch, i
     monkeypatch.setattr(asyncio, "sleep", noop)
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+    monkeypatch.setattr(sg.reply_limiter, "allow", lambda _id: True)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
 
@@ -87,7 +88,7 @@ async def test_on_message_persona_changes_with_affinity(tmp_path, monkeypatch, i
     await bot.on_message(msg2)
     assert msg2.channel.sent_messages[-1] == sg.PERSONA_REPLIES["playful"][0]
 
-    await sg.adjust_affinity(msg1.author.id, 2)
+    await sg.db_manager.adjust_trust(msg1.author.id, 2)
     msg3 = DummyMessage("hello friend", author_id=msg1.author.id, message_id=12)
     await bot.on_message(msg3)
     assert msg3.channel.sent_messages[-1] == sg.PERSONA_REPLIES["friendly"][0]

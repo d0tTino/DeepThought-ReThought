@@ -15,5 +15,6 @@ async def test_adjust_get_trust(tmp_path):
     await manager.adjust_trust("u1", -0.2)
 
     assert pytest.approx(await manager.get_trust("u1")) == 0.3
+    assert pytest.approx(await manager.get_mutual_affinity("u1")) == 0.3
 
     await manager.close()

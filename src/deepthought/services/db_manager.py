@@ -208,11 +208,7 @@ class DBManager:
             "INSERT INTO interactions (user_id, target_id) VALUES (?, ?)",
             (str(user_id), str(target_id) if target_id is not None else None),
         )
-        delta = (
-            self._affinity_delta(sentiment_score)
-            if sentiment_score is not None
-            else AFFINITY_POS_DELTA
-        )
+        delta = self._affinity_delta(sentiment_score) if sentiment_score is not None else AFFINITY_POS_DELTA
         if delta:
             await self._db.execute(
                 """
@@ -280,9 +276,7 @@ class DBManager:
             )
         await self._db.commit()
 
-    async def store_theory(
-        self, subject_id: int, theory: str, confidence: float
-    ) -> None:
+    async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
         if not isinstance(theory, str) or not theory.strip():
             raise ValueError("theory must be a non-empty string")
         if len(theory) > MAX_THEORY_LENGTH:
@@ -335,8 +329,7 @@ class DBManager:
         await self.connect()
         assert self._db
         async with self._db.execute(
-            "SELECT reply FROM lies WHERE user_id=? AND question=? "
-            "ORDER BY rowid DESC LIMIT 1",
+            "SELECT reply FROM lies WHERE user_id=? AND question=? " "ORDER BY rowid DESC LIMIT 1",
             (str(user_id), question),
         ) as cur:
             row = await cur.fetchone()
@@ -375,9 +368,7 @@ class DBManager:
         ) as cur:
             return await cur.fetchone()
 
-    async def queue_deep_reflection(
-        self, user_id: int, context: dict, prompt: str
-    ) -> int:
+    async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
         if len(prompt) > MAX_PROMPT_LENGTH:
@@ -567,6 +558,12 @@ class DBManager:
         ) as cur:
             row = await cur.fetchone()
             return float(row[0]) if row else 0.0
+
+    async def get_mutual_affinity(self, user_id: int) -> float:
+        """Return a combined score from affinity and trust for ``user_id``."""
+        affinity = await self.get_affinity(user_id)
+        trust = await self.get_trust(user_id)
+        return float(affinity) + float(trust)
 
     async def get_relationship(self, user_id: int, target_id: int):
         await self.connect()
