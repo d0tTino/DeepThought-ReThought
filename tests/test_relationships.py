@@ -7,6 +7,8 @@ import examples.social_graph_bot as sg
 
 pytest.importorskip("nats")
 from deepthought.services import DBManager
+from deepthought.services.social_graph_memory import SocialGraphMemory
+from deepthought.services.user_graph_dal import UserGraphDAL
 
 
 @pytest.mark.asyncio
@@ -16,7 +18,9 @@ async def test_relationship_table_and_updates(tmp_path):
     await sg.db_manager.init_db()
 
     async with aiosqlite.connect(str(tmp_path / "sg.db")) as db:
-        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='relationships'") as cur:
+        async with db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='relationships'"
+        ) as cur:
             row = await cur.fetchone()
     assert row is not None, "relationships table should exist"
 
@@ -41,3 +45,22 @@ async def test_relationship_table_and_updates(tmp_path):
     assert await sg.get_hostility("u2", "u1") == -1.0
 
     await sg.db_manager.close()
+
+
+def test_user_graph_edges_and_stats(tmp_path):
+    dal = UserGraphDAL(str(tmp_path / "g.json"))
+    mem = SocialGraphMemory(dal)
+
+    dal.add_message("a", "b", sentiment_score=0.5)
+    dal.add_message("b", "a", sentiment_score=-0.2)
+
+    # Both directional edges should be updated
+    assert dal.get_relationship("a", "b")[0] == 2
+    assert dal.get_relationship("b", "a")[0] == 2
+
+    assert dal.get_mutual_affinity("a", "b") == 4
+
+    stats = mem.get_relationship_stats("a", "b")
+    assert stats["mutual_affinity"] == 4
+    assert stats["a_to_b"]["avg_sentiment"] == pytest.approx(0.15)
+    assert stats["b_to_a"]["avg_sentiment"] == pytest.approx(0.15)
