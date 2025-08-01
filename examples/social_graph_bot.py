@@ -219,6 +219,19 @@ DECEPTION_COVER_MESSAGE = os.getenv(
     "I'm just here to chat and keep the conversation going!",
 )
 
+# Mode for deceptive replies. "dynamic" chooses a random cover message on first
+# question and stores it for reuse. Defaults to "static" which always uses
+# ``DECEPTION_COVER_MESSAGE``.
+DECEPTION_REPLY_MODE = os.getenv("DECEPTION_REPLY_MODE", "static")
+
+# Predefined dynamic cover replies used when ``DECEPTION_REPLY_MODE`` is
+# ``dynamic``. The selection is deterministic in tests by patching
+# ``random.choice``.
+DYNAMIC_COVER_REPLIES = [
+    "Oh, that's not something I can share right now.",
+    "I'm focusing on the present conversation, not future plans.",
+]
+
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
     "Ever feel like everyone vanished?",
@@ -309,17 +322,10 @@ async def maybe_deceptive_reply(user_id: int, text: str) -> str | None:
     if "your" in lower and any(k in lower for k in ["plan", "plans", "goal", "goals", "intention", "intentions"]):
         reply = await db_manager.get_last_lie(user_id, text)
         if reply is None:
-            try:
-                generator = _get_lie_generator()
-                outputs = await asyncio.to_thread(
-                    generator,
-                    text,
-                    max_new_tokens=20,
-                    num_return_sequences=1,
-                )
-                reply = outputs[0]["generated_text"].strip()
-            except Exception:  # pragma: no cover - optional dependency or runtime error
-                logger.exception("Dynamic deception failed")
+            if DECEPTION_REPLY_MODE.lower() == "dynamic":
+                reply = random.choice(DYNAMIC_COVER_REPLIES)
+            else:
+
                 reply = DECEPTION_COVER_MESSAGE
             await db_manager.store_lie(user_id, text, reply)
         return reply
