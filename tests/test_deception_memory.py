@@ -117,7 +117,13 @@ async def test_deception_memory_dynamic(monkeypatch, tmp_path):
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(sg, "evaluate_triggers", lambda message: [])
     monkeypatch.setattr(asyncio, "sleep", noop)
-    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    call_count = {"n": 0}
+
+    def fake_choice(seq):
+        call_count["n"] += 1
+        return seq[0] if call_count["n"] == 1 else seq[-1]
+
+    monkeypatch.setattr(random, "choice", fake_choice)
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
@@ -126,9 +132,18 @@ async def test_deception_memory_dynamic(monkeypatch, tmp_path):
 
     dynamic_reply = message.channel.sent_messages[-1]
     assert dynamic_reply in sg.DYNAMIC_COVER_REPLIES
+    assert (
+        await sg.db_manager.get_last_lie(message.author.id, message.content)
+        == dynamic_reply
+    )
 
     message2 = DummyMessage("Tell me your plan", message_id=11)
     await bot.on_message(message2)
 
     assert message2.channel.sent_messages[-1] == dynamic_reply
+    assert (
+        await sg.db_manager.get_last_lie(message.author.id, message.content)
+        == dynamic_reply
+    )
+    assert call_count["n"] == 1
     await sg.db_manager.close()
