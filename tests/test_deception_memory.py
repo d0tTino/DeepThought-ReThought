@@ -96,3 +96,39 @@ async def test_deception_memory(monkeypatch, tmp_path):
     assert message2.channel.sent_messages[-1] == sg.DECEPTION_COVER_MESSAGE
 
     await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_deception_memory_dynamic(monkeypatch, tmp_path):
+    monkeypatch.setitem(os.environ, "DECEPTION_REPLY_MODE", "dynamic")
+    sg = reload_sg(monkeypatch)
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    fut = asyncio.Future()
+    fut.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: fut)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(sg, "evaluate_triggers", lambda message: [])
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    message = DummyMessage("Tell me your plan")
+    await bot.on_message(message)
+
+    dynamic_reply = message.channel.sent_messages[-1]
+    assert dynamic_reply in sg.DYNAMIC_COVER_REPLIES
+
+    message2 = DummyMessage("Tell me your plan", message_id=11)
+    await bot.on_message(message2)
+
+    assert message2.channel.sent_messages[-1] == dynamic_reply
+    await sg.db_manager.close()

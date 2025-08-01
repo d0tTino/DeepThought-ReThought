@@ -12,9 +12,7 @@ import aiohttp
 
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.services import PersonaManager
-from deepthought.services.db_manager import (MAX_MEMORY_LENGTH,
-                                             MAX_PROMPT_LENGTH,
-                                             MAX_THEORY_LENGTH, DBManager)
+from deepthought.services.db_manager import MAX_MEMORY_LENGTH, MAX_PROMPT_LENGTH, MAX_THEORY_LENGTH, DBManager
 from deepthought.services.manipulative_detection import manipulation_score
 from deepthought.services.moderation import is_allowed
 from deepthought.services.scheduler import SchedulerService
@@ -101,9 +99,7 @@ else:
 
 try:
     from deepthought.config import get_settings
-    from deepthought.eda.events import (BDIIntentionPayload, EventSubjects,
-                                        InputReceivedPayload,
-                                        PlanRequestedPayload)
+    from deepthought.eda.events import BDIIntentionPayload, EventSubjects, InputReceivedPayload, PlanRequestedPayload
     from deepthought.eda.publisher import Publisher
     from deepthought.eda.subscriber import Subscriber
 except Exception:  # pragma: no cover - optional dependency
@@ -164,9 +160,7 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 DB_PATH = get_settings().social_graph_db
 CURRENT_DB_PATH = DB_PATH
@@ -225,6 +219,19 @@ DECEPTION_COVER_MESSAGE = os.getenv(
     "I'm just here to chat and keep the conversation going!",
 )
 
+# Mode for deceptive replies. "dynamic" chooses a random cover message on first
+# question and stores it for reuse. Defaults to "static" which always uses
+# ``DECEPTION_COVER_MESSAGE``.
+DECEPTION_REPLY_MODE = os.getenv("DECEPTION_REPLY_MODE", "static")
+
+# Predefined dynamic cover replies used when ``DECEPTION_REPLY_MODE`` is
+# ``dynamic``. The selection is deterministic in tests by patching
+# ``random.choice``.
+DYNAMIC_COVER_REPLIES = [
+    "Oh, that's not something I can share right now.",
+    "I'm focusing on the present conversation, not future plans.",
+]
+
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
     "Ever feel like everyone vanished?",
@@ -264,9 +271,7 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     reason.
     """
     try:
-        gen_prompt = prompt or os.getenv(
-            "IDLE_GENERATOR_PROMPT", "Say something to spark conversation."
-        )
+        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
         if prompt is None and "IDLE_GENERATOR_PROMPT" not in os.environ:
             topics = await get_recent_topics(3)
             if topics:
@@ -302,13 +307,13 @@ async def maybe_deceptive_reply(user_id: int, text: str) -> str | None:
         return None
 
     lower = text.lower()
-    if "your" in lower and any(
-        k in lower
-        for k in ["plan", "plans", "goal", "goals", "intention", "intentions"]
-    ):
+    if "your" in lower and any(k in lower for k in ["plan", "plans", "goal", "goals", "intention", "intentions"]):
         reply = await db_manager.get_last_lie(user_id, text)
         if reply is None:
-            reply = DECEPTION_COVER_MESSAGE
+            if DECEPTION_REPLY_MODE.lower() == "dynamic":
+                reply = random.choice(DYNAMIC_COVER_REPLIES)
+            else:
+                reply = DECEPTION_COVER_MESSAGE
             await db_manager.store_lie(user_id, text, reply)
         return reply
 
@@ -330,11 +335,7 @@ async def init_db(db_path: str | None = None) -> None:
     target_path = (
         db_path
         if db_path is not None
-        else (
-            DB_PATH
-            if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH
-            else db_manager.db_path
-        )
+        else (DB_PATH if DB_PATH != CURRENT_DB_PATH and db_manager.db_path == CURRENT_DB_PATH else db_manager.db_path)
     )
 
     if db_manager.db_path != target_path:
@@ -352,9 +353,7 @@ async def log_interaction(
     target_id: int | None = None,
     sentiment_score: float | None = None,
 ) -> None:
-    await db_manager.log_interaction(
-        user_id, target_id, sentiment_score=sentiment_score
-    )
+    await db_manager.log_interaction(user_id, target_id, sentiment_score=sentiment_score)
 
 
 async def recall_user(user_id: int):
@@ -367,9 +366,7 @@ async def store_memory(
     topic: str = "",
     sentiment_score: float | None = None,
 ) -> None:
-    await db_manager.store_memory(
-        user_id, memory, topic=topic, sentiment_score=sentiment_score
-    )
+    await db_manager.store_memory(user_id, memory, topic=topic, sentiment_score=sentiment_score)
 
 
 async def send_to_prism(data: dict) -> None:
@@ -434,9 +431,7 @@ async def publish_input_received(text: str) -> None:
         return
     await _ensure_nats()
     if _input_publisher is None:
-        logger.warning(
-            "Dropping INPUT_RECEIVED event because NATS publisher is unavailable"
-        )
+        logger.warning("Dropping INPUT_RECEIVED event because NATS publisher is unavailable")
 
         return
     payload = InputReceivedPayload(
@@ -459,9 +454,7 @@ async def publish_plan_requested(goal: str, input_id: str | None = None) -> None
     """Publish a PLAN_REQUESTED event for ``goal``."""
     await _ensure_nats()
     if _input_publisher is None:
-        logger.warning(
-            "Dropping PLAN_REQUESTED event because NATS publisher is unavailable"
-        )
+        logger.warning("Dropping PLAN_REQUESTED event because NATS publisher is unavailable")
         return
     payload = PlanRequestedPayload(goal=goal, input_id=input_id)
     try:
@@ -638,12 +631,8 @@ async def process_goals(bot: "SocialGraphBot") -> None:
                     logger.warning("Invalid goal format: %s", goal)
                     await publish_plan_requested(goal)
                 else:
-                    when = discord.utils.utcnow().replace(
-                        tzinfo=timezone.utc
-                    ) + timedelta(seconds=delay)
-                    bot.scheduler_service.schedule_reminder(
-                        message, when, str(uuid.uuid4())
-                    )
+                    when = discord.utils.utcnow().replace(tzinfo=timezone.utc) + timedelta(seconds=delay)
+                    bot.scheduler_service.schedule_reminder(message, when, str(uuid.uuid4()))
                     await publish_plan_requested(message)
             await asyncio.sleep(1)
         except asyncio.CancelledError:
@@ -707,9 +696,7 @@ async def last_human_message_age(channel: discord.TextChannel, limit: int = 50):
     """Return minutes since the most recent human message or ``None`` if none."""
     async for msg in channel.history(limit=limit):
         if not msg.author.bot:
-            return (
-                discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)
-            ).total_seconds() / 60
+            return (discord.utils.utcnow() - msg.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
     return None
 
 
@@ -734,15 +721,9 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
 
             respond_to = None
             send_prompt = False
-            if (
-                last_message
-                and last_message.author.bot
-                and prev_message
-                and not prev_message.author.bot
-            ):
+            if last_message and last_message.author.bot and prev_message and not prev_message.author.bot:
                 age = (
-                    discord.utils.utcnow()
-                    - prev_message.created_at.replace(tzinfo=timezone.utc)
+                    discord.utils.utcnow() - prev_message.created_at.replace(tzinfo=timezone.utc)
                 ).total_seconds() / 60
                 if age < PLAYFUL_REPLY_TIMEOUT_MINUTES:
                     await asyncio.sleep(60)
@@ -753,8 +734,7 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                 send_prompt = True
             else:
                 idle_minutes = (
-                    discord.utils.utcnow()
-                    - last_message.created_at.replace(tzinfo=timezone.utc)
+                    discord.utils.utcnow() - last_message.created_at.replace(tzinfo=timezone.utc)
                 ).total_seconds() / 60
                 if idle_minutes >= IDLE_TIMEOUT_MINUTES:
                     send_prompt = True
@@ -795,9 +775,7 @@ class SocialGraphBot(discord.Client):
         self.monitor_channel_id = monitor_channel_id
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler(db_manager)
-        self.scheduler_service: SchedulerService | None = (
-            None  # noqa: F821 - optional feature
-        )
+        self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
         self.persona_manager = PersonaManager(db_manager)
         self._subscriber: Subscriber | None = None
 
@@ -826,9 +804,7 @@ class SocialGraphBot(discord.Client):
                 logger.warning("Failed to subscribe to CHAT_RAW: %s", exc)
                 self._subscriber = None
 
-        self._bg_tasks.append(
-            self.loop.create_task(monitor_channels(self, self.monitor_channel_id))
-        )
+        self._bg_tasks.append(self.loop.create_task(monitor_channels(self, self.monitor_channel_id)))
         self._bg_tasks.append(self.loop.create_task(process_deep_reflections(self)))
         self._bg_tasks.append(self.loop.create_task(process_goals(self)))
         self._bg_tasks.append(self.loop.create_task(process_intentions(self)))
@@ -842,26 +818,16 @@ class SocialGraphBot(discord.Client):
         if message.author == self.user:
             return
 
-        if (
-            any(getattr(m, "bot", False) for m in message.mentions)
-            and self.user not in message.mentions
-        ):
+        if any(getattr(m, "bot", False) for m in message.mentions) and self.user not in message.mentions:
             return
 
         now = discord.utils.utcnow()
         if message.author.bot:
             last = bot_last_messages.get(message.author.id)
-            if (
-                last
-                and last[0] == message.content
-                and (now - last[1]).total_seconds() < BOT_COOLDOWN_SECONDS
-            ):
+            if last and last[0] == message.content and (now - last[1]).total_seconds() < BOT_COOLDOWN_SECONDS:
                 return
             bot_last_messages[message.author.id] = (message.content, now)
-            if (
-                last_bot_reply_time
-                and (now - last_bot_reply_time).total_seconds() < BOT_COOLDOWN_SECONDS
-            ):
+            if last_bot_reply_time and (now - last_bot_reply_time).total_seconds() < BOT_COOLDOWN_SECONDS:
                 return
 
         cover_reply = await maybe_deceptive_reply(message.author.id, message.content)
@@ -891,9 +857,7 @@ class SocialGraphBot(discord.Client):
             topic=topic,
             sentiment_score=sentiment_score,
         )
-        await update_sentiment_trend(
-            message.author.id, message.channel.id, sentiment_score
-        )
+        await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
 
         manip_category = manipulation_score(message.content)
         if manip_category:
@@ -932,9 +896,7 @@ class SocialGraphBot(discord.Client):
                 reply = random.choice(MINIMAL_REPLIES)
             else:
                 persona = await self.persona_manager.get_persona(message.author.id)
-                reply = random.choice(
-                    PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"])
-                )
+                reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
             await message.channel.send(reply)
             if message.author.bot:
                 last_bot_reply_time = discord.utils.utcnow()
