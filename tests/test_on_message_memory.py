@@ -326,3 +326,34 @@ async def test_on_message_manipulation_trust(tmp_path, monkeypatch, input_events
     trust = await sg.db_manager.get_trust(message.author.id)
     assert trust < 0
     await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_on_message_classifier_manipulation(tmp_path, monkeypatch, input_events):
+    """Trust decreases when classifier flags manipulation."""
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(sg, "evaluate_triggers", lambda message: [])
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+    monkeypatch.setattr(sg, "manipulation_score", lambda text: "threat")
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    message = DummyMessage("hello")
+    await bot.on_message(message)
+
+    trust = await sg.db_manager.get_trust(message.author.id)
+    assert trust < 0
+    await sg.db_manager.close()

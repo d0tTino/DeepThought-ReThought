@@ -928,7 +928,8 @@ class SocialGraphBot(discord.Client):
             }
         )
 
-        if any(phrase in message.content.lower() for phrase in BULLYING_PHRASES):
+        bullying = manipulation_score(message.content, {"bullying": BULLYING_PHRASES})
+        if bullying:
             if not await is_do_not_mock(message.author.id):
                 sarcastic = random.choice(
                     [
