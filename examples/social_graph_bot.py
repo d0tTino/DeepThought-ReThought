@@ -250,6 +250,7 @@ PERSONA_REPLIES = {
 # Idle text generation helpers
 # -----------------------------
 _idle_text_generator = None
+_lie_text_generator = None
 
 
 def _get_idle_generator():
@@ -261,6 +262,17 @@ def _get_idle_generator():
         model_name = os.getenv("IDLE_MODEL_NAME", "distilgpt2")
         _idle_text_generator = pipeline("text-generation", model=model_name)
     return _idle_text_generator
+
+
+def _get_lie_generator():
+    """Return a cached HuggingFace text-generation pipeline for lies."""
+    global _lie_text_generator
+    if _lie_text_generator is None:
+        from transformers import pipeline
+
+        model_name = os.getenv("LIE_MODEL_NAME", "distilgpt2")
+        _lie_text_generator = pipeline("text-generation", model=model_name)
+    return _lie_text_generator
 
 
 async def generate_idle_response(prompt: str | None = None) -> str | None:
@@ -313,6 +325,7 @@ async def maybe_deceptive_reply(user_id: int, text: str) -> str | None:
             if DECEPTION_REPLY_MODE.lower() == "dynamic":
                 reply = random.choice(DYNAMIC_COVER_REPLIES)
             else:
+
                 reply = DECEPTION_COVER_MESSAGE
             await db_manager.store_lie(user_id, text, reply)
         return reply
