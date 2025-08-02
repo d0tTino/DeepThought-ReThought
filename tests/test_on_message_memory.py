@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import random
 
@@ -62,6 +63,7 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
+    sg.reply_limiter.clear("2")
 
     async def noop(*args, **kwargs):
         return None
@@ -97,10 +99,11 @@ async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
 
 
 @pytest.mark.asyncio
-async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls, input_events):
+async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, input_events):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
+    sg.reply_limiter.clear("2")
 
     async def noop(*args, **kwargs):
         return None
@@ -111,6 +114,13 @@ async def test_on_message_calls_send_to_prism(tmp_path, monkeypatch, prism_calls
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
     monkeypatch.setattr(asyncio, "sleep", noop)
+
+    prism_calls = []
+
+    async def fake_send(data):
+        prism_calls.append(data)
+
+    monkeypatch.setattr(sg, "send_to_prism", fake_send)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
     assert bot.intents.members
@@ -263,6 +273,7 @@ async def test_on_message_ignores_other_bot_mentions(tmp_path, monkeypatch):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
+    sg.reply_limiter.clear("2")
 
     async def noop(*args, **kwargs):
         return None
@@ -356,4 +367,40 @@ async def test_on_message_classifier_manipulation(tmp_path, monkeypatch, input_e
 
     trust = await sg.db_manager.get_trust(message.author.id)
     assert trust < 0
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_store_emotion(tmp_path):
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    await sg.db_manager.store_emotion(1, {"happy": 0.8})
+
+    async with aiosqlite.connect(str(tmp_path / "sg.db")) as db:
+        async with db.execute(
+            "SELECT emotion_json FROM emotions WHERE user_id=?",
+            ("1",),
+        ) as cur:
+            row = await cur.fetchone()
+    assert json.loads(row[0]) == {"happy": 0.8}
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_log_manipulation(tmp_path):
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    await sg.db_manager.log_manipulation(2, "coercion")
+
+    async with aiosqlite.connect(str(tmp_path / "sg.db")) as db:
+        async with db.execute(
+            "SELECT manipulation_type FROM manipulations WHERE user_id=?",
+            ("2",),
+        ) as cur:
+            row = await cur.fetchone()
+    assert row[0] == "coercion"
     await sg.db_manager.close()

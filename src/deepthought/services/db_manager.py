@@ -160,6 +160,20 @@ class DBManager:
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS emotions (
+            user_id TEXT,
+            emotion_json TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS manipulations (
+            user_id TEXT,
+            manipulation_type TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
     ]
 
     def __init__(self, db_path: str = DB_PATH) -> None:
@@ -276,6 +290,23 @@ class DBManager:
             )
         await self._db.commit()
 
+    async def store_emotion(self, user_id: int, emotions: dict | list) -> None:
+        """Store a JSON-serializable emotion payload for ``user_id``."""
+        if not isinstance(emotions, (dict, list)):
+            raise ValueError("emotions must be a dictionary or list")
+        try:
+            emotion_json = json.dumps(emotions)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - json failure
+            raise ValueError("emotions must be JSON serializable") from exc
+
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "INSERT INTO emotions (user_id, emotion_json) VALUES (?, ?)",
+            (str(user_id), emotion_json),
+        )
+        await self._db.commit()
+
     async def store_theory(self, subject_id: int, theory: str, confidence: float) -> None:
         if not isinstance(theory, str) or not theory.strip():
             raise ValueError("theory must be a non-empty string")
@@ -334,6 +365,19 @@ class DBManager:
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
+
+    async def log_manipulation(self, user_id: int, category: str) -> None:
+        """Record a manipulation ``category`` associated with ``user_id``."""
+        if not isinstance(category, str) or not category.strip():
+            raise ValueError("category must be a non-empty string")
+
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "INSERT INTO manipulations (user_id, manipulation_type) VALUES (?, ?)",
+            (str(user_id), category),
+        )
+        await self._db.commit()
 
     async def update_sentiment_trend(
         self,
