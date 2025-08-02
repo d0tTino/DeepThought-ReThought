@@ -3,6 +3,7 @@ from __future__ import annotations
 """Simple priority-based goal scheduler."""
 
 import asyncio
+import contextlib
 import heapq
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -28,6 +29,9 @@ class GoalScheduler:
         self._heap: List[ScheduledGoal] = []
         self._db_manager = db_manager
         self._load_task: asyncio.Task | None = None
+        self._publish_task: asyncio.Task | None = None
+        self._publisher: Publisher | None = None
+        self._interval = 1.0
         if self._db_manager is not None:
             try:
                 loop = asyncio.get_running_loop()
@@ -104,3 +108,32 @@ class GoalScheduler:
             )
             count += 1
         return count
+
+    def start(self, publisher: Publisher, interval: float = 1.0) -> None:
+        """Start background task to periodically publish intentions."""
+        if self._publish_task is not None:
+            return
+        self._publisher = publisher
+        self._interval = interval
+        loop = asyncio.get_running_loop()
+        self._publish_task = loop.create_task(self._run())
+
+    async def stop(self) -> None:
+        """Stop the background publishing task."""
+        if self._publish_task is None:
+            return
+        self._publish_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._publish_task
+        self._publish_task = None
+        self._publisher = None
+
+    async def _run(self) -> None:
+        if self._publisher is None:
+            return
+        try:
+            while True:
+                await self.publish_intentions(self._publisher)
+                await asyncio.sleep(self._interval)
+        except asyncio.CancelledError:
+            pass
