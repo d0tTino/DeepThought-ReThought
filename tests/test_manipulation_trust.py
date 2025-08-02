@@ -58,6 +58,7 @@ class DummyMessage:
 @pytest.mark.asyncio
 async def test_manipulative_message_adjusts_trust(tmp_path, monkeypatch, input_events):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    sg.trust_service = sg.TrustService(sg.db_manager)
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
@@ -74,6 +75,12 @@ async def test_manipulative_message_adjusts_trust(tmp_path, monkeypatch, input_e
     monkeypatch.setattr(asyncio, "sleep", noop)
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(sg, "detect_emotions", lambda _t: {})
+    monkeypatch.setattr(
+        sg,
+        "analyze_social",
+        lambda _t: {"flirtation": 0, "avoidance": 0, "manipulation": 0},
+    )
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
     message = DummyMessage("After all I've done for you")
@@ -81,4 +88,5 @@ async def test_manipulative_message_adjusts_trust(tmp_path, monkeypatch, input_e
 
     trust = await sg.db_manager.get_trust(message.author.id)
     assert trust < 0
+    assert message.channel.sent_messages == []
     await sg.db_manager.close()

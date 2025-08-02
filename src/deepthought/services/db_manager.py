@@ -379,6 +379,14 @@ class DBManager:
         )
         await self._db.commit()
 
+    async def record_emotion(self, user_id: int, emotions: dict | list) -> None:
+        """Alias for :meth:`store_emotion` for backward compatibility."""
+        await self.store_emotion(user_id, emotions)
+
+    async def record_manipulation(self, user_id: int, category: str) -> None:
+        """Alias for :meth:`log_manipulation` for backward compatibility."""
+        await self.log_manipulation(user_id, category)
+
     async def update_sentiment_trend(
         self,
         user_id: int,
