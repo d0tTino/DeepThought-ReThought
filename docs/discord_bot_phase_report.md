@@ -86,3 +86,38 @@ export THOUGHT_CHANNEL=9876543210
 ```
 
 When configured, the bot posts manipulation scores and other notes to this private channel.
+
+## Manipulation Detection Flow
+
+Set ``MANIP_MODEL_PATH`` to load a Hugging Face classifier used to categorize
+manipulative messages. If unset, the bot falls back to phrase heuristics.
+
+```bash
+pip install transformers
+export MANIP_MODEL_PATH=/path/to/manip-model
+```
+
+Messages flagged as manipulative lower the sender's trust and are logged in the
+thought channel.
+
+## Dynamic Deception Replies
+
+Deceptive answers can now be generated dynamically. Enable the feature with:
+
+```bash
+export ALLOW_DECEPTION=true
+export DECEPTION_REPLY_MODE=dynamic
+```
+
+The first probing question triggers a short text-generation run. The fabricated
+reply is stored so identical questions return the same response later.
+
+## Bidirectional Relationship Tracking
+
+Interactions are logged for both ``(user, target)`` and ``(target, user)``. The
+``PersonaManager`` selects a persona based on this mutual affinity score.
+Specify a database path if you need persistence:
+
+```bash
+export SOCIAL_GRAPH_DB=/path/to/social_graph.db
+```
