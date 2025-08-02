@@ -59,6 +59,7 @@ class DummyMessage:
 @pytest.mark.asyncio
 async def test_on_message_persona_changes_with_affinity(tmp_path, monkeypatch, input_events):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    sg.trust_service = sg.TrustService(sg.db_manager)
 
     # Use lower thresholds for easier testing
     sg.persona_manager = PersonaManager(sg.db_manager, friendly=3, playful=1)
@@ -76,6 +77,12 @@ async def test_on_message_persona_changes_with_affinity(tmp_path, monkeypatch, i
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
     monkeypatch.setattr(sg.reply_limiter, "allow", lambda _id: True)
+    monkeypatch.setattr(sg, "detect_emotions", lambda _t: {})
+    monkeypatch.setattr(
+        sg,
+        "analyze_social",
+        lambda _t: {"flirtation": 0, "avoidance": 0, "manipulation": 0},
+    )
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
 
@@ -92,5 +99,48 @@ async def test_on_message_persona_changes_with_affinity(tmp_path, monkeypatch, i
     msg3 = DummyMessage("hello friend", author_id=msg1.author.id, message_id=12)
     await bot.on_message(msg3)
     assert msg3.channel.sent_messages[-1] == sg.PERSONA_REPLIES["friendly"][0]
+
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_social_analysis_adjusts_tone(tmp_path, monkeypatch, input_events):
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    sg.trust_service = sg.TrustService(sg.db_manager)
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+    monkeypatch.setattr(sg.reply_limiter, "allow", lambda _id: True)
+    monkeypatch.setattr(sg, "detect_emotions", lambda _t: {})
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+
+    monkeypatch.setattr(
+        sg,
+        "analyze_social",
+        lambda _t: {"flirtation": 0.9, "avoidance": 0.05, "manipulation": 0.05},
+    )
+    msg1 = DummyMessage("hey there")
+    await bot.on_message(msg1)
+    assert msg1.channel.sent_messages[-1] == sg.PERSONA_REPLIES["playful"][0]
+
+    monkeypatch.setattr(
+        sg,
+        "analyze_social",
+        lambda _t: {"flirtation": 0.1, "avoidance": 0.8, "manipulation": 0.1},
+    )
+    msg2 = DummyMessage("leave me alone", author_id=msg1.author.id, message_id=11)
+    await bot.on_message(msg2)
+    assert msg2.channel.sent_messages[-1] == sg.AVOIDANCE_REPLY
 
     await sg.db_manager.close()
