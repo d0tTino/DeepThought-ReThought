@@ -568,6 +568,19 @@ await db_manager.adjust_trust("u1", 0.5)
 score = await db_manager.get_trust("u1")
 ```
 
+A ``TrustService`` wraps these helpers and can optionally decay trust scores
+over time. It also exposes an ``is_trusted`` method for simple threshold
+checks:
+
+```python
+from deepthought.services import TrustService
+
+svc = TrustService(decay=0.01)
+await svc.adjust_trust("u1", 1.0)
+if await svc.is_trusted("u1", 0.5):
+    print("trusted user")
+```
+
 Manipulation attempts are flagged by the social perception classifier. The bot
 records its internal assessments in a private channel when
 `THOUGHT_CHANNEL` is set. Messages are scored with
