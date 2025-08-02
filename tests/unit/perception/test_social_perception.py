@@ -25,7 +25,7 @@ def test_analyze_returns_probs(monkeypatch):
             return cls()
 
         def __call__(self, **kwargs):
-            return types.SimpleNamespace(logits=[[1.0, 2.0, 3.0]])
+            return types.SimpleNamespace(logits=[[1.0, 2.0, 3.0, 4.0, 5.0]])
 
     tf_mod.AutoTokenizer = DummyTokenizer
     tf_mod.AutoModelForSequenceClassification = DummyModel
@@ -46,11 +46,14 @@ def test_analyze_returns_probs(monkeypatch):
         def tolist(self):
             return list(self)
 
-    torch_mod.softmax = lambda t, dim=0: [DummyTensor([0.1, 0.2, 0.7])]
+    torch_mod.softmax = lambda t, dim=0: [DummyTensor([0.1, 0.2, 0.3, 0.15, 0.25])]
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
+    monkeypatch.delenv("DT_SOCIAL_PERCEPTION_MODEL", raising=False)
     monkeypatch.setenv("SOCIAL_PERCEPTION_MODEL", "/tmp/model")
     monkeypatch.setattr("os.path.exists", lambda p: True)
+    import deepthought.config as config
+    config._settings_cache = None
 
     sp = importlib.import_module("deepthought.perception.social_perception")
     importlib.reload(sp)
@@ -59,7 +62,9 @@ def test_analyze_returns_probs(monkeypatch):
     assert result == {
         "flirtation": 0.1,
         "avoidance": 0.2,
-        "manipulation": 0.7,
+        "manipulation": 0.3,
+        "sarcasm": 0.15,
+        "supportiveness": 0.25,
     }
 
 
@@ -84,7 +89,7 @@ def test_env_model_path(monkeypatch):
             return cls()
 
         def __call__(self, **kwargs):
-            return types.SimpleNamespace(logits=[[1.0, 2.0, 3.0]])
+            return types.SimpleNamespace(logits=[[1.0, 2.0, 3.0, 4.0, 5.0]])
 
     tf_mod.AutoTokenizer = DummyTokenizer
     tf_mod.AutoModelForSequenceClassification = DummyModel
@@ -105,11 +110,14 @@ def test_env_model_path(monkeypatch):
         def tolist(self):
             return list(self)
 
-    torch_mod.softmax = lambda t, dim=0: [DummyTensor([0.1, 0.2, 0.7])]
+    torch_mod.softmax = lambda t, dim=0: [DummyTensor([0.1, 0.2, 0.3, 0.15, 0.25])]
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
+    monkeypatch.delenv("DT_SOCIAL_PERCEPTION_MODEL", raising=False)
     monkeypatch.setenv("SOCIAL_PERCEPTION_MODEL", "/tmp/custom-model")
     monkeypatch.setattr("os.path.exists", lambda p: True)
+    import deepthought.config as config
+    config._settings_cache = None
 
     sp = importlib.import_module("deepthought.perception.social_perception")
     importlib.reload(sp)
@@ -162,7 +170,10 @@ def test_missing_env_var(monkeypatch, caplog):
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
     monkeypatch.delenv("SOCIAL_PERCEPTION_MODEL", raising=False)
+    monkeypatch.delenv("DT_SOCIAL_PERCEPTION_MODEL", raising=False)
     monkeypatch.setattr("os.path.exists", lambda p: False)
+    import deepthought.config as config
+    config._settings_cache = None
 
     sp = importlib.import_module("deepthought.perception.social_perception")
     importlib.reload(sp)
@@ -216,8 +227,11 @@ def test_missing_model_path(monkeypatch, caplog):
     torch_mod.softmax = lambda t, dim=0: [DummyTensor([0.1, 0.2, 0.7])]
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
 
+    monkeypatch.delenv("DT_SOCIAL_PERCEPTION_MODEL", raising=False)
     monkeypatch.setenv("SOCIAL_PERCEPTION_MODEL", "/tmp/missing")
     monkeypatch.setattr("os.path.exists", lambda p: False)
+    import deepthought.config as config
+    config._settings_cache = None
 
     sp = importlib.import_module("deepthought.perception.social_perception")
     importlib.reload(sp)
@@ -228,3 +242,15 @@ def test_missing_model_path(monkeypatch, caplog):
     neutral = 1.0 / len(sp.LABELS)
     assert result == {label: pytest.approx(neutral) for label in sp.LABELS}
     assert any("path not found" in r.getMessage() for r in caplog.records)
+
+
+def test_analyze_neutral_without_model(monkeypatch):
+    import deepthought.perception.social_perception as sp
+
+    monkeypatch.setattr(sp, "_load", lambda: True)
+    sp._tokenizer = None
+    sp._model = None
+
+    result = sp.analyze("hello")
+    neutral = 1.0 / len(sp.LABELS)
+    assert result == {label: pytest.approx(neutral) for label in sp.LABELS}

@@ -23,6 +23,7 @@ def _apply_env_aliases() -> None:
         "NEO4J_PORT": "DT_NEO4J_PORT",
         "NEO4J_USER": "DT_NEO4J_USER",
         "NEO4J_PASSWORD": "DT_NEO4J_PASSWORD",
+        "SOCIAL_PERCEPTION_MODEL": "DT_SOCIAL_PERCEPTION_MODEL",
     }
 
     for old, new in mapping.items():
@@ -70,6 +71,7 @@ class Settings(BaseSettings):
 
     db: DatabaseSettings = DatabaseSettings()
     model_path: str = "distilgpt2"
+    social_perception_model: str | None = Field(None, env="SOCIAL_PERCEPTION_MODEL")
     memory_file: str = "memory.json"
     search_db: str | None = None
     social_graph_db: str = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")

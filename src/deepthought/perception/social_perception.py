@@ -9,8 +9,9 @@ from typing import Dict
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-MODEL_PATH = os.getenv("SOCIAL_PERCEPTION_MODEL", "path/to/social-perception-model")
-LABELS = ["flirtation", "avoidance", "manipulation"]
+from ..config import get_settings
+
+LABELS = ["flirtation", "avoidance", "manipulation", "sarcasm", "supportiveness"]
 
 _tokenizer: AutoTokenizer | None = None
 _model: AutoModelForSequenceClassification | None = None
@@ -29,24 +30,23 @@ def _load() -> bool:
     if _tokenizer is not None and _model is not None:
         return True
 
-    if not MODEL_PATH or MODEL_PATH == "path/to/social-perception-model":
-        logger.warning(
-            "SOCIAL_PERCEPTION_MODEL not set. Returning neutral perception scores."
-        )
+    model_path = get_settings().social_perception_model
+    if not model_path:
+        logger.warning("SOCIAL_PERCEPTION_MODEL not set. Returning neutral perception scores.")
         return False
 
-    if not os.path.exists(MODEL_PATH):
+    if not os.path.exists(model_path):
         logger.warning(
             "Social perception model path not found: %s. Returning neutral perception scores.",
-            MODEL_PATH,
+            model_path,
         )
         return False
 
     try:
         if _tokenizer is None:
-            _tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+            _tokenizer = AutoTokenizer.from_pretrained(model_path)
         if _model is None:
-            _model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
+            _model = AutoModelForSequenceClassification.from_pretrained(model_path)
         return True
     except Exception as e:  # pragma: no cover - defensive
         logger.warning("Failed to load social perception model: %s", e, exc_info=True)
@@ -56,12 +56,11 @@ def _load() -> bool:
 
 
 def analyze(text: str) -> Dict[str, float]:
-    """Return probabilities for flirtation, avoidance and manipulation."""
-    if not _load():
+    """Return probabilities for supported social cues."""
+    if not _load() or _tokenizer is None or _model is None:
         neutral = 1.0 / len(LABELS)
         return {label: neutral for label in LABELS}
 
-    assert _tokenizer and _model
     inputs = _tokenizer(text, return_tensors="pt")
     with torch.no_grad():
         logits = _model(**inputs).logits
