@@ -47,3 +47,23 @@ async def test_choose_prompt_uses_persona(tmp_path, monkeypatch):
     assert await pm.choose_prompt(user, {"default": ["x"]}) == "x"
 
     await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_persona_uses_mutual_affinity(tmp_path, monkeypatch):
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+
+    pm = PersonaManager(sg.db_manager, friendly=2, playful=1)
+    called = False
+
+    async def fake_get_mutual_affinity(_user_id):
+        nonlocal called
+        called = True
+        return 3
+
+    monkeypatch.setattr(sg.db_manager, "get_mutual_affinity", fake_get_mutual_affinity)
+
+    assert await pm.get_persona("u1") == "friendly"
+    assert called
+
+    await sg.db_manager.close()
