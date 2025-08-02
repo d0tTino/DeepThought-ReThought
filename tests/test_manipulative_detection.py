@@ -13,16 +13,19 @@ sys.modules.setdefault("pydantic", fake_pyd)
 
 fake_ps = types.ModuleType("pydantic_settings")
 
+
 class DummyBase:
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             setattr(self, k, v)
+
 
 fake_ps.BaseSettings = DummyBase
 fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
 
 fake_prom = types.ModuleType("prometheus_client")
+
 
 class _Metric:
     def labels(self, **kwargs):
@@ -33,6 +36,7 @@ class _Metric:
 
     def observe(self, *a, **k):
         pass
+
 
 fake_prom.Counter = lambda *a, **k: _Metric()
 fake_prom.Histogram = lambda *a, **k: _Metric()
@@ -64,12 +68,14 @@ rdf_mod.URIRef = str
 sys.modules.setdefault("rdflib", rdf_mod)
 sys.modules.setdefault("rdflib.namespace", ns_mod)
 
+
 def reload_sg(monkeypatch):
     import importlib
     import sys as _sys
 
     _sys.modules.pop("examples.social_graph_bot", None)
     return importlib.import_module("examples.social_graph_bot")
+
 
 pytest.importorskip("discord")
 pytest.importorskip("nats")
@@ -126,6 +132,8 @@ def test_manipulation_score_heuristics():
     assert manipulation_score("After all I've done for you") == "guilt_tripping"
     assert manipulation_score("You'll regret this") == "threat"
     assert manipulation_score("You're the best!") == "excessive_flattery"
+    assert manipulation_score("You're overreacting") == "deflection"
+    assert manipulation_score("That never happened") == "gaslighting"
     assert manipulation_score("hello") is None
 
 

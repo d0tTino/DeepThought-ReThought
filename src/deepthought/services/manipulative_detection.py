@@ -39,17 +39,31 @@ FLATTERY_PHRASES: Iterable[str] = [
     "i admire you so much",
 ]
 
+DEFLECTION_PHRASES: Iterable[str] = [
+    "you're overreacting",
+    "you're taking this too seriously",
+    "let's not dwell on",
+    "that's not important",
+]
+
+GASLIGHTING_PHRASES: Iterable[str] = [
+    "that never happened",
+    "you're imagining things",
+    "you're making things up",
+    "i never said that",
+]
+
 # Mapping of category names to their phrases
 CATEGORY_PHRASES: Dict[str, Iterable[str]] = {
     "guilt_tripping": GUILT_TRIP_PHRASES,
     "threat": THREAT_PHRASES,
     "excessive_flattery": FLATTERY_PHRASES,
+    "deflection": DEFLECTION_PHRASES,
+    "gaslighting": GASLIGHTING_PHRASES,
 }
 
 
-def manipulation_score(
-    text: str, phrases: Dict[str, Iterable[str]] | None = None
-) -> Optional[str]:
+def manipulation_score(text: str, phrases: Dict[str, Iterable[str]] | None = None) -> Optional[str]:
     """Return the detected manipulation category."""
     if not isinstance(text, str):
         return None

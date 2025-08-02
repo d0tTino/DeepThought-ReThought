@@ -40,6 +40,20 @@ FLATTERY_PHRASES = [
     "trust me",
 ]
 
+DEFLECTION_PHRASES = [
+    "you're overreacting",
+    "you're taking this too seriously",
+    "let's not dwell on",
+    "that's not important",
+]
+
+GASLIGHTING_PHRASES = [
+    "that never happened",
+    "you're imagining things",
+    "you're making things up",
+    "i never said that",
+]
+
 
 def _get_classifier():
     """Return a text classification pipeline if available."""
@@ -84,4 +98,10 @@ def detect_manipulation(text: str) -> Optional[str]:
     for phrase in FLATTERY_PHRASES:
         if phrase in lower:
             return "excessive_flattery"
+    for phrase in DEFLECTION_PHRASES:
+        if phrase in lower:
+            return "deflection"
+    for phrase in GASLIGHTING_PHRASES:
+        if phrase in lower:
+            return "gaslighting"
     return None
