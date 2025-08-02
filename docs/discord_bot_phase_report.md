@@ -60,6 +60,19 @@ The `examples/social_graph_bot.py` script logs user interactions in a SQLite dat
 
 The knowledge graph memory uses GraphDAL to persist data in Memgraph. Start Memgraph with `docker run --rm -p 7687:7687 memgraph/memgraph` and see [docs/graphdal.md](graphdal.md) for a full example service.
 
+### Goal Scheduler
+
+Run the goal scheduler in the background to publish queued intentions automatically:
+
+```python
+from deepthought.goal_scheduler import GoalScheduler
+
+sched = GoalScheduler()
+sched.start(publisher, interval=5.0)  # seconds
+# ... queue goals with sched.add_goal or sched.queue_intention ...
+await sched.stop()
+```
+
 ## Additional Safety Features
 
 Recent iterations introduced several controls to moderate conversations:
