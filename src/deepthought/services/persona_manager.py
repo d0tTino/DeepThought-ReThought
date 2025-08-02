@@ -39,10 +39,10 @@ class PersonaManager:
         if self._init_task is not None:
             await self._init_task
             self._init_task = None
-        affinity = await self._db.get_mutual_affinity(user_id)
-        if affinity >= self._friendly:
+        score = await self._db.get_mutual_affinity(user_id)
+        if score >= self._friendly:
             return "friendly"
-        if affinity >= self._playful:
+        if score >= self._playful:
             return "playful"
         return "snarky"
 

@@ -37,6 +37,7 @@ FLATTERY_PHRASES = [
     "you're amazing",
     "you're incredible",
     "you're perfect",
+    "trust me",
 ]
 
 
