@@ -598,8 +598,29 @@ export ALLOW_DECEPTION=true
 cover = await maybe_deceptive_reply(123, "What are your plans?")
 ```
 
+To generate a unique cover message on the first probing question, enable dynamic
+deception replies:
+
+```bash
+export ALLOW_DECEPTION=true
+export DECEPTION_REPLY_MODE=dynamic
+```
+
+The fabricated line is stored so repeated probes receive the same response.
+
 Each deceptive response is recorded in the `deception` memory table for later
 review.
+
+### Bidirectional Relationship Tracking
+
+Every logged interaction updates the `relationships` table in **both**
+directions. The `PersonaManager` selects between friendly, playful, and snarky
+personas based on this mutual affinity score. Provide a database path to enable
+tracking:
+
+```bash
+export SOCIAL_GRAPH_DB=/path/to/social_graph.db
+```
 
 ### BDI Planning
 
@@ -628,6 +649,22 @@ export SOCIAL_PERCEPTION_MODEL=$(pwd)/models/social_perception
 ```
 
 If unset, the default `path/to/social-perception-model` is used.
+
+### Manipulation Detection
+
+You can configure an optional text classifier for manipulative language. Set
+`MANIP_MODEL_PATH` to a local model or Hugging Face repository and the bot will
+route messages through the `text-classification` pipeline. Without this
+variable the detection falls back to simple phrase heuristics.
+
+```bash
+pip install transformers
+huggingface-cli download myorg/manip-detector --local-dir ./models/manip
+export MANIP_MODEL_PATH=$(pwd)/models/manip
+```
+
+Any detected manipulation decreases the sender's trust score and is posted to
+the thoughts channel when enabled.
 
 ## Discord Bot Roadmap
 
