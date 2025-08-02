@@ -22,6 +22,8 @@ TABLES = [
     "themes",
     "user_flags",
     "recent_topics",
+    "emotions",
+    "manipulations",
 ]
 
 
