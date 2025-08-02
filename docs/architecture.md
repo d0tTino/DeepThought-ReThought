@@ -194,3 +194,22 @@ Agent 3 says: <generated reply>
 ```
 
 Ensure a NATS server is running on `localhost:4222` or set the `NATS_URL` environment variable accordingly.
+
+## Improved Bot Behavior
+
+The Discord examples integrate several safety features that adjust the bot's responses based on ongoing interactions:
+
+- **Manipulation detection** – incoming messages are scored using `manipulation_score`. Higher values reduce trust in the sender and are logged for review.
+- **Dynamic deception** – set `ALLOW_DECEPTION=true` to allow the bot to hide sensitive intentions. Each deceptive reply is stored and reused for later probes.
+- **Relationship metrics** – the `DBManager` tracks how often two users interact and averages their sentiment. Retrieve the metrics with:
+
+```python
+count, sentiment = await db.get_relationship(user_id, target_id)
+```
+
+Launch the social graph bot with deception enabled:
+
+```bash
+export ALLOW_DECEPTION=true
+python examples/social_graph_bot.py
+```
