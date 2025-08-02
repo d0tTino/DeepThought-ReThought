@@ -666,6 +666,19 @@ export MANIP_MODEL_PATH=$(pwd)/models/manip
 Any detected manipulation decreases the sender's trust score and is posted to
 the thoughts channel when enabled.
 
+### Emotion Detection
+
+The ``deepthought.perception.emotion_detection`` module provides a lightweight
+classifier that scores text across five basic emotions. It uses
+``text2emotion`` when available and falls back to simple keyword heuristics.
+
+```python
+from deepthought.perception.emotion_detection import detect_emotions
+
+scores = detect_emotions("I'm feeling thrilled today!")
+print(scores["Happy"])
+```
+
 ## Discord Bot Roadmap
 
 For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
