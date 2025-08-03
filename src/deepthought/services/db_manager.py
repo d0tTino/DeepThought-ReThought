@@ -299,6 +299,60 @@ class DBManager:
             )
         await self._db.commit()
 
+    async def set_relationship(
+        self,
+        source_id: int,
+        target_id: int,
+        interaction_count: int,
+        sentiment_sum: float,
+        interaction_weight: float = 0.0,
+        last_interaction: float | str | None = None,
+    ) -> None:
+        """Insert or update a relationship row with explicit values.
+
+        This is primarily used for migrating data from legacy stores where
+        interaction statistics were persisted in JSON files.
+        """
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO relationships (
+                source_id,
+                target_id,
+                interaction_count,
+                sentiment_sum,
+                interaction_weight,
+                last_interaction
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_id, target_id) DO UPDATE SET
+                interaction_count=excluded.interaction_count,
+                sentiment_sum=excluded.sentiment_sum,
+                interaction_weight=excluded.interaction_weight,
+                last_interaction=excluded.last_interaction
+            """,
+            (
+                str(source_id),
+                str(target_id),
+                int(interaction_count),
+                float(sentiment_sum),
+                float(interaction_weight),
+                last_interaction,
+            ),
+        )
+        await self._db.commit()
+
+    async def delete_relationship(self, source_id: int, target_id: int) -> None:
+        """Remove a relationship between ``source_id`` and ``target_id``."""
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "DELETE FROM relationships WHERE source_id=? AND target_id=?",
+            (str(source_id), str(target_id)),
+        )
+        await self._db.commit()
+
     async def recall_user(self, user_id: int):
         await self.connect()
         assert self._db
