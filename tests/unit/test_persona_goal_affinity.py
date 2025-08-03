@@ -21,6 +21,20 @@ def test_affinity_updates():
     assert tracker.get("formal") == 1
 
 
+def test_pairwise_affinity_helpers():
+    tracker = AffinityTracker()
+    tracker.update_interaction("alice", "bob")
+    tracker.update_interaction("bob", "alice", 2)
+    tracker.update_mutual_affinity("alice", "bob", 5)
+    tracker.update_mutual_affinity("alice", "charlie", -2)
+    tracker.update_mutual_affinity("alice", "dave", 1)
+
+    assert tracker.interaction_count("alice", "bob") == 3
+    assert tracker.mutual_affinity("alice", "bob") == 5
+    assert tracker.top_friends("alice") == ["bob", "dave", "charlie"]
+    assert tracker.top_rivals("alice")[0] == "charlie"
+
+
 def test_goal_scheduler_order():
     sched = GoalScheduler()
     sched.add_goal("low", priority=1)
