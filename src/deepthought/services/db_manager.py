@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 
 import aiosqlite
+
+from ..config import get_settings
 
 SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
 if SENTIMENT_BACKEND == "vader":
@@ -28,9 +31,6 @@ else:
 
     def analyze_sentiment(text: str) -> float:
         return TextBlob(text).sentiment.polarity
-
-
-from ..config import get_settings
 
 # Default database path used when none is provided.
 DB_PATH = get_settings().social_graph_db
@@ -100,6 +100,13 @@ class DBManager:
             interaction_weight REAL DEFAULT 0,
             last_interaction DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(source_id, target_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS interaction_decay (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            weight_decay REAL DEFAULT 1.0,
+            sentiment_decay REAL DEFAULT 1.0
         )
         """,
         """
@@ -219,6 +226,9 @@ class DBManager:
                     await self._db.execute(query)
                 await self._ensure_relationship_columns()
                 await self._db.execute("INSERT OR IGNORE INTO trust_config (id) VALUES (1)")
+                await self._db.execute(
+                    "INSERT OR IGNORE INTO interaction_decay (id) VALUES (1)"
+                )
                 await self._db.commit()
                 self._initialized = True
 
@@ -273,30 +283,58 @@ class DBManager:
             )
         if target_id is not None:
             weight = 1.0
-            await self._db.execute(
-                """
-                INSERT INTO relationships (source_id, target_id, interaction_count, sentiment_sum, interaction_weight)
-                VALUES (?, ?, 1, ?, ?)
-                ON CONFLICT(source_id, target_id) DO UPDATE SET
-                    interaction_count=relationships.interaction_count + 1,
-                    sentiment_sum=relationships.sentiment_sum + excluded.sentiment_sum,
-                    interaction_weight=relationships.interaction_weight + excluded.interaction_weight,
-                    last_interaction=CURRENT_TIMESTAMP
-                """,
-                (str(user_id), str(target_id), sentiment_score or 0.0, weight),
-            )
+            w_decay, s_decay = await self.get_decay_params()
+            now = datetime.utcnow()
+            # Update directional relationship with decay
+            async with self._db.execute(
+                "SELECT interaction_count, sentiment_sum, interaction_weight, last_interaction FROM relationships WHERE source_id=? AND target_id=?",
+                (str(user_id), str(target_id)),
+            ) as cur:
+                row = await cur.fetchone()
+            if row:
+                count, ssum, w, last_ts = row
+                if last_ts:
+                    last_dt = datetime.fromisoformat(str(last_ts))
+                    elapsed = (now - last_dt).total_seconds()
+                    ssum = float(ssum) * (s_decay ** elapsed)
+                    w = float(w) * (w_decay ** elapsed)
+                count = int(count) + 1
+                ssum += sentiment_score or 0.0
+                w += weight
+                await self._db.execute(
+                    "UPDATE relationships SET interaction_count=?, sentiment_sum=?, interaction_weight=?, last_interaction=CURRENT_TIMESTAMP WHERE source_id=? AND target_id=?",
+                    (count, ssum, w, str(user_id), str(target_id)),
+                )
+            else:
+                await self._db.execute(
+                    "INSERT INTO relationships (source_id, target_id, interaction_count, sentiment_sum, interaction_weight, last_interaction) VALUES (?, ?, 1, ?, ?, CURRENT_TIMESTAMP)",
+                    (str(user_id), str(target_id), sentiment_score or 0.0, weight),
+                )
+
+            # Update mutual affinity with decay
             a, b = sorted((str(user_id), str(target_id)))
-            await self._db.execute(
-                """
-                INSERT INTO mutual_affinity (user_a, user_b, score, interaction_weight)
-                VALUES (?, ?, 1, ?)
-                ON CONFLICT(user_a, user_b) DO UPDATE SET
-                    score=mutual_affinity.score + 1,
-                    interaction_weight=mutual_affinity.interaction_weight + excluded.interaction_weight,
-                    last_interaction=CURRENT_TIMESTAMP
-                """,
-                (a, b, weight),
-            )
+            async with self._db.execute(
+                "SELECT score, interaction_weight, last_interaction FROM mutual_affinity WHERE user_a=? AND user_b=?",
+                (a, b),
+            ) as cur:
+                mrow = await cur.fetchone()
+            if mrow:
+                score, w, last_ts = mrow
+                if last_ts:
+                    last_dt = datetime.fromisoformat(str(last_ts))
+                    elapsed = (now - last_dt).total_seconds()
+                    w = float(w) * (w_decay ** elapsed)
+                score = int(score) + 1
+                w += weight
+                await self._db.execute(
+                    "UPDATE mutual_affinity SET score=?, interaction_weight=?, last_interaction=CURRENT_TIMESTAMP WHERE user_a=? AND user_b=?",
+                    (score, w, a, b),
+                )
+            else:
+                await self._db.execute(
+                    "INSERT INTO mutual_affinity (user_a, user_b, score, interaction_weight, last_interaction) VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP)",
+                    (a, b, weight),
+                )
         await self._db.commit()
 
     async def recall_user(self, user_id: int):
@@ -687,6 +725,27 @@ class DBManager:
         )
         await self._db.commit()
 
+    async def get_decay_params(self) -> tuple[float, float]:
+        """Return stored decay factors for weights and sentiment."""
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT weight_decay, sentiment_decay FROM interaction_decay WHERE id=1"
+        ) as cur:
+            row = await cur.fetchone()
+            if row:
+                return float(row[0]), float(row[1])
+            return 1.0, 1.0
+
+    async def set_decay_params(self, weight_decay: float, sentiment_decay: float) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "UPDATE interaction_decay SET weight_decay=?, sentiment_decay=? WHERE id=1",
+            (float(weight_decay), float(sentiment_decay)),
+        )
+        await self._db.commit()
+
     async def increment_offense(self, user_id: int, offense: str) -> int:
         column = "manipulative_count" if offense == "manipulative" else "banned_count"
         await self.connect()
@@ -720,7 +779,17 @@ class DBManager:
             "SELECT interaction_count, sentiment_sum, interaction_weight, last_interaction FROM relationships WHERE source_id=? AND target_id=?",
             (str(user_id), str(target_id)),
         ) as cur:
-            return await cur.fetchone()
+            row = await cur.fetchone()
+        if not row:
+            return None
+        count, sentiment_sum, weight, last_ts = row
+        w_decay, s_decay = await self.get_decay_params()
+        if last_ts:
+            last_dt = datetime.fromisoformat(str(last_ts))
+            elapsed = (datetime.utcnow() - last_dt).total_seconds()
+            sentiment_sum = float(sentiment_sum) * (s_decay ** elapsed)
+            weight = float(weight) * (w_decay ** elapsed)
+        return count, sentiment_sum, weight, last_ts
 
     async def _get_relationship_avg(self, user_id: int, target_id: int) -> float:
         row = await self.get_relationship(user_id, target_id)
@@ -748,13 +817,21 @@ class DBManager:
     async def get_pair_mutual_affinity(self, user_a: int, user_b: int) -> float:
         await self.connect()
         assert self._db
+        w_decay, _ = await self.get_decay_params()
         a, b = sorted((str(user_a), str(user_b)))
         async with self._db.execute(
-            "SELECT score FROM mutual_affinity WHERE user_a=? AND user_b=?",
+            "SELECT interaction_weight, last_interaction FROM mutual_affinity WHERE user_a=? AND user_b=?",
             (a, b),
         ) as cur:
             row = await cur.fetchone()
-            return float(row[0]) if row else 0.0
+        if not row:
+            return 0.0
+        weight, last_ts = row
+        if last_ts:
+            last_dt = datetime.fromisoformat(str(last_ts))
+            elapsed = (datetime.utcnow() - last_dt).total_seconds()
+            weight = float(weight) * (w_decay ** elapsed)
+        return float(weight)
 
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
         if not isinstance(theme, str) or not theme.strip():
