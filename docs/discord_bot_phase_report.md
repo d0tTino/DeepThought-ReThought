@@ -101,6 +101,15 @@ export THOUGHT_CHANNEL=9876543210
 
 When configured, the bot posts manipulation scores and other notes to this private channel.
 
+### THOUGHT_CHANNEL usage and permissions
+
+Set the variable to the numeric ID of a Discord channel that only the bot and
+trusted maintainers can access.
+
+* Grant the bot permission to send messages.
+* Deny read access to regular members to keep internal assessments hidden.
+* Avoid referencing thought logs in public channels.
+
 ## Manipulation Detection Flow
 
 Set ``MANIP_MODEL_PATH`` to load a Hugging Face classifier used to categorize
