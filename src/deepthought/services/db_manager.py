@@ -67,6 +67,21 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS trust_config (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            lower_limit REAL DEFAULT -10.0,
+            upper_limit REAL DEFAULT 10.0,
+            decay REAL DEFAULT 0.0
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS trust_offenses (
+            user_id TEXT PRIMARY KEY,
+            manipulative_count INTEGER DEFAULT 0,
+            banned_count INTEGER DEFAULT 0
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS mutual_affinity (
             user_a TEXT,
             user_b TEXT,
@@ -203,6 +218,7 @@ class DBManager:
                 for query in self.CREATE_TABLE_QUERIES:
                     await self._db.execute(query)
                 await self._ensure_relationship_columns()
+                await self._db.execute("INSERT OR IGNORE INTO trust_config (id) VALUES (1)")
                 await self._db.commit()
                 self._initialized = True
 
@@ -648,6 +664,48 @@ class DBManager:
         ) as cur:
             row = await cur.fetchone()
             return float(row[0]) if row else 0.0
+
+    async def get_trust_params(self) -> tuple[float, float, float]:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT lower_limit, upper_limit, decay FROM trust_config WHERE id=1"
+        ) as cur:
+            row = await cur.fetchone()
+            if row:
+                return float(row[0]), float(row[1]), float(row[2])
+            return -10.0, 10.0, 0.0
+
+    async def set_trust_params(
+        self, lower_limit: float, upper_limit: float, decay: float
+    ) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            "UPDATE trust_config SET lower_limit=?, upper_limit=?, decay=? WHERE id=1",
+            (float(lower_limit), float(upper_limit), float(decay)),
+        )
+        await self._db.commit()
+
+    async def increment_offense(self, user_id: int, offense: str) -> int:
+        column = "manipulative_count" if offense == "manipulative" else "banned_count"
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            f"""
+            INSERT INTO trust_offenses (user_id, {column})
+            VALUES (?, 1)
+            ON CONFLICT(user_id) DO UPDATE SET {column} = {column} + 1
+            """,
+            (str(user_id),),
+        )
+        await self._db.commit()
+        async with self._db.execute(
+            f"SELECT {column} FROM trust_offenses WHERE user_id=?",
+            (str(user_id),),
+        ) as cur:
+            row = await cur.fetchone()
+            return int(row[0]) if row else 0
 
     async def get_mutual_affinity(self, user_id: int) -> float:
         """Return a combined score from affinity and trust for ``user_id``."""

@@ -874,8 +874,17 @@ class SocialGraphBot(discord.Client):
             if last_bot_reply_time and (now - last_bot_reply_time).total_seconds() < BOT_COOLDOWN_SECONDS:
                 return
 
-        cover_reply = await maybe_deceptive_reply(message.author.id, message.content)
-        if cover_reply:
+        if not is_allowed(message.content):  # noqa: F821 - optional import
+            await trust_service.penalize_banned(message.author.id)
+            return
+
+        lie_reply = await maybe_deceptive_reply(message.author.id, message.content)
+        if lie_reply:
+            if DECEPTION_REPLY_MODE == "dynamic":
+                cover_reply = random.choice(DYNAMIC_COVER_REPLIES)
+                await db_manager.store_lie(message.author.id, message.content, cover_reply)
+            else:
+                cover_reply = lie_reply
             async with message.channel.typing():
                 await asyncio.sleep(random.uniform(1, 3))
                 await message.channel.send(cover_reply)
@@ -911,14 +920,14 @@ class SocialGraphBot(discord.Client):
         manip_category = manipulation_score(message.content)
         category_to_log = manip_category or bullying or max(social_scores, key=social_scores.get)
         await db_manager.record_manipulation(message.author.id, category_to_log)
-        if (manip_category and manip_category != "bullying") or (
-            social_scores.get("manipulation", 0) > 0.5 and not bullying
-        ):
-            await trust_service.adjust_trust(message.author.id, -1.0)
+        if manip_category or social_scores.get("manipulation", 0) > 0.5:
+            await trust_service.penalize_manipulative(message.author.id)
+
             log_thought(self, f"Manipulation detected: {category_to_log}")
             return
 
-        if not await trust_service.is_trusted(message.author.id, 0.0):
+        trust = await trust_service.get_trust(message.author.id)
+        if trust < trust_service.lower_limit:
             return
 
         result = await who_is_active(message.channel)
