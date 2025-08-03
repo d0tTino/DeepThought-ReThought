@@ -33,6 +33,7 @@ reasoning = "deepthought.services.reasoning_service:ReasoningService"
   "reward_service/*",
   "service/*",
 ]
+"deepthought.perception" = ["default_social_perception_model.json"]
 
 [tool.setuptools.dynamic]
 version = {attr = "deepthought.__init__.__version__"}

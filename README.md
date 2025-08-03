@@ -667,17 +667,16 @@ A minimal notebook demonstrating retrieval-augmented generation is available at 
 ## Social Perception
 
 The classifier produces probabilities for five cues—flirtation, avoidance,
-manipulation, sarcasm, and supportiveness. Download the model weights and set
-the path for `SOCIAL_PERCEPTION_MODEL`:
+manipulation, sarcasm, and supportiveness. A lightweight keyword model is bundled
+with the repository and used automatically when `SOCIAL_PERCEPTION_MODEL` is not
+set. To use a custom transformer model instead, download the weights and point
+the environment variable to the local directory:
 
 ```bash
 pip install huggingface_hub
 huggingface-cli download myorg/social-cue-classifier --local-dir ./models/social_perception
 export SOCIAL_PERCEPTION_MODEL=$(pwd)/models/social_perception
 ```
-
-If `SOCIAL_PERCEPTION_MODEL` is not set the system returns neutral scores for
-each cue.
 
 ### Manipulation Detection
 
