@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional, Tuple
 
 from .file_graph_dal import FileGraphDAL
@@ -31,26 +32,35 @@ class UserGraphDAL(FileGraphDAL):
         data = self._graph.get_edge_data(source, target, default={})
         count = data.get("interaction_count", 0) + 1
         sentiment_sum = data.get("sentiment_sum", 0.0) + score
+        weight = data.get("interaction_weight", 0.0) + 1.0
         self._graph.add_edge(
             source,
             target,
             interaction_count=count,
             sentiment_sum=sentiment_sum,
+            interaction_weight=weight,
+            last_interaction=time.time(),
         )
 
     def get_affinity(self, user_id: str) -> int:
         """Return how many messages ``user_id`` has sent."""
         return int(self._graph.nodes.get(user_id, {}).get("affinity", 0))
 
-    def get_relationship(self, source: str, target: str) -> Tuple[int, float]:
-        """Return ``(interaction_count, sentiment_sum)`` for the edge."""
+    def get_relationship(self, source: str, target: str) -> Tuple[int, float, float, float]:
+        """Return ``(interaction_count, sentiment_sum, weight, last_interaction)`` for the edge."""
         data = self._graph.get_edge_data(source, target)
         if not data:
-            return 0, 0.0
-        return int(data.get("interaction_count", 0)), float(data.get("sentiment_sum", 0.0))
+            return 0, 0.0, 0.0, 0.0
+        return (
+            int(data.get("interaction_count", 0)),
+            float(data.get("sentiment_sum", 0.0)),
+            float(data.get("interaction_weight", 0.0)),
+            float(data.get("last_interaction", 0.0)),
+        )
 
     def _avg_sentiment(self, source: str, target: str) -> float:
-        count, ssum = self.get_relationship(source, target)
+        rel = self.get_relationship(source, target)
+        count, ssum = rel[0], rel[1]
         if not count:
             return 0.0
         return ssum / count
@@ -67,8 +77,8 @@ class UserGraphDAL(FileGraphDAL):
 
     def get_mutual_affinity(self, user_a: str, user_b: str) -> int:
         """Return how many messages have passed between the pair."""
-        ab_count, _ = self.get_relationship(user_a, user_b)
-        ba_count, _ = self.get_relationship(user_b, user_a)
+        ab_count = self.get_relationship(user_a, user_b)[0]
+        ba_count = self.get_relationship(user_b, user_a)[0]
         # each message updates both directional edges, so average the counts
         return int((ab_count + ba_count) / 2)
 
@@ -82,12 +92,22 @@ class UserGraphDAL(FileGraphDAL):
                 "count": ab[0],
                 "sentiment_sum": ab[1],
                 "avg_sentiment": self._avg_sentiment(user_a, user_b),
+                "interaction_weight": ab[2],
+                "last_interaction": ab[3],
             },
             "b_to_a": {
                 "count": ba[0],
                 "sentiment_sum": ba[1],
                 "avg_sentiment": self._avg_sentiment(user_b, user_a),
+                "interaction_weight": ba[2],
+                "last_interaction": ba[3],
             },
             # average counts because each interaction increments both directions
             "mutual_affinity": int((ab[0] + ba[0]) / 2),
         }
+
+    def get_interaction_weight(self, source: str, target: str) -> float:
+        return self.get_relationship(source, target)[2]
+
+    def get_last_interaction(self, source: str, target: str) -> float:
+        return self.get_relationship(source, target)[3]
