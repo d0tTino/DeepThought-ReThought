@@ -58,6 +58,13 @@ class RewardThresholds(BaseSettings):
     buffer_size: int = 50
 
 
+DEFAULT_SOCIAL_MODEL = (
+    Path(__file__).resolve().parent
+    / "perception"
+    / "default_social_perception_model.json"
+)
+
+
 class Settings(BaseSettings):
     """Application wide settings."""
 
@@ -71,7 +78,9 @@ class Settings(BaseSettings):
 
     db: DatabaseSettings = DatabaseSettings()
     model_path: str = "distilgpt2"
-    social_perception_model: str | None = Field(None, env="SOCIAL_PERCEPTION_MODEL")
+    social_perception_model: str = Field(
+        str(DEFAULT_SOCIAL_MODEL), env="SOCIAL_PERCEPTION_MODEL"
+    )
     memory_file: str = "memory.json"
     search_db: str | None = None
     social_graph_db: str = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")

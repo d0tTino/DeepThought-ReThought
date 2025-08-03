@@ -171,6 +171,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 
 DB_PATH = get_settings().social_graph_db
 CURRENT_DB_PATH = DB_PATH
+SOCIAL_PERCEPTION_MODEL = get_settings().social_perception_model
 
 
 # Endpoint for forwarding collected data
