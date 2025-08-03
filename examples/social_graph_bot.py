@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import uuid
+from collections import deque
 from datetime import timedelta, timezone
 from typing import List, Tuple
 
@@ -190,6 +191,8 @@ AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
 AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
 USER_REPLY_RATE_SECONDS = float(os.getenv("USER_REPLY_RATE_SECONDS", "3"))
 BOT_COOLDOWN_SECONDS = int(os.getenv("BOT_COOLDOWN_SECONDS", "30"))
+BOT_MESSAGE_INTERVAL_SECONDS = int(os.getenv("BOT_MESSAGE_INTERVAL_SECONDS", "60"))
+MAX_BOT_MESSAGES_PER_INTERVAL = int(os.getenv("MAX_BOT_MESSAGES_PER_INTERVAL", "5"))
 MINIMAL_REPLY_THRESHOLD = float(os.getenv("MINIMAL_REPLY_THRESHOLD", "-5"))
 MINIMAL_REPLY_PROB = float(os.getenv("MINIMAL_REPLY_PROB", "0.05"))
 MINIMAL_REPLIES = ["...", "👍", "No"]
@@ -352,6 +355,8 @@ trust_service = TrustService(db_manager)
 reply_limiter = UserRateLimiter(1, USER_REPLY_RATE_SECONDS)
 bot_last_messages: dict[int, tuple[str, datetime.datetime]] = {}
 last_bot_reply_time: datetime.datetime | None = None
+bot_message_times: dict[int, deque[datetime.datetime]] = {}
+our_message_times: deque[datetime.datetime] = deque()
 
 
 async def init_db(db_path: str | None = None) -> None:
@@ -862,6 +867,12 @@ class SocialGraphBot(discord.Client):
 
         now = discord.utils.utcnow()
         if message.author.bot:
+            q = bot_message_times.setdefault(message.author.id, deque())
+            q.append(now)
+            while q and (now - q[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
+                q.popleft()
+            if len(q) >= MAX_BOT_MESSAGES_PER_INTERVAL:
+                return
             last = bot_last_messages.get(message.author.id)
             if last and last[0] == message.content and (now - last[1]).total_seconds() < BOT_COOLDOWN_SECONDS:
                 return
@@ -942,6 +953,16 @@ class SocialGraphBot(discord.Client):
         if len(bots) > MAX_BOT_SPEAKERS and self.user not in message.mentions:
             # Too many bots talking and we're not addressed directly
             return
+        for bot_id, times in bot_message_times.items():
+            while times and (now - times[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
+                times.popleft()
+            if (
+                self.user not in message.mentions
+                and (user_id is None or bot_id != user_id)
+                and times
+                and (now - times[-1]).total_seconds() < BOT_MESSAGE_INTERVAL_SECONDS
+            ):
+                return
 
         if not reply_limiter.allow(str(message.author.id)):
             return
@@ -965,7 +986,13 @@ class SocialGraphBot(discord.Client):
                 else:
                     persona = await self.persona_manager.get_persona(message.author.id)
                     reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
+            now = discord.utils.utcnow()
+            while our_message_times and (now - our_message_times[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
+                our_message_times.popleft()
+            if len(our_message_times) >= MAX_BOT_MESSAGES_PER_INTERVAL:
+                return
             await message.channel.send(reply)
+            our_message_times.append(discord.utils.utcnow())
             if message.author.bot:
                 last_bot_reply_time = discord.utils.utcnow()
 
