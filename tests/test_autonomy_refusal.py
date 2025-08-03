@@ -4,10 +4,9 @@ import random
 import pytest
 
 pytest.importorskip("discord")
+pytest.importorskip("nats")
 
 import examples.social_graph_bot as sg
-
-pytest.importorskip("nats")
 from deepthought.services import DBManager
 
 
@@ -28,7 +27,7 @@ class DummyChannel:
     def history(self, limit=1):
         async def _gen():
             if False:
-                yield  # pragma: no cover
+                yield
 
         return _gen()
 
@@ -56,17 +55,18 @@ class DummyMessage:
 
 
 @pytest.mark.asyncio
-async def test_bullying_triggers_firm_message(tmp_path, monkeypatch, input_events):
+async def test_refuses_low_trust(tmp_path, monkeypatch, input_events):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    sg.trust_service = sg.TrustService(sg.db_manager)
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
     async def noop(*args, **kwargs):
         return None
 
-    f = asyncio.Future()
-    f.set_result((set(), set(), {}))
-    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    fut = asyncio.Future()
+    fut.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: fut)
     monkeypatch.setattr(sg, "send_to_prism", noop)
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
@@ -74,36 +74,30 @@ async def test_bullying_triggers_firm_message(tmp_path, monkeypatch, input_event
     monkeypatch.setattr(asyncio, "sleep", noop)
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
-    monkeypatch.setattr(sg.reply_limiter, "allow", lambda _id: True)
 
-    async def allow_mock(user_id):
-        return False
-
-    monkeypatch.setattr(sg, "is_do_not_mock", allow_mock)
+    await sg.trust_service.adjust_trust(2, -10)
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
-    assert bot.intents.members
-    assert bot.intents.presences
-
-    message = DummyMessage("You are an idiot")
+    message = DummyMessage("hi")
     await bot.on_message(message)
 
-    assert sg.BULLYING_RESPONSE in message.channel.sent_messages
+    assert message.channel.sent_messages == []
     await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
-async def test_do_not_mock_blocks_firm_message(tmp_path, monkeypatch, input_events):
+async def test_minimal_reply_low_trust(tmp_path, monkeypatch, input_events):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    sg.trust_service = sg.TrustService(sg.db_manager)
     await sg.db_manager.connect()
     await sg.db_manager.init_db()
 
     async def noop(*args, **kwargs):
         return None
 
-    f = asyncio.Future()
-    f.set_result((set(), set(), {}))
-    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    fut = asyncio.Future()
+    fut.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: fut)
     monkeypatch.setattr(sg, "send_to_prism", noop)
     monkeypatch.setattr(sg, "store_theory", noop)
     monkeypatch.setattr(sg, "queue_deep_reflection", noop)
@@ -111,19 +105,14 @@ async def test_do_not_mock_blocks_firm_message(tmp_path, monkeypatch, input_even
     monkeypatch.setattr(asyncio, "sleep", noop)
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
     monkeypatch.setattr(random, "uniform", lambda a, b: 0)
-    monkeypatch.setattr(sg.reply_limiter, "allow", lambda _id: True)
+    monkeypatch.setattr(random, "random", lambda: 0.5)
 
-    async def prevent_mock(user_id):
-        return True
-
-    monkeypatch.setattr(sg, "is_do_not_mock", prevent_mock)
+    sg.MINIMAL_REPLY_THRESHOLD = 1
+    sg.MINIMAL_REPLY_PROB = 0
 
     bot = sg.SocialGraphBot(monitor_channel_id=1)
-    assert bot.intents.members
-    assert bot.intents.presences
-
-    message = DummyMessage("You are an idiot")
+    message = DummyMessage("hello")
     await bot.on_message(message)
 
-    assert sg.BULLYING_RESPONSE not in message.channel.sent_messages
+    assert message.channel.sent_messages == [sg.MINIMAL_REPLIES[0]]
     await sg.db_manager.close()

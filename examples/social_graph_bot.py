@@ -315,6 +315,7 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
 
 # Simple list of phrases considered bullying
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
+BULLYING_RESPONSE = "I'm not here to be disrespected. Let's keep things civil."
 
 
 async def maybe_deceptive_reply(user_id: int, text: str) -> str | None:
@@ -906,12 +907,16 @@ class SocialGraphBot(discord.Client):
         await db_manager.record_emotion(message.author.id, emotions)
 
         social_scores = analyze_social(message.content)
+        bullying = manipulation_score(message.content, {"bullying": BULLYING_PHRASES})
         manip_category = manipulation_score(message.content)
-        category_to_log = manip_category or max(social_scores, key=social_scores.get)
+        category_to_log = manip_category or bullying or max(social_scores, key=social_scores.get)
         await db_manager.record_manipulation(message.author.id, category_to_log)
-        if manip_category or social_scores.get("manipulation", 0) > 0.5:
+        if (manip_category and manip_category != "bullying") or (
+            social_scores.get("manipulation", 0) > 0.5 and not bullying
+        ):
             await trust_service.adjust_trust(message.author.id, -1.0)
             log_thought(self, f"Manipulation detected: {category_to_log}")
+            return
 
         if not await trust_service.is_trusted(message.author.id, 0.0):
             return
@@ -943,7 +948,9 @@ class SocialGraphBot(discord.Client):
                 async for recent in message.channel.history(limit=1):
                     if recent.id != message.id and getattr(recent.author, "bot", False):
                         return
-            if social_scores.get("flirtation", 0) > 0.5:
+            if bullying and not await is_do_not_mock(message.author.id):
+                reply = BULLYING_RESPONSE
+            elif social_scores.get("flirtation", 0) > 0.5:
                 reply = random.choice(PERSONA_REPLIES["playful"])
             elif social_scores.get("avoidance", 0) > 0.5:
                 reply = AVOIDANCE_REPLY
@@ -971,20 +978,6 @@ class SocialGraphBot(discord.Client):
                 "content": message.content,
             }
         )
-
-        bullying = manipulation_score(message.content, {"bullying": BULLYING_PHRASES})
-        if bullying:
-            if not await is_do_not_mock(message.author.id):
-                sarcastic = random.choice(
-                    [
-                        "Oh, how original.",
-                        "Wow, such eloquence.",
-                        "Tell us how you really feel!",
-                    ]
-                )
-                async with message.channel.typing():
-                    await asyncio.sleep(random.uniform(1, 2))
-                    await message.channel.send(sarcastic)
 
         memories = await recall_user(message.author.id)
         if memories:
