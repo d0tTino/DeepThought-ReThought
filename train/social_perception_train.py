@@ -14,7 +14,13 @@ from transformers import (
     TrainingArguments,
 )
 
-LABELS: Dict[int, str] = {0: "flirtation", 1: "avoidance", 2: "manipulation"}
+LABELS: Dict[int, str] = {
+    0: "flirtation",
+    1: "avoidance",
+    2: "manipulation",
+    3: "sarcasm",
+    4: "supportiveness",
+}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
