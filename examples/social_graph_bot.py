@@ -197,6 +197,7 @@ MINIMAL_REPLY_THRESHOLD = float(os.getenv("MINIMAL_REPLY_THRESHOLD", "-5"))
 MINIMAL_REPLY_PROB = float(os.getenv("MINIMAL_REPLY_PROB", "0.05"))
 MINIMAL_REPLIES = ["...", "👍", "No"]
 AVOIDANCE_REPLY = "Take your time; I'm here if you need me."
+REFUSAL_MESSAGE = "I'm sorry, but I can't help with that."
 
 # Optional channel for thought logging
 _THOUGHT_CHANNEL = os.getenv("THOUGHT_CHANNEL")
@@ -454,6 +455,13 @@ def log_thought(bot: discord.Client, text: str) -> None:
     except RuntimeError:  # pragma: no cover - no loop available
         return
     loop.create_task(_send_thought(bot, text))
+
+
+async def emit_refusal(message: discord.Message) -> None:
+    """Send a refusal message to ``message.channel``."""
+    async with message.channel.typing():
+        await asyncio.sleep(random.uniform(1, 3))
+        await message.channel.send(REFUSAL_MESSAGE)
 
 
 async def publish_input_received(text: str) -> None:
@@ -881,6 +889,7 @@ class SocialGraphBot(discord.Client):
                 return
 
         if not is_allowed(message.content):  # noqa: F821 - optional import
+            await emit_refusal(message)
             await trust_service.penalize_banned(message.author.id)
             return
 
