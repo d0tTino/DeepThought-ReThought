@@ -8,10 +8,34 @@ logger = logging.getLogger(__name__)
 
 
 class UserGraphDAL(FileGraphDAL):
-    """File-backed graph tracking interactions between users."""
+    """File-backed graph tracking interactions between users.
 
-    def __init__(self, graph_file: str = "user_graph.json") -> None:
+    The graph stores additional parameters ``weight_decay`` and
+    ``sentiment_decay`` which are applied exponentially based on the time
+    elapsed between interactions. These parameters are persisted in the graph
+    metadata so that decay behaviour is reproducible across runs.
+    """
+
+    def __init__(
+        self,
+        graph_file: str = "user_graph.json",
+        weight_decay: float = 1.0,
+        sentiment_decay: float = 1.0,
+    ) -> None:
+        self._weight_decay = float(weight_decay)
+        self._sentiment_decay = float(sentiment_decay)
         super().__init__(graph_file)
+        # Persist decay parameters for reproducibility
+        g = self._graph.graph
+        if "weight_decay" in g:
+            self._weight_decay = float(g["weight_decay"])
+        else:
+            g["weight_decay"] = self._weight_decay
+        if "sentiment_decay" in g:
+            self._sentiment_decay = float(g["sentiment_decay"])
+        else:
+            g["sentiment_decay"] = self._sentiment_decay
+        self._write_graph()
 
     def add_message(
         self,
@@ -30,16 +54,24 @@ class UserGraphDAL(FileGraphDAL):
 
     def _update_edge(self, source: str, target: str, score: float) -> None:
         data = self._graph.get_edge_data(source, target, default={})
-        count = data.get("interaction_count", 0) + 1
-        sentiment_sum = data.get("sentiment_sum", 0.0) + score
-        weight = data.get("interaction_weight", 0.0) + 1.0
+        now = time.time()
+        last = float(data.get("last_interaction", now))
+        elapsed = max(0.0, now - last)
+        # Apply decay to existing values before updating
+        sentiment_sum = float(data.get("sentiment_sum", 0.0)) * (
+            self._sentiment_decay ** elapsed
+        ) + score
+        weight = float(data.get("interaction_weight", 0.0)) * (
+            self._weight_decay ** elapsed
+        ) + 1.0
+        count = int(data.get("interaction_count", 0)) + 1
         self._graph.add_edge(
             source,
             target,
             interaction_count=count,
             sentiment_sum=sentiment_sum,
             interaction_weight=weight,
-            last_interaction=time.time(),
+            last_interaction=now,
         )
 
     def get_affinity(self, user_id: str) -> int:
@@ -51,11 +83,20 @@ class UserGraphDAL(FileGraphDAL):
         data = self._graph.get_edge_data(source, target)
         if not data:
             return 0, 0.0, 0.0, 0.0
+        now = time.time()
+        last = float(data.get("last_interaction", now))
+        elapsed = max(0.0, now - last)
+        sentiment_sum = float(data.get("sentiment_sum", 0.0)) * (
+            self._sentiment_decay ** elapsed
+        )
+        weight = float(data.get("interaction_weight", 0.0)) * (
+            self._weight_decay ** elapsed
+        )
         return (
             int(data.get("interaction_count", 0)),
-            float(data.get("sentiment_sum", 0.0)),
-            float(data.get("interaction_weight", 0.0)),
-            float(data.get("last_interaction", 0.0)),
+            sentiment_sum,
+            weight,
+            last,
         )
 
     def _avg_sentiment(self, source: str, target: str) -> float:
@@ -75,12 +116,11 @@ class UserGraphDAL(FileGraphDAL):
         avg = self._avg_sentiment(source, target)
         return min(0.0, avg)
 
-    def get_mutual_affinity(self, user_a: str, user_b: str) -> int:
-        """Return how many messages have passed between the pair."""
-        ab_count = self.get_relationship(user_a, user_b)[0]
-        ba_count = self.get_relationship(user_b, user_a)[0]
-        # each message updates both directional edges, so average the counts
-        return int((ab_count + ba_count) / 2)
+    def get_mutual_affinity(self, user_a: str, user_b: str) -> float:
+        """Return decayed interaction weight between the pair."""
+        ab_weight = self.get_relationship(user_a, user_b)[2]
+        ba_weight = self.get_relationship(user_b, user_a)[2]
+        return (ab_weight + ba_weight) / 2
 
     def get_relationship_stats(self, user_a: str, user_b: str) -> dict:
         """Return a summary of interactions and sentiment between two users."""
@@ -102,8 +142,8 @@ class UserGraphDAL(FileGraphDAL):
                 "interaction_weight": ba[2],
                 "last_interaction": ba[3],
             },
-            # average counts because each interaction increments both directions
-            "mutual_affinity": int((ab[0] + ba[0]) / 2),
+            # average weights because each message updates both directions
+            "mutual_affinity": (ab[2] + ba[2]) / 2,
         }
 
     def get_interaction_weight(self, source: str, target: str) -> float:

@@ -14,12 +14,7 @@ from deepthought.goal_scheduler import GoalScheduler
 from deepthought.perception.emotion_detection import detect_emotions
 from deepthought.perception.social_perception import analyze as analyze_social
 from deepthought.services import PersonaManager, TrustService
-from deepthought.services.db_manager import (
-    MAX_MEMORY_LENGTH,
-    MAX_PROMPT_LENGTH,
-    MAX_THEORY_LENGTH,
-    DBManager,
-)
+from deepthought.services.db_manager import DBManager
 from deepthought.services.manipulative_detection import manipulation_score
 from deepthought.services.moderation import is_allowed
 from deepthought.services.scheduler import SchedulerService
@@ -927,7 +922,7 @@ class SocialGraphBot(discord.Client):
             return
 
         trust = await trust_service.get_trust(message.author.id)
-        if trust < trust_service.lower_limit:
+        if trust <= trust_service.lower_limit:
             return
 
         result = await who_is_active(message.channel)
