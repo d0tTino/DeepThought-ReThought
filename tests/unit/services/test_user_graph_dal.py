@@ -8,9 +8,11 @@ def test_add_message_updates_edges(tmp_path):
     dal.add_message("u1", "u2", sentiment_score=-0.2)
 
     assert dal.get_affinity("u1") == 2
-    count, ssum = dal.get_relationship("u1", "u2")
+    count, ssum, weight, ts = dal.get_relationship("u1", "u2")
     assert count == 2
     assert ssum == 0.3
+    assert weight == 2
+    assert ts > 0
 
 
 def test_friendliness_and_hostility(tmp_path):

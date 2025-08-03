@@ -67,11 +67,23 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS mutual_affinity (
+            user_a TEXT,
+            user_b TEXT,
+            score INTEGER DEFAULT 0,
+            interaction_weight REAL DEFAULT 0,
+            last_interaction DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(user_a, user_b)
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS relationships (
             source_id TEXT,
             target_id TEXT,
             interaction_count INTEGER DEFAULT 0,
             sentiment_sum REAL DEFAULT 0,
+            interaction_weight REAL DEFAULT 0,
+            last_interaction DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(source_id, target_id)
         )
         """,
@@ -190,6 +202,7 @@ class DBManager:
             if not self._initialized:
                 for query in self.CREATE_TABLE_QUERIES:
                     await self._db.execute(query)
+                await self._ensure_relationship_columns()
                 await self._db.commit()
                 self._initialized = True
 
@@ -197,6 +210,16 @@ class DBManager:
         if self._db is not None:
             await self._db.close()
             self._db = None
+
+    async def _ensure_relationship_columns(self) -> None:
+        """Add new columns to the relationships table if they don't exist."""
+        assert self._db is not None
+        async with self._db.execute("PRAGMA table_info(relationships)") as cur:
+            cols = [row[1] async for row in cur]
+        if "interaction_weight" not in cols:
+            await self._db.execute("ALTER TABLE relationships ADD COLUMN interaction_weight REAL DEFAULT 0")
+        if "last_interaction" not in cols:
+            await self._db.execute("ALTER TABLE relationships ADD COLUMN last_interaction DATETIME")
 
     def _create_table_statements(self) -> list[str]:
         """Return SQL statements for creating required tables."""
@@ -233,15 +256,30 @@ class DBManager:
                 (str(user_id), delta, delta),
             )
         if target_id is not None:
+            weight = 1.0
             await self._db.execute(
                 """
-                INSERT INTO relationships (source_id, target_id, interaction_count, sentiment_sum)
-                VALUES (?, ?, 1, ?)
+                INSERT INTO relationships (source_id, target_id, interaction_count, sentiment_sum, interaction_weight)
+                VALUES (?, ?, 1, ?, ?)
                 ON CONFLICT(source_id, target_id) DO UPDATE SET
                     interaction_count=relationships.interaction_count + 1,
-                    sentiment_sum=relationships.sentiment_sum + excluded.sentiment_sum
+                    sentiment_sum=relationships.sentiment_sum + excluded.sentiment_sum,
+                    interaction_weight=relationships.interaction_weight + excluded.interaction_weight,
+                    last_interaction=CURRENT_TIMESTAMP
                 """,
-                (str(user_id), str(target_id), sentiment_score or 0.0),
+                (str(user_id), str(target_id), sentiment_score or 0.0, weight),
+            )
+            a, b = sorted((str(user_id), str(target_id)))
+            await self._db.execute(
+                """
+                INSERT INTO mutual_affinity (user_a, user_b, score, interaction_weight)
+                VALUES (?, ?, 1, ?)
+                ON CONFLICT(user_a, user_b) DO UPDATE SET
+                    score=mutual_affinity.score + 1,
+                    interaction_weight=mutual_affinity.interaction_weight + excluded.interaction_weight,
+                    last_interaction=CURRENT_TIMESTAMP
+                """,
+                (a, b, weight),
             )
         await self._db.commit()
 
@@ -621,7 +659,7 @@ class DBManager:
         await self.connect()
         assert self._db
         async with self._db.execute(
-            "SELECT interaction_count, sentiment_sum FROM relationships WHERE source_id=? AND target_id=?",
+            "SELECT interaction_count, sentiment_sum, interaction_weight, last_interaction FROM relationships WHERE source_id=? AND target_id=?",
             (str(user_id), str(target_id)),
         ) as cur:
             return await cur.fetchone()
@@ -630,7 +668,7 @@ class DBManager:
         row = await self.get_relationship(user_id, target_id)
         if not row or not row[0]:
             return 0.0
-        count, sentiment_sum = row
+        count, sentiment_sum = row[0], row[1]
         return float(sentiment_sum) / count
 
     async def get_friendliness(self, user_id: int, target_id: int) -> float:
@@ -640,6 +678,25 @@ class DBManager:
     async def get_hostility(self, user_id: int, target_id: int) -> float:
         avg = await self._get_relationship_avg(user_id, target_id)
         return min(0.0, avg)
+
+    async def get_interaction_weight(self, user_id: int, target_id: int) -> float:
+        row = await self.get_relationship(user_id, target_id)
+        return float(row[2]) if row and row[2] is not None else 0.0
+
+    async def get_last_interaction(self, user_id: int, target_id: int):
+        row = await self.get_relationship(user_id, target_id)
+        return row[3] if row else None
+
+    async def get_pair_mutual_affinity(self, user_a: int, user_b: int) -> float:
+        await self.connect()
+        assert self._db
+        a, b = sorted((str(user_a), str(user_b)))
+        async with self._db.execute(
+            "SELECT score FROM mutual_affinity WHERE user_a=? AND user_b=?",
+            (a, b),
+        ) as cur:
+            row = await cur.fetchone()
+            return float(row[0]) if row else 0.0
 
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
         if not isinstance(theme, str) or not theme.strip():

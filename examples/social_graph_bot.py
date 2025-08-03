@@ -572,6 +572,18 @@ async def get_hostility(user_id: int, target_id: int) -> float:
     return await db_manager.get_hostility(user_id, target_id)
 
 
+async def get_interaction_weight(user_id: int, target_id: int) -> float:
+    return await db_manager.get_interaction_weight(user_id, target_id)
+
+
+async def get_last_interaction(user_id: int, target_id: int):
+    return await db_manager.get_last_interaction(user_id, target_id)
+
+
+async def get_pair_mutual_affinity(user_a: int, user_b: int) -> float:
+    return await db_manager.get_pair_mutual_affinity(user_a, user_b)
+
+
 async def set_theme(user_id: int, channel_id: int, theme: str) -> None:
     await db_manager.set_theme(user_id, channel_id, theme)
 
