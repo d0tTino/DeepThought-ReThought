@@ -627,9 +627,10 @@ review.
 ### Bidirectional Relationship Tracking
 
 Every logged interaction updates the `relationships` table in **both**
-directions. The `PersonaManager` selects between friendly, playful, and snarky
-personas based on this mutual affinity score. Provide a database path to enable
-tracking:
+directions, storing interaction counts, sentiment, and decay-weighted affinity.
+The `PersonaManager` selects between friendly, playful, and snarky personas
+based on this mutual affinity score. Enable tracking by pointing
+`SOCIAL_GRAPH_DB` to a writable SQLite file:
 
 ```bash
 export SOCIAL_GRAPH_DB=/path/to/social_graph.db
@@ -653,7 +654,9 @@ A minimal notebook demonstrating retrieval-augmented generation is available at 
 
 ## Social Perception
 
-Download the social perception classifier from Hugging Face and set the path for `SOCIAL_PERCEPTION_MODEL`:
+The classifier produces probabilities for five cues—flirtation, avoidance,
+manipulation, sarcasm, and supportiveness. Download the model weights and set
+the path for `SOCIAL_PERCEPTION_MODEL`:
 
 ```bash
 pip install huggingface_hub
@@ -661,7 +664,8 @@ huggingface-cli download myorg/social-cue-classifier --local-dir ./models/social
 export SOCIAL_PERCEPTION_MODEL=$(pwd)/models/social_perception
 ```
 
-If unset, the default `path/to/social-perception-model` is used.
+If `SOCIAL_PERCEPTION_MODEL` is not set the system returns neutral scores for
+each cue.
 
 ### Manipulation Detection
 

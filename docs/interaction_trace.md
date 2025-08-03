@@ -7,7 +7,7 @@ Each line represents a single event emitted by the system.
 {
   "event": "INPUT_RECEIVED",
   "payload": {"user_input": "hello", "input_id": "abc"},
-  "perception": {"flirtation": 0.2, "avoidance": 0.1, "manipulation": 0.0},
+  "perception": {"flirtation": 0.2, "avoidance": 0.1, "manipulation": 0.0, "sarcasm": 0.3, "supportiveness": 0.4},
   "affinity": 0.1
 }
 ```
@@ -19,7 +19,8 @@ Fields
   either a dictionary or a string for raw chat messages.
 - **perception** – dictionary of social perception label probabilities. When the event contains
   textual user input the recorder runs the social perception classifier and records the resulting
-  probabilities. If no text is available this field is `null`.
+  probabilities for flirtation, avoidance, manipulation, sarcasm, and supportiveness. If no text
+  is available this field is `null`.
 - **affinity** – current affinity score for the user after applying the perception delta. The score is
   incremented when a new input is processed.
 
