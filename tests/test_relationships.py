@@ -8,7 +8,6 @@ import examples.social_graph_bot as sg
 pytest.importorskip("nats")
 from deepthought.services import DBManager
 from deepthought.services.social_graph_memory import SocialGraphMemory
-from deepthought.services.user_graph_dal import UserGraphDAL
 
 
 @pytest.mark.asyncio
@@ -56,26 +55,23 @@ async def test_relationship_table_and_updates(tmp_path):
     await sg.db_manager.close()
 
 
-def test_user_graph_edges_and_stats(tmp_path):
-    dal = UserGraphDAL(str(tmp_path / "g.json"))
-    mem = SocialGraphMemory(dal)
+@pytest.mark.asyncio
+async def test_relationship_stats(tmp_path):
+    db = DBManager(str(tmp_path / "sg.db"))
+    mem = SocialGraphMemory(db)
 
-    dal.add_message("a", "b", sentiment_score=0.5)
-    dal.add_message("b", "a", sentiment_score=-0.2)
+    await db.log_interaction("a", "b", sentiment_score=0.5)
+    await db.log_interaction("b", "a", sentiment_score=-0.2)
 
-    # Both directional edges should be updated
-    ab = dal.get_relationship("a", "b")
-    ba = dal.get_relationship("b", "a")
-    assert ab[0] == 2 and ab[2] == 2
-    assert ba[0] == 2 and ba[2] == 2
+    ab = await db.get_relationship("a", "b")
+    ba = await db.get_relationship("b", "a")
+    assert ab[0] == 1 and ab[2] == 1
+    assert ba[0] == 1 and ba[2] == 1
 
-    # mutual affinity counts actual messages between the pair
-    assert dal.get_mutual_affinity("a", "b") == 2
-
-    stats = mem.get_relationship_stats("a", "b")
+    stats = await mem.get_relationship_stats("a", "b")
     assert stats["mutual_affinity"] == 2
-    assert stats["a_to_b"]["avg_sentiment"] == pytest.approx(0.15)
-    assert stats["b_to_a"]["avg_sentiment"] == pytest.approx(0.15)
-    assert stats["a_to_b"]["interaction_weight"] == 2
-    assert stats["b_to_a"]["interaction_weight"] == 2
-    assert stats["a_to_b"]["last_interaction"] > 0
+    assert stats["a_to_b"]["avg_sentiment"] == pytest.approx(0.5)
+    assert stats["b_to_a"]["avg_sentiment"] == pytest.approx(-0.2)
+    assert stats["a_to_b"]["interaction_weight"] == pytest.approx(1.0)
+    assert stats["b_to_a"]["interaction_weight"] == pytest.approx(1.0)
+    assert stats["a_to_b"]["last_interaction"] is not None

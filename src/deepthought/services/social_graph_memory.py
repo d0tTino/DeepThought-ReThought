@@ -1,40 +1,78 @@
+"""High level helpers for recording and querying social interactions."""
+
+from __future__ import annotations
+
 import logging
 from typing import Optional
 
 from textblob import TextBlob
 
-from .user_graph_dal import UserGraphDAL
+from .db_manager import DBManager
 
 logger = logging.getLogger(__name__)
 
 
 class SocialGraphMemory:
-    """Record messages and sentiment in a :class:`UserGraphDAL`."""
+    """Record messages and sentiment using a :class:`DBManager` backend."""
 
-    def __init__(self, dal: Optional[UserGraphDAL] = None) -> None:
-        self._dal = dal or UserGraphDAL()
+    def __init__(self, db_manager: Optional[DBManager] = None) -> None:
+        self._db = db_manager or DBManager()
 
-    def record_message(self, source: str, text: str, target: Optional[str] = None) -> None:
+    async def record_message(self, source: str, text: str, target: Optional[str] = None) -> None:
         """Analyze sentiment of ``text`` and store the interaction."""
         try:
             score = float(TextBlob(text).sentiment.polarity)
         except Exception:  # pragma: no cover - TextBlob failure
             logger.exception("Sentiment analysis failed")
             score = 0.0
-        self._dal.add_message(source, target, sentiment_score=score)
+        await self._db.log_interaction(source, target, sentiment_score=score)
 
-    # Expose some helper methods from the DAL
-    def get_affinity(self, user_id: str) -> int:
-        return self._dal.get_affinity(user_id)
+    async def get_affinity(self, user_id: str) -> int:
+        return await self._db.get_affinity(user_id)
 
-    def get_friendliness(self, source: str, target: str) -> float:
-        return self._dal.get_friendliness(source, target)
+    async def get_friendliness(self, source: str, target: str) -> float:
+        return await self._db.get_friendliness(source, target)
 
-    def get_hostility(self, source: str, target: str) -> float:
-        return self._dal.get_hostility(source, target)
+    async def get_hostility(self, source: str, target: str) -> float:
+        return await self._db.get_hostility(source, target)
 
-    def get_mutual_affinity(self, user_a: str, user_b: str) -> int:
-        return self._dal.get_mutual_affinity(user_a, user_b)
+    async def get_mutual_affinity(self, user_a: str, user_b: str) -> float:
+        return await self._db.get_pair_mutual_affinity(user_a, user_b)
 
-    def get_relationship_stats(self, user_a: str, user_b: str) -> dict:
-        return self._dal.get_relationship_stats(user_a, user_b)
+    async def get_relationship_stats(self, user_a: str, user_b: str) -> dict:
+        """Return a summary of interactions and sentiment between two users."""
+        ab = await self._db.get_relationship(user_a, user_b)
+        ba = await self._db.get_relationship(user_b, user_a)
+
+        def _stats(row: tuple | None) -> dict:
+            if not row:
+                return {
+                    "count": 0,
+                    "sentiment_sum": 0.0,
+                    "avg_sentiment": 0.0,
+                    "interaction_weight": 0.0,
+                    "last_interaction": None,
+                }
+            count, sentiment_sum, weight, last = row
+            avg = float(sentiment_sum) / count if count else 0.0
+            return {
+                "count": int(count),
+                "sentiment_sum": float(sentiment_sum),
+                "avg_sentiment": avg,
+                "interaction_weight": float(weight),
+                "last_interaction": last,
+            }
+
+        stats_a = _stats(ab)
+        stats_b = _stats(ba)
+        mutual = await self._db.get_pair_mutual_affinity(user_a, user_b)
+        return {
+            "pair": (user_a, user_b),
+            "a_to_b": stats_a,
+            "b_to_a": stats_b,
+            "mutual_affinity": int(mutual),
+        }
+
+    async def close(self) -> None:
+        await self._db.close()
+
