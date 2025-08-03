@@ -598,6 +598,18 @@ other notes there.
 ```python
 log_thought(bot, "Sentiment looks suspicious")
 ```
+#### THOUGHT_CHANNEL usage and permissions
+
+The `THOUGHT_CHANNEL` environment variable should point to a private Discord
+channel used only for internal logs. Configure the channel so that only the bot
+and trusted maintainers can view it.
+
+* Grant the bot permission to read and send messages.
+* Remove access for regular members to keep internal assessments hidden.
+* Avoid cross-posting thought logs to public channels.
+
+Keeping the channel private ensures the bot's inner thoughts remain isolated
+from public conversations.
 
 When `ALLOW_DECEPTION=true`, the bot may conceal its plans by sending a preset
 message instead of the real intention. The chosen reply is stored so repeated
