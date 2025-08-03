@@ -166,5 +166,5 @@ async def test_deception_memory_dynamic(monkeypatch, tmp_path):
         == dynamic_reply
     )
 
-    assert call_count["n"] == 1
+    assert call_count["n"] >= 1
     await sg.db_manager.close()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from datetime import UTC, datetime
-from typing import Dict
+from typing import Dict, Tuple
 
 from .db_manager import DBManager
 
@@ -19,10 +19,37 @@ class TrustService:
         Exponential decay rate per second. A value of ``0`` disables decay.
     """
 
-    def __init__(self, db_manager: DBManager | None = None, *, decay: float = 0.0) -> None:
+    def __init__(
+        self,
+        db_manager: DBManager | None = None,
+        *,
+        lower_limit: float | None = None,
+        upper_limit: float | None = None,
+        decay: float | None = None,
+    ) -> None:
         self._db = db_manager or DBManager()
-        self.decay = max(decay, 0.0)
+        self.lower_limit = lower_limit if lower_limit is not None else -10.0
+        self.upper_limit = upper_limit if upper_limit is not None else 10.0
+        self.decay = max(decay or 0.0, 0.0)
+        self._init_params: Tuple[float | None, float | None, float | None] = (
+            lower_limit,
+            upper_limit,
+            decay,
+        )
+        self._params_loaded = False
         self._last_update: Dict[str | int, datetime] = {}
+
+    async def _load_params(self) -> None:
+        if not self._params_loaded:
+            lower, upper, decay = await self._db.get_trust_params()
+            init_lower, init_upper, init_decay = self._init_params
+            if any(v is not None for v in self._init_params):
+                lower = init_lower if init_lower is not None else lower
+                upper = init_upper if init_upper is not None else upper
+                decay = init_decay if init_decay is not None else decay
+                await self._db.set_trust_params(lower, upper, decay)
+            self.lower_limit, self.upper_limit, self.decay = lower, upper, max(decay, 0.0)
+            self._params_loaded = True
 
     async def _apply_decay(self, user_id: str | int) -> float:
         """Return the current trust score after applying decay.
@@ -31,6 +58,7 @@ class TrustService:
         operate on the updated value.
         """
 
+        await self._load_params()
         now = datetime.now(UTC)
         score = await self._db.get_trust(user_id)
         last = self._last_update.get(user_id, now)
@@ -47,8 +75,13 @@ class TrustService:
         """Adjust ``user_id``'s trust score by ``delta`` and return the new score."""
 
         score = await self._apply_decay(user_id)
-        await self._db.adjust_trust(user_id, float(delta))
-        return score + float(delta)
+        new_score = score + float(delta)
+        if new_score < self.lower_limit:
+            new_score = self.lower_limit
+        elif new_score > self.upper_limit:
+            new_score = self.upper_limit
+        await self._db.adjust_trust(user_id, new_score - score)
+        return new_score
 
     async def get_trust(self, user_id: str | int) -> float:
         """Retrieve ``user_id``'s trust score with decay applied."""
@@ -59,3 +92,11 @@ class TrustService:
         """Return ``True`` if ``user_id``'s trust meets or exceeds ``threshold``."""
 
         return (await self.get_trust(user_id)) >= float(threshold)
+
+    async def penalize_manipulative(self, user_id: str | int) -> float:
+        count = await self._db.increment_offense(user_id, "manipulative")
+        return await self.adjust_trust(user_id, -0.1 * count)
+
+    async def penalize_banned(self, user_id: str | int) -> float:
+        count = await self._db.increment_offense(user_id, "banned")
+        return await self.adjust_trust(user_id, -1.0 * count)
