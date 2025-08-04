@@ -16,7 +16,14 @@ class TrustService:
         Instance of :class:`DBManager` used for persistence. If not provided, a
         new :class:`DBManager` is created.
     decay:
-        Exponential decay rate per second. A value of ``0`` disables decay.
+        Exponential decay rate per second for overall trust. A value of ``0``
+        disables decay.
+    manipulative_penalty:
+        Base trust deduction applied for a manipulative action. The actual
+        penalty scales with the decayed offense count.
+    manipulative_decay:
+        Exponential decay rate per second applied to the manipulative offense
+        counter. Higher values mean faster cooldown between offenses.
     """
 
     def __init__(
@@ -26,11 +33,15 @@ class TrustService:
         lower_limit: float | None = None,
         upper_limit: float | None = None,
         decay: float | None = None,
+        manipulative_penalty: float = 0.1,
+        manipulative_decay: float = 0.0,
     ) -> None:
         self._db = db_manager or DBManager()
         self.lower_limit = lower_limit if lower_limit is not None else -10.0
         self.upper_limit = upper_limit if upper_limit is not None else 10.0
         self.decay = max(decay or 0.0, 0.0)
+        self.manipulative_penalty = float(manipulative_penalty)
+        self.manipulative_decay = max(float(manipulative_decay), 0.0)
         self._init_params: Tuple[float | None, float | None, float | None] = (
             lower_limit,
             upper_limit,
@@ -38,6 +49,7 @@ class TrustService:
         )
         self._params_loaded = False
         self._last_update: Dict[str | int, datetime] = {}
+        self._manipulative_state: Dict[str | int, Tuple[float, datetime]] = {}
 
     async def _load_params(self) -> None:
         if not self._params_loaded:
@@ -94,8 +106,18 @@ class TrustService:
         return (await self.get_trust(user_id)) >= float(threshold)
 
     async def penalize_manipulative(self, user_id: str | int) -> float:
-        count = await self._db.increment_offense(user_id, "manipulative")
-        return await self.adjust_trust(user_id, -0.1 * count)
+        """Apply a manipulative penalty with exponential cooldown."""
+
+        await self._db.increment_offense(user_id, "manipulative")
+        now = datetime.now(UTC)
+        severity, last = self._manipulative_state.get(user_id, (0.0, now))
+        elapsed = (now - last).total_seconds()
+        if self.manipulative_decay > 0 and elapsed > 0 and severity:
+            severity *= math.exp(-self.manipulative_decay * elapsed)
+        severity += 1.0
+        self._manipulative_state[user_id] = (severity, now)
+        penalty = -self.manipulative_penalty * severity
+        return await self.adjust_trust(user_id, penalty)
 
     async def penalize_banned(self, user_id: str | int) -> float:
         count = await self._db.increment_offense(user_id, "banned")
