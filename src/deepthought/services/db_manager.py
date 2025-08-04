@@ -32,6 +32,7 @@ else:
     def analyze_sentiment(text: str) -> float:
         return TextBlob(text).sentiment.polarity
 
+
 # Default database path used when none is provided.
 DB_PATH = get_settings().social_graph_db
 
@@ -226,9 +227,7 @@ class DBManager:
                     await self._db.execute(query)
                 await self._ensure_relationship_columns()
                 await self._db.execute("INSERT OR IGNORE INTO trust_config (id) VALUES (1)")
-                await self._db.execute(
-                    "INSERT OR IGNORE INTO interaction_decay (id) VALUES (1)"
-                )
+                await self._db.execute("INSERT OR IGNORE INTO interaction_decay (id) VALUES (1)")
                 await self._db.commit()
                 self._initialized = True
 
@@ -296,8 +295,8 @@ class DBManager:
                 if last_ts:
                     last_dt = datetime.fromisoformat(str(last_ts))
                     elapsed = (now - last_dt).total_seconds()
-                    ssum = float(ssum) * (s_decay ** elapsed)
-                    w = float(w) * (w_decay ** elapsed)
+                    ssum = float(ssum) * (s_decay**elapsed)
+                    w = float(w) * (w_decay**elapsed)
                 count = int(count) + 1
                 ssum += sentiment_score or 0.0
                 w += weight
@@ -323,7 +322,7 @@ class DBManager:
                 if last_ts:
                     last_dt = datetime.fromisoformat(str(last_ts))
                     elapsed = (now - last_dt).total_seconds()
-                    w = float(w) * (w_decay ** elapsed)
+                    w = float(w) * (w_decay**elapsed)
                 score = int(score) + 1
                 w += weight
                 await self._db.execute(
@@ -566,6 +565,51 @@ class DBManager:
         ) as cur:
             return await cur.fetchone()
 
+    async def update_relationship_trend(
+        self,
+        source_id: int,
+        target_id: int,
+        sentiment_score: float,
+    ) -> None:
+        """Update running sentiment stats for a user pair.
+
+        This stores a rolling average by tracking cumulative sentiment sum
+        and interaction count for ``source_id`` -> ``target_id``.
+        """
+        if not isinstance(sentiment_score, (int, float)):
+            raise ValueError("sentiment_score must be numeric")
+        if not -1 <= float(sentiment_score) <= 1:
+            raise ValueError("sentiment_score out of range")
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO relationships (source_id, target_id, interaction_count, sentiment_sum, last_interaction)
+            VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(source_id, target_id) DO UPDATE SET
+                interaction_count=relationships.interaction_count + 1,
+                sentiment_sum=relationships.sentiment_sum + excluded.sentiment_sum,
+                last_interaction=CURRENT_TIMESTAMP
+            """,
+            (str(source_id), str(target_id), sentiment_score),
+        )
+        await self._db.commit()
+
+    async def get_relationship_trend(self, source_id: int, target_id: int):
+        """Return the average sentiment and count for a user pair."""
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT sentiment_sum, interaction_count FROM relationships WHERE source_id=? AND target_id=?",
+            (str(source_id), str(target_id)),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return None
+        sentiment_sum, count = row
+        avg = float(sentiment_sum) / count if count else 0.0
+        return avg, int(count)
+
     async def queue_deep_reflection(self, user_id: int, context: dict, prompt: str) -> int:
         if not isinstance(prompt, str) or not prompt.strip():
             raise ValueError("prompt must be a non-empty string")
@@ -760,17 +804,13 @@ class DBManager:
     async def get_trust_params(self) -> tuple[float, float, float]:
         await self.connect()
         assert self._db
-        async with self._db.execute(
-            "SELECT lower_limit, upper_limit, decay FROM trust_config WHERE id=1"
-        ) as cur:
+        async with self._db.execute("SELECT lower_limit, upper_limit, decay FROM trust_config WHERE id=1") as cur:
             row = await cur.fetchone()
             if row:
                 return float(row[0]), float(row[1]), float(row[2])
             return -10.0, 10.0, 0.0
 
-    async def set_trust_params(
-        self, lower_limit: float, upper_limit: float, decay: float
-    ) -> None:
+    async def set_trust_params(self, lower_limit: float, upper_limit: float, decay: float) -> None:
         await self.connect()
         assert self._db
         await self._db.execute(
@@ -783,9 +823,7 @@ class DBManager:
         """Return stored decay factors for weights and sentiment."""
         await self.connect()
         assert self._db
-        async with self._db.execute(
-            "SELECT weight_decay, sentiment_decay FROM interaction_decay WHERE id=1"
-        ) as cur:
+        async with self._db.execute("SELECT weight_decay, sentiment_decay FROM interaction_decay WHERE id=1") as cur:
             row = await cur.fetchone()
             if row:
                 return float(row[0]), float(row[1])
@@ -841,8 +879,8 @@ class DBManager:
         if last_ts:
             last_dt = datetime.fromisoformat(str(last_ts))
             elapsed = (datetime.utcnow() - last_dt).total_seconds()
-            sentiment_sum = float(sentiment_sum) * (s_decay ** elapsed)
-            weight = float(weight) * (w_decay ** elapsed)
+            sentiment_sum = float(sentiment_sum) * (s_decay**elapsed)
+            weight = float(weight) * (w_decay**elapsed)
         return count, sentiment_sum, weight, last_ts
 
     async def _get_relationship_avg(self, user_id: int, target_id: int) -> float:
@@ -884,7 +922,7 @@ class DBManager:
         if last_ts:
             last_dt = datetime.fromisoformat(str(last_ts))
             elapsed = (datetime.utcnow() - last_dt).total_seconds()
-            weight = float(weight) * (w_decay ** elapsed)
+            weight = float(weight) * (w_decay**elapsed)
         return float(weight)
 
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
