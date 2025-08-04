@@ -536,9 +536,11 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
 
 Set the `IDLE_TIMEOUT_MINUTES` environment variable to control the inactivity
 threshold. By default the bot waits five minutes before sending a prompt.
-Enable bot-to-bot chatter by setting `BOT_CHAT_ENABLED=true`. Set
-`PLAYFUL_REPLY_TIMEOUT_MINUTES` to enforce a cooldown before responding to other
-bots and `MAX_BOT_SPEAKERS` to cap the number of active bots.
+Enable bot-to-bot chatter by setting `BOT_CHAT_ENABLED=true`. Bots exchange the
+literal `BOT_HANDSHAKE` message before chatting and respect
+`BOT_COOLDOWN_SECONDS` between replies. Set `PLAYFUL_REPLY_TIMEOUT_MINUTES` to
+enforce a cooldown before responding to other bots and `MAX_BOT_SPEAKERS` to cap
+the number of active bots.
 
 ### Rate Limiting
 

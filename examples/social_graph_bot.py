@@ -214,6 +214,9 @@ BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
     "yes",
 }
 
+# Literal handshake message exchanged between bots before chatting.
+HANDSHAKE_MESSAGE = "BOT_HANDSHAKE"
+
 # When ``ALLOW_DECEPTION`` is true, the bot may hide its real intentions.
 ALLOW_DECEPTION = os.getenv("ALLOW_DECEPTION", "false").lower() in {
     "true",
@@ -358,6 +361,10 @@ bot_last_messages: dict[int, tuple[str, datetime.datetime]] = {}
 last_bot_reply_time: datetime.datetime | None = None
 bot_message_times: dict[int, deque[datetime.datetime]] = {}
 our_message_times: deque[datetime.datetime] = deque()
+
+# Track handshake completions and per-bot cooldowns
+bot_handshakes: dict[int, datetime.datetime] = {}
+bot_reply_times: dict[int, datetime.datetime] = {}
 
 
 async def init_db(db_path: str | None = None) -> None:
@@ -752,6 +759,44 @@ async def last_human_message_age(channel: discord.TextChannel, limit: int = 50):
     return None
 
 
+async def handle_bot_handshake(message: discord.Message) -> bool:
+    """Handle bot handshakes and cooldowns.
+
+    Returns ``True`` when normal processing should continue. When a handshake
+    message is received the bot echoes ``HANDSHAKE_MESSAGE`` and returns
+    ``False`` to stop further processing. Messages from bots that have not
+    completed the handshake or are still in their cooldown period are ignored.
+    """
+
+    if not BOT_CHAT_ENABLED or not message.author.bot:
+        return True
+
+    global last_bot_reply_time
+    now = discord.utils.utcnow()
+    content = message.content.strip()
+
+    if content == HANDSHAKE_MESSAGE:
+        ts = bot_handshakes.get(message.author.id)
+        if ts is None or (now - ts).total_seconds() > BOT_COOLDOWN_SECONDS:
+            bot_handshakes[message.author.id] = now
+            async with message.channel.typing():
+                await asyncio.sleep(random.uniform(1, 3))
+                await message.channel.send(HANDSHAKE_MESSAGE)
+            bot_reply_times[message.author.id] = now
+            last_bot_reply_time = now
+        return False
+
+    if message.author.id not in bot_handshakes:
+        return False
+
+    last = bot_reply_times.get(message.author.id)
+    if last and (now - last).total_seconds() < BOT_COOLDOWN_SECONDS:
+        return False
+
+    bot_reply_times[message.author.id] = now
+    return True
+
+
 async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
     """Monitor a channel and occasionally speak during idle periods."""
     await bot.wait_until_ready()
@@ -871,6 +916,9 @@ class SocialGraphBot(discord.Client):
             return
 
         if any(getattr(m, "bot", False) for m in message.mentions) and self.user not in message.mentions:
+            return
+
+        if not await handle_bot_handshake(message):
             return
 
         now = discord.utils.utcnow()
