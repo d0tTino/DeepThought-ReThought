@@ -20,6 +20,7 @@ class PersonaManager:
         self._friendly = friendly
         self._playful = playful
         self._descriptions = descriptions or {}
+        self._personality: dict[str, dict[str, float]] = {}
 
         # Initialize the database once. If an event loop is running we
         # schedule the task and await it on first use. Otherwise we
@@ -35,14 +36,26 @@ class PersonaManager:
             asyncio.run(self._db.init_db())
             self._init_task = None
 
+    def update_personality(self, user_id: int, traits: dict[str, float]) -> None:
+        """Update stored personality ``traits`` for ``user_id``.
+
+        The provided ``traits`` mapping is merged with any existing traits for
+        the user, overwriting values for matching keys.
+        """
+
+        uid = str(user_id)
+        current = self._personality.setdefault(uid, {})
+        current.update(traits)
+
     async def get_persona(self, user_id: int) -> str:
         if self._init_task is not None:
             await self._init_task
             self._init_task = None
         score = await self._db.get_mutual_affinity(user_id)
-        if score >= self._friendly:
+        traits = self._personality.get(str(user_id), {})
+        if score + traits.get("friendly", 0) >= self._friendly:
             return "friendly"
-        if score >= self._playful:
+        if score + traits.get("playful", 0) >= self._playful:
             return "playful"
         return "snarky"
 
