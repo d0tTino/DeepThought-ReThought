@@ -104,6 +104,14 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS relationship_types (
+            user_a TEXT,
+            user_b TEXT,
+            status TEXT,
+            PRIMARY KEY(user_a, user_b)
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS interaction_decay (
             id INTEGER PRIMARY KEY CHECK(id=1),
             weight_decay REAL DEFAULT 1.0,
@@ -924,6 +932,31 @@ class DBManager:
             elapsed = (datetime.utcnow() - last_dt).total_seconds()
             weight = float(weight) * (w_decay**elapsed)
         return float(weight)
+
+    async def set_relationship_type(self, user_a: int, user_b: int, status: str) -> None:
+        await self.connect()
+        assert self._db
+        a, b = sorted((str(user_a), str(user_b)))
+        await self._db.execute(
+            """
+            INSERT INTO relationship_types (user_a, user_b, status)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_a, user_b) DO UPDATE SET status=excluded.status
+            """,
+            (a, b, status),
+        )
+        await self._db.commit()
+
+    async def get_relationship_type(self, user_a: int, user_b: int) -> str | None:
+        await self.connect()
+        assert self._db
+        a, b = sorted((str(user_a), str(user_b)))
+        async with self._db.execute(
+            "SELECT status FROM relationship_types WHERE user_a=? AND user_b=?",
+            (a, b),
+        ) as cur:
+            row = await cur.fetchone()
+        return row[0] if row else None
 
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
         if not isinstance(theme, str) or not theme.strip():
