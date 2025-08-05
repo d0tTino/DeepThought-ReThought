@@ -71,14 +71,10 @@ torch_mod.no_grad = lambda: types.SimpleNamespace(
 torch_mod.softmax = lambda t, dim=-1: t
 sys.modules.setdefault("torch", torch_mod)
 tb_mod = types.ModuleType("textblob")
-tb_mod.TextBlob = lambda text: types.SimpleNamespace(
-    sentiment=types.SimpleNamespace(polarity=0.0)
-)
+tb_mod.TextBlob = lambda text: types.SimpleNamespace(sentiment=types.SimpleNamespace(polarity=0.0))
 sys.modules.setdefault("textblob", tb_mod)
 tf_mod = types.ModuleType("transformers")
-tf_mod.AutoTokenizer = type(
-    "AutoTokenizer", (), {"from_pretrained": classmethod(lambda cls, p: cls())}
-)
+tf_mod.AutoTokenizer = type("AutoTokenizer", (), {"from_pretrained": classmethod(lambda cls, p: cls())})
 tf_mod.AutoModelForSequenceClassification = type(
     "AutoModelForSequenceClassification",
     (),
@@ -119,6 +115,8 @@ from deepthought.eda.events import (
     PlanGeneratedPayload,
     PlanRequestedPayload,
 )
+from deepthought.goal_scheduler import GoalScheduler
+from deepthought.services.db_manager import DBManager
 from deepthought.services.planning_service import PlanningService
 
 
@@ -159,9 +157,7 @@ async def test_memory_triggers_plan(tmp_path):
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
 
-    payload = MemoryRetrievedPayload(
-        retrieved_knowledge={"facts": ["hi"]}, input_id="x"
-    )
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["hi"]}, input_id="x")
     msg = DummyMsg(payload.to_json())
     await service._handle_memory(msg)
 
@@ -232,9 +228,7 @@ async def test_planning_service_event_flow(monkeypatch, tmp_path):
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
 
-    mem_payload = MemoryRetrievedPayload(
-        retrieved_knowledge={"facts": ["f"]}, input_id="1"
-    )
+    mem_payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f"]}, input_id="1")
     await service._handle_memory(DummyMsg(mem_payload.to_json()))
     assert service._publisher.published
     subj, plan_req = service._publisher.published[-1]
@@ -247,3 +241,27 @@ async def test_planning_service_event_flow(monkeypatch, tmp_path):
     await service._handle_plan(DummyMsg(plan_gen.to_json()))
     subjects = [s for s, _ in service._publisher.published[-2:]]
     assert subjects == [EventSubjects.CHAT_RAW, EventSubjects.CHAT_RAW]
+
+
+@pytest.mark.asyncio
+async def test_expand_goal_persists(tmp_path):
+    db_file = tmp_path / "db.sqlite"
+    manager = DBManager(str(db_file))
+    await manager.init_db()
+    scheduler = GoalScheduler(manager)
+    service = PlanningService(None, None)
+
+    goal = "Reflect: do this; do that"
+    parts = await service.expand_goal(goal, scheduler, priority=2)
+    assert parts == ["do this", "do that"]
+
+    await manager.close()
+    manager = DBManager(str(db_file))
+    await manager.init_db()
+    scheduler2 = GoalScheduler(manager)
+    loaded = await scheduler2.load_pending_intentions()
+    assert loaded == 2
+    first = scheduler2.next_intention()
+    second = scheduler2.next_intention()
+    assert {first.goal, second.goal} == {"do this", "do that"}
+    assert first.priority == 2 and second.priority == 2

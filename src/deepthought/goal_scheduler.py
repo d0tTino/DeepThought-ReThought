@@ -17,6 +17,7 @@ class ScheduledGoal:
     priority: int
     goal: str = field(compare=False)
     intention_id: Optional[int] = field(default=None, compare=False)
+    sub_goals: List[str] = field(default_factory=list, compare=False)
 
 
 from .services.db_manager import DBManager
@@ -49,17 +50,42 @@ class GoalScheduler:
             await self._load_task
             self._load_task = None
 
-    def add_goal(self, goal: str, priority: int) -> None:
+    def add_goal(self, goal: str, priority: int, sub_goals: Optional[List[str]] = None) -> None:
         """Schedule ``goal`` with ``priority`` (higher runs first)."""
-        heapq.heappush(self._heap, ScheduledGoal(-priority, goal))
+        heapq.heappush(
+            self._heap,
+            ScheduledGoal(-priority, goal, None, list(sub_goals or [])),
+        )
 
-    async def queue_intention(self, goal: str, priority: int) -> int | None:
+    async def queue_intention(self, goal: str, priority: int, sub_goals: Optional[List[str]] = None) -> int | None:
         """Schedule and persist an intention."""
         intention_id: int | None = None
         if self._db_manager is not None:
             intention_id = await self._db_manager.add_intention(goal, priority)
-        heapq.heappush(self._heap, ScheduledGoal(-priority, goal, intention_id))
+        heapq.heappush(
+            self._heap,
+            ScheduledGoal(-priority, goal, intention_id, list(sub_goals or [])),
+        )
         return intention_id
+
+    async def queue_sub_goals(self, sub_goals: List[str], priority: int) -> List[int | None]:
+        """Persist and enqueue each ``sub_goals`` with ``priority``."""
+        ids: List[int | None] = []
+        for sub in sub_goals:
+            ids.append(await self.queue_intention(sub, priority))
+        return ids
+
+    async def expand_goal(self, goal: str, priority: int | None = None) -> List[int | None]:
+        """Expand a queued goal into its sub-goals."""
+        for idx, scheduled in enumerate(self._heap):
+            if scheduled.goal == goal:
+                self._heap.pop(idx)
+                heapq.heapify(self._heap)
+                if self._db_manager is not None and scheduled.intention_id is not None:
+                    await self._db_manager.mark_intention_done(scheduled.intention_id)
+                prio = priority if priority is not None else -scheduled.priority
+                return await self.queue_sub_goals(scheduled.sub_goals, prio)
+        return []
 
     async def load_pending_intentions(self) -> int:
         """Load pending intentions from the database into the queue."""
