@@ -11,6 +11,51 @@ from typing import List, Tuple
 
 import aiohttp
 
+from deepthought.bot import deception as bot_deception
+from deepthought.bot import interaction as bot_interaction
+from deepthought.bot import memory as bot_memory
+from deepthought.bot.memory import (
+    add_summary_goal,
+    adjust_affinity,
+    assign_themes,
+    get_affinity,
+    get_friendliness,
+    get_hostility,
+    get_interaction_weight,
+    get_last_interaction,
+    get_pair_mutual_affinity,
+    get_recent_topics,
+    get_sentiment_trend,
+    get_theme,
+    get_theories,
+    is_do_not_mock,
+    list_pending_summary_goals,
+    mark_summary_goal_done,
+    queue_deep_reflection,
+    recall_user,
+)
+from deepthought.bot.memory import set_db_manager as memory_set_db_manager
+from deepthought.bot.memory import (
+    set_do_not_mock,
+    set_theme,
+    store_memory,
+    store_theory,
+    update_sentiment_trend,
+)
+
+# Re-export bot helper functions and configuration values for convenience
+maybe_deceptive_reply = bot_deception.maybe_deceptive_reply
+store_lie = bot_deception.store_lie
+get_last_lie = bot_deception.get_last_lie
+deception_set_db_manager = bot_deception.set_db_manager
+
+log_interaction = bot_interaction.log_interaction
+interaction_set_db_manager = bot_interaction.set_db_manager
+
+ALLOW_DECEPTION = bot_deception.ALLOW_DECEPTION
+DECEPTION_COVER_MESSAGE = bot_deception.DECEPTION_COVER_MESSAGE
+DECEPTION_REPLY_MODE = bot_deception.DECEPTION_REPLY_MODE
+DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.perception.emotion_detection import detect_emotions
 from deepthought.perception.social_perception import analyze as analyze_social
@@ -217,31 +262,6 @@ BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
 # Literal handshake message exchanged between bots before chatting.
 HANDSHAKE_MESSAGE = "BOT_HANDSHAKE"
 
-# When ``ALLOW_DECEPTION`` is true, the bot may hide its real intentions.
-ALLOW_DECEPTION = os.getenv("ALLOW_DECEPTION", "false").lower() in {
-    "true",
-    "1",
-    "yes",
-}
-
-# Preset response used when deflecting questions about internal plans
-DECEPTION_COVER_MESSAGE = os.getenv(
-    "DECEPTION_COVER_MESSAGE",
-    "I'm just here to chat and keep the conversation going!",
-)
-
-# Mode for deceptive replies. "dynamic" chooses a random cover message on first
-# question and stores it for reuse. Defaults to "static" which always uses
-# ``DECEPTION_COVER_MESSAGE``.
-DECEPTION_REPLY_MODE = os.getenv("DECEPTION_REPLY_MODE", "static")
-
-# Predefined dynamic cover replies used when ``DECEPTION_REPLY_MODE`` is
-# ``dynamic``. The selection is deterministic in tests by patching
-# ``random.choice``.
-DYNAMIC_COVER_REPLIES = [
-    "Oh, that's not something I can share right now.",
-    "I'm focusing on the present conversation, not future plans.",
-]
 
 # Candidate prompts used when the bot speaks after a period of silence
 idle_response_candidates = [
@@ -261,7 +281,6 @@ PERSONA_REPLIES = {
 # Idle text generation helpers
 # -----------------------------
 _idle_text_generator = None
-_lie_text_generator = None
 
 
 def _get_idle_generator():
@@ -273,17 +292,6 @@ def _get_idle_generator():
         model_name = os.getenv("IDLE_MODEL_NAME", "distilgpt2")
         _idle_text_generator = pipeline("text-generation", model=model_name)
     return _idle_text_generator
-
-
-def _get_lie_generator():
-    """Return a cached HuggingFace text-generation pipeline for lies."""
-    global _lie_text_generator
-    if _lie_text_generator is None:
-        from transformers import pipeline
-
-        model_name = os.getenv("LIE_MODEL_NAME", "distilgpt2")
-        _lie_text_generator = pipeline("text-generation", model=model_name)
-    return _lie_text_generator
 
 
 async def generate_idle_response(prompt: str | None = None) -> str | None:
@@ -320,40 +328,16 @@ BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
 BULLYING_RESPONSE = "I'm not here to be disrespected. Let's keep things civil."
 
 
-async def maybe_deceptive_reply(user_id: int, text: str) -> str | None:
-    """Return a cover message if ``text`` probes for internal plans.
-
-    The selected response is stored so repeated questions receive the same
-    answer.
-    """
-
-    if not ALLOW_DECEPTION:
-        return None
-
-    lower = text.lower()
-    if "your" in lower and any(k in lower for k in ["plan", "plans", "goal", "goals", "intention", "intentions"]):
-        reply = await db_manager.get_last_lie(user_id, text)
-        if reply is None:
-            try:
-                generator = _get_lie_generator()
-                outputs = await asyncio.to_thread(
-                    generator,
-                    text,
-                    max_new_tokens=20,
-                    num_return_sequences=1,
-                )
-                reply = outputs[0]["generated_text"].strip()
-            except Exception:  # pragma: no cover - optional dependency or runtime error
-                logger.exception("Dynamic deception failed")
-                reply = DECEPTION_COVER_MESSAGE
-            await db_manager.store_lie(user_id, text, reply)
-        return reply
-
-    return None
-
-
 DEFAULT_DB_PATH = DB_PATH
 db_manager = DBManager()
+memory_set_db_manager(lambda: db_manager)
+deception_set_db_manager(lambda: db_manager)
+interaction_set_db_manager(lambda: db_manager)
+# Refresh exported configuration after registering DB manager
+ALLOW_DECEPTION = bot_deception.ALLOW_DECEPTION
+DECEPTION_COVER_MESSAGE = bot_deception.DECEPTION_COVER_MESSAGE
+DECEPTION_REPLY_MODE = bot_deception.DECEPTION_REPLY_MODE
+DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
 persona_manager = PersonaManager(db_manager)
 trust_service = TrustService(db_manager)
 reply_limiter = UserRateLimiter(1, USER_REPLY_RATE_SECONDS)
@@ -386,27 +370,6 @@ async def init_db(db_path: str | None = None) -> None:
     persona_manager = PersonaManager(db_manager)
     trust_service = TrustService(db_manager)
     CURRENT_DB_PATH = db_manager.db_path
-
-
-async def log_interaction(
-    user_id: int,
-    target_id: int | None = None,
-    sentiment_score: float | None = None,
-) -> None:
-    await db_manager.log_interaction(user_id, target_id, sentiment_score=sentiment_score)
-
-
-async def recall_user(user_id: int):
-    return await db_manager.recall_user(user_id)
-
-
-async def store_memory(
-    user_id: int,
-    memory: str,
-    topic: str = "",
-    sentiment_score: float | None = None,
-) -> None:
-    await db_manager.store_memory(user_id, memory, topic=topic, sentiment_score=sentiment_score)
 
 
 async def send_to_prism(data: dict) -> None:
@@ -513,117 +476,6 @@ async def publish_plan_requested(goal: str, input_id: str | None = None) -> None
         )
     except Exception as exc:  # pragma: no cover - publish error
         logger.warning("Failed to publish PLAN_REQUESTED: %s", exc)
-
-
-async def store_theory(subject_id: int, theory: str, confidence: float) -> None:
-    return await db_manager.store_theory(subject_id, theory, confidence)
-
-
-async def get_theories(subject_id: int):
-    return await db_manager.get_theories(subject_id)
-
-
-async def update_sentiment_trend(
-    user_id: int,
-    channel_id: int,
-    sentiment_score: float,
-) -> None:
-    await db_manager.update_sentiment_trend(user_id, channel_id, sentiment_score)
-
-
-async def get_sentiment_trend(user_id: int, channel_id: int):
-    return await db_manager.get_sentiment_trend(user_id, channel_id)
-
-
-async def get_recent_topics(limit: int = 3) -> list[str]:
-    return await db_manager.get_recent_topics(limit)
-
-
-async def queue_deep_reflection(user_id: int, context: dict, prompt: str) -> int:
-    return await db_manager.queue_deep_reflection(user_id, context, prompt)
-
-
-async def add_summary_goal(user_id: int, context: dict, prompt: str) -> int:
-    """Add a generated summary and goal entry."""
-    return await db_manager.add_summary_goal(user_id, context, prompt)
-
-
-async def list_pending_summary_goals():
-    return await db_manager.list_pending_summary_goals()
-
-
-async def mark_summary_goal_done(task_id: int) -> None:
-    await db_manager.mark_summary_goal_done(task_id)
-
-
-async def set_do_not_mock(user_id: int, flag: bool = True) -> None:
-    await db_manager.set_do_not_mock(user_id, flag)
-
-
-async def is_do_not_mock(user_id: int) -> bool:
-    return await db_manager.is_do_not_mock(user_id)
-
-
-async def store_lie(user_id: int, question: str, reply: str) -> None:
-    await db_manager.store_lie(user_id, question, reply)
-
-
-async def get_last_lie(user_id: int, question: str) -> str | None:
-    return await db_manager.get_last_lie(user_id, question)
-
-
-async def adjust_affinity(user_id: int, delta: float) -> None:
-    """Adjust ``user_id`` affinity using ``delta`` or a sentiment score."""
-    await db_manager.adjust_affinity(user_id, delta)
-
-
-async def get_affinity(user_id: int) -> int:
-    return await db_manager.get_affinity(user_id)
-
-
-async def get_friendliness(user_id: int, target_id: int) -> float:
-    return await db_manager.get_friendliness(user_id, target_id)
-
-
-async def get_hostility(user_id: int, target_id: int) -> float:
-    return await db_manager.get_hostility(user_id, target_id)
-
-
-async def get_interaction_weight(user_id: int, target_id: int) -> float:
-    return await db_manager.get_interaction_weight(user_id, target_id)
-
-
-async def get_last_interaction(user_id: int, target_id: int):
-    return await db_manager.get_last_interaction(user_id, target_id)
-
-
-async def get_pair_mutual_affinity(user_a: int, user_b: int) -> float:
-    return await db_manager.get_pair_mutual_affinity(user_a, user_b)
-
-
-async def set_theme(user_id: int, channel_id: int, theme: str) -> None:
-    await db_manager.set_theme(user_id, channel_id, theme)
-
-
-async def get_theme(user_id: int, channel_id: int):
-    """Return the last assigned theme for a user/channel pair."""
-    return await db_manager.get_theme(user_id, channel_id)
-
-
-async def assign_themes() -> None:
-    """Update the theme for each user/channel based on sentiment trends."""
-    rows = await db_manager.get_all_sentiment_trends()
-    for user_id, channel_id, ssum, count in rows:
-        if not count:
-            continue
-        avg = ssum / count
-        if avg > 0.2:
-            theme = "positive"
-        elif avg < -0.2:
-            theme = "negative"
-        else:
-            theme = "neutral"
-        await db_manager.set_theme(user_id, channel_id, theme)
 
 
 def generate_reflection(prompt: str) -> str:
@@ -975,9 +827,9 @@ class SocialGraphBot(discord.Client):
 
         lie_reply = await maybe_deceptive_reply(message.author.id, message.content)
         if lie_reply:
-            if DECEPTION_REPLY_MODE == "dynamic":
+            if DECEPTION_REPLY_MODE == "dynamic" and lie_reply != DECEPTION_COVER_MESSAGE:
                 cover_reply = random.choice(DYNAMIC_COVER_REPLIES)
-                await db_manager.store_lie(message.author.id, message.content, cover_reply)
+                await store_lie(message.author.id, message.content, cover_reply)
             else:
                 cover_reply = lie_reply
             async with message.channel.typing():
@@ -1046,7 +898,8 @@ class SocialGraphBot(discord.Client):
             while times and (now - times[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
                 times.popleft()
             if (
-                self.user not in message.mentions
+                bot_id != message.author.id
+                and self.user not in message.mentions
                 and (user_id is None or bot_id != user_id)
                 and times
                 and (now - times[-1]).total_seconds() < BOT_MESSAGE_INTERVAL_SECONDS
