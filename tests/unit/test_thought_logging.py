@@ -1,7 +1,6 @@
 import asyncio
-import logging
-
 import importlib
+import logging
 import os
 import sys
 import types
@@ -77,3 +76,78 @@ async def test_send_thought_missing_channel(monkeypatch, caplog):
     monkeypatch.setattr(sg, "THOUGHT_CHANNEL_ID", 999)
     bot = DummyBot(channel=None)
     await sg._send_thought(bot, "hi")
+
+
+@pytest.mark.asyncio
+async def test_process_thought_commands_goal(monkeypatch):
+    monkeypatch.setattr(sg, "THOUGHT_CHANNEL_ID", 42)
+
+    queued: list[tuple[str, int]] = []
+
+    class Bot(DummyBot):
+        def __init__(self):
+            super().__init__()
+            self.goal_scheduler = types.SimpleNamespace(
+                queue_intention=lambda goal, priority: queued.append((goal, priority))
+            )
+            self.user = types.SimpleNamespace(id=1)
+            self._closed = False
+
+        async def wait_until_ready(self):
+            return None
+
+        def is_closed(self):
+            return self._closed
+
+        async def wait_for(self, event, check):
+            msg = types.SimpleNamespace(
+                content="/goal test",
+                channel=types.SimpleNamespace(id=42),
+                author=types.SimpleNamespace(bot=False, id=2),
+            )
+            assert check(msg)
+            self._closed = True
+            return msg
+
+    bot = Bot()
+    await sg.process_thought_commands(bot)
+    assert queued == [("test", 1)]
+
+
+@pytest.mark.asyncio
+async def test_process_thought_commands_memory(monkeypatch):
+    monkeypatch.setattr(sg, "THOUGHT_CHANNEL_ID", 99)
+
+    stored: list[tuple[int, str]] = []
+
+    async def fake_store(uid, mem, *_, **__):
+        stored.append((uid, mem))
+
+    monkeypatch.setattr(sg, "store_memory", fake_store)
+
+    class Bot(DummyBot):
+        def __init__(self):
+            super().__init__()
+            self.goal_scheduler = types.SimpleNamespace(queue_intention=lambda *a, **k: None)
+            self.user = types.SimpleNamespace(id=1)
+            self._closed = False
+
+        async def wait_until_ready(self):
+            return None
+
+        def is_closed(self):
+            return self._closed
+
+        async def wait_for(self, event, check):
+            msg = types.SimpleNamespace(
+                content="/memory remember this",
+                channel=types.SimpleNamespace(id=99),
+                author=types.SimpleNamespace(bot=False, id=5),
+            )
+            assert check(msg)
+            self._closed = True
+            return msg
+
+    bot = Bot()
+    await sg.process_thought_commands(bot)
+    assert stored == [(5, "remember this")]
