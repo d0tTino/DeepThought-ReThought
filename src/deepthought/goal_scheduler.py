@@ -84,14 +84,20 @@ class GoalScheduler:
         if self._db_manager is not None and scheduled.intention_id is not None:
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(
-                    self._db_manager.mark_intention_done(scheduled.intention_id)
-                )
+                loop.create_task(self._db_manager.mark_intention_done(scheduled.intention_id))
             except RuntimeError:
-                asyncio.run(
-                    self._db_manager.mark_intention_done(scheduled.intention_id)
-                )
+                asyncio.run(self._db_manager.mark_intention_done(scheduled.intention_id))
         return BDIIntentionPayload(goal=scheduled.goal, priority=-scheduled.priority)
+
+    async def emit_next_intention(self, publisher: Publisher) -> bool:
+        """Publish the next intention using ``publisher``.
+
+        Returns ``True`` if an intention was published."""
+        intention = self.next_intention()
+        if intention is None:
+            return False
+        await publisher.publish(EventSubjects.BDI_INTENTION, intention, use_jetstream=True)
+        return True
 
     async def publish_intentions(self, publisher: Publisher) -> int:
         """Publish all queued goals as BDI intentions.
@@ -99,13 +105,7 @@ class GoalScheduler:
         Returns the number of published intentions.
         """
         count = 0
-        while self._heap:
-            intention = self.next_intention()
-            if intention is None:
-                break
-            await publisher.publish(
-                EventSubjects.BDI_INTENTION, intention, use_jetstream=True
-            )
+        while await self.emit_next_intention(publisher):
             count += 1
         return count
 

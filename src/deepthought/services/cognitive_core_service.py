@@ -12,7 +12,7 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 from ..config import Settings, get_settings
-from ..eda.events import EventSubjects, MemoryRetrievedPayload
+from ..eda.events import BDIIntentionPayload, EventSubjects, MemoryRetrievedPayload
 from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
@@ -59,9 +59,7 @@ class CognitiveCoreService(BaseService):
                     try:
                         search = OfflineSearch.create_index(db_path, [])
                     except ValueError:
-                        logger.warning(
-                            "No documents available for search index; disabling offline search"
-                        )
+                        logger.warning("No documents available for search index; disabling offline search")
                         search = None
                 else:
                     search = OfflineSearch(db_path)
@@ -136,13 +134,9 @@ class CognitiveCoreService(BaseService):
             try:
                 perception = analyze_social(user_input)
             except Exception as e:  # pragma: no cover - defensive
-                logger.error(
-                    "Failed to analyze social perception: %s", e, exc_info=True
-                )
+                logger.error("Failed to analyze social perception: %s", e, exc_info=True)
                 perception = {"flirtation": 0.0, "avoidance": 0.0, "manipulation": 0.0}
-            await self._db.store_memory(
-                "user", json.dumps(perception), topic="social_perception"
-            )
+            await self._db.store_memory("user", json.dumps(perception), topic="social_perception")
             delta = perception.get("flirtation", 0.0) - (
                 perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
             )
@@ -201,9 +195,27 @@ class CognitiveCoreService(BaseService):
         finally:
             duration = time.perf_counter() - start
             INPUTS_TOTAL.labels(service="cognitive_core_service").inc()
-            INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(
-                duration
-            )
+            INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(duration)
+
+    async def _handle_intention(self, msg: Msg) -> None:
+        """React to BDI_INTENTION events by logging the goal."""
+        try:
+            payload = BDIIntentionPayload.from_json(msg.data.decode())
+            logger.info("CognitiveCoreService received intention goal: %s", payload.goal)
+            if hasattr(msg, "ack") and callable(msg.ack):
+                await msg.ack()
+        except Exception:
+            logger.error("Failed to handle BDI_INTENTION", exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                except Exception:
+                    logger.error("Failed to NAK message", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message after error", exc_info=True)
 
     async def start(self, durable_name: str = "cognitive_core_listener") -> bool:
         self._subscriptions.clear()
@@ -213,11 +225,15 @@ class CognitiveCoreService(BaseService):
             use_jetstream=True,
             durable=durable_name,
         )
+        self.add_subscription(
+            subject=EventSubjects.BDI_INTENTION,
+            handler=self._handle_intention,
+            use_jetstream=True,
+            durable=f"{durable_name}_bdi",
+        )
         started = await super().start()
         if started:
-            logger.info(
-                "CognitiveCoreService subscribed to %s", EventSubjects.INPUT_RECEIVED
-            )
+            logger.info("CognitiveCoreService subscribed to %s", EventSubjects.INPUT_RECEIVED)
         return started
 
     async def stop(self) -> None:
