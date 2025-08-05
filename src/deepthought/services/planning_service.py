@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -15,6 +16,7 @@ from ..eda.events import (
     PlanGeneratedPayload,
     PlanRequestedPayload,
 )
+from ..goal_scheduler import GoalScheduler
 from ..planning import L2PTranslator, plan
 from .base import BaseService
 
@@ -54,15 +56,11 @@ class PlanningService(BaseService):
             ds = data.get("desires", [])
             if isinstance(ds, list):
                 self._desires = [str(d) for d in ds]
-            logger.info(
-                "Loaded %d desires from %s", len(self._desires), self._desires_file
-            )
+            logger.info("Loaded %d desires from %s", len(self._desires), self._desires_file)
         except FileNotFoundError:
             logger.warning("Desires file %s not found", self._desires_file)
         except Exception:  # pragma: no cover - defensive
-            logger.error(
-                "Failed to load desires file %s", self._desires_file, exc_info=True
-            )
+            logger.error("Failed to load desires file %s", self._desires_file, exc_info=True)
 
     async def _handle_memory(self, msg: Msg) -> None:
         try:
@@ -124,6 +122,31 @@ class PlanningService(BaseService):
                 use_jetstream=True,
                 timeout=10.0,
             )
+
+    async def expand_goal(self, goal: str, scheduler: GoalScheduler, priority: int = 1) -> List[str]:
+        """Expand a reflection or directive ``goal`` into sub-goals.
+
+        The ``goal`` text is split on newlines or semi-colons after removing any
+        leading "reflect" or "directive" prefixes. Each resulting sub-goal is
+        queued via ``scheduler`` and persisted using the existing intentions
+        table.
+        """
+        if not goal:
+            return []
+
+        text = goal
+        lower = goal.lower()
+        if lower.startswith("reflect") or lower.startswith("directive"):
+            parts = goal.split(":", 1)
+            if len(parts) == 2:
+                text = parts[1]
+
+        pieces = [p.strip(" -*") for p in re.split(r"[\n;]", text) if p.strip()]
+        if not pieces:
+            return []
+
+        await scheduler.queue_sub_goals(pieces, priority)
+        return pieces
 
     async def start(self, durable_name: str = "planning_service") -> bool:
         self._subscriptions.clear()
