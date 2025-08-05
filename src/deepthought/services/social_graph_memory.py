@@ -11,6 +11,10 @@ from .db_manager import DBManager
 
 logger = logging.getLogger(__name__)
 
+FRIEND_THRESHOLD = 0.5
+RIVAL_THRESHOLD = -0.5
+MIN_INTERACTIONS = 3
+
 
 class SocialGraphMemory:
     """Record messages and sentiment using a :class:`DBManager` backend."""
@@ -26,6 +30,8 @@ class SocialGraphMemory:
             logger.exception("Sentiment analysis failed")
             score = 0.0
         await self._db.log_interaction(source, target, sentiment_score=score)
+        if target is not None:
+            await self._update_relationship_type(source, target)
 
     async def get_affinity(self, user_id: str) -> int:
         return await self._db.get_affinity(user_id)
@@ -72,6 +78,23 @@ class SocialGraphMemory:
             "b_to_a": stats_b,
             "mutual_affinity": int(mutual),
         }
+
+    async def _update_relationship_type(self, user_a: str, user_b: str) -> None:
+        ab = await self._db.get_relationship(user_a, user_b) or (0, 0.0, 0.0, None)
+        ba = await self._db.get_relationship(user_b, user_a) or (0, 0.0, 0.0, None)
+        total_count = int(ab[0] or 0) + int(ba[0] or 0)
+        total_sentiment = float(ab[1] or 0.0) + float(ba[1] or 0.0)
+        status = "neutral"
+        if total_count >= MIN_INTERACTIONS and total_count:
+            avg = total_sentiment / total_count
+            if avg >= FRIEND_THRESHOLD:
+                status = "friend"
+            elif avg <= RIVAL_THRESHOLD:
+                status = "rival"
+        await self._db.set_relationship_type(user_a, user_b, status)
+
+    async def get_relationship_status(self, user_a: str, user_b: str) -> str | None:
+        return await self._db.get_relationship_type(user_a, user_b)
 
     async def close(self) -> None:
         await self._db.close()

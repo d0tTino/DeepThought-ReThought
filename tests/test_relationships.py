@@ -75,3 +75,29 @@ async def test_relationship_stats(tmp_path):
     assert stats["a_to_b"]["interaction_weight"] == pytest.approx(1.0)
     assert stats["b_to_a"]["interaction_weight"] == pytest.approx(1.0)
     assert stats["a_to_b"]["last_interaction"] is not None
+
+
+@pytest.mark.asyncio
+async def test_relationship_type_computation(tmp_path):
+    db_path = tmp_path / "sg.db"
+    mem = SocialGraphMemory(DBManager(str(db_path)))
+
+    for _ in range(3):
+        await mem.record_message("alice", "I love you", "bob")
+
+    status = await mem.get_relationship_status("alice", "bob")
+    assert status == "friend"
+
+    for _ in range(3):
+        await mem.record_message("eve", "I hate you", "mallory")
+
+    status = await mem.get_relationship_status("eve", "mallory")
+    assert status == "rival"
+
+    async with aiosqlite.connect(str(db_path)) as db:
+        async with db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='relationship_types'"
+        ) as cur:
+            assert await cur.fetchone() is not None
+
+    await mem.close()
