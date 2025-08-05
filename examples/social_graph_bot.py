@@ -713,6 +713,33 @@ async def process_intentions(bot: "SocialGraphBot") -> None:
             break
 
 
+async def process_thought_commands(bot: "SocialGraphBot") -> None:
+    """Listen for user commands in the thought channel without responding."""
+    if THOUGHT_CHANNEL_ID is None:
+        return
+    await bot.wait_until_ready()
+    check = (
+        lambda m: m.channel.id == THOUGHT_CHANNEL_ID and not getattr(m.author, "bot", False) and m.author != bot.user
+    )
+    while not bot.is_closed():
+        try:
+            message = await bot.wait_for("message", check=check)
+            content = message.content.strip()
+            if content.startswith("/goal"):
+                goal = content.removeprefix("/goal").strip()
+                if goal:
+                    await bot.goal_scheduler.queue_intention(goal, priority=1)
+            elif content.startswith("/memory"):
+                mem = content.removeprefix("/memory").strip()
+                if mem:
+                    await store_memory(message.author.id, mem)
+        except asyncio.CancelledError:
+            logger.info("process_thought_commands cancelled")
+            break
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Error processing thought command")
+
+
 def evaluate_triggers(message: discord.Message) -> List[Tuple[str, float]]:
     """Return a list of (theory, confidence) pairs inferred from a message."""
     theories: List[Tuple[str, float]] = []
@@ -905,6 +932,8 @@ class SocialGraphBot(discord.Client):
         self._bg_tasks.append(self.loop.create_task(process_deep_reflections(self)))
         self._bg_tasks.append(self.loop.create_task(process_goals(self)))
         self._bg_tasks.append(self.loop.create_task(process_intentions(self)))
+        if THOUGHT_CHANNEL_ID is not None:
+            self._bg_tasks.append(self.loop.create_task(process_thought_commands(self)))
 
     async def on_ready(self) -> None:
         """Log basic information once the bot connects."""
@@ -913,6 +942,9 @@ class SocialGraphBot(discord.Client):
     async def on_message(self, message: discord.Message) -> None:
         global last_bot_reply_time
         if message.author == self.user:
+            return
+
+        if THOUGHT_CHANNEL_ID is not None and message.channel.id == THOUGHT_CHANNEL_ID:
             return
 
         if any(getattr(m, "bot", False) for m in message.mentions) and self.user not in message.mentions:
