@@ -519,6 +519,45 @@ class DBManager:
             row = await cur.fetchone()
             return row[0] if row else None
 
+    async def list_lies(self, limit: int = 20) -> list[tuple[int, str, str, str]]:
+        """Return recent entries from the ``lies`` table.
+
+        Each result is a tuple of ``(rowid, user_id, question, reply)`` ordered by
+        ``rowid`` descending. ``limit`` constrains the number of rows returned.
+        """
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT rowid, user_id, question, reply FROM lies ORDER BY rowid DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            return await cur.fetchall()
+
+    async def delete_lie(self, rowid: int) -> bool:
+        """Delete a lie by its ``rowid``.
+
+        Returns ``True`` if a row was removed.
+        """
+        await self.connect()
+        assert self._db
+        cur = await self._db.execute("DELETE FROM lies WHERE rowid=?", (rowid,))
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def update_lie(self, rowid: int, reply: str) -> bool:
+        """Update the ``reply`` field of a lie specified by ``rowid``."""
+        if not reply.strip():
+            raise ValueError("reply must be a non-empty string")
+
+        await self.connect()
+        assert self._db
+        cur = await self._db.execute(
+            "UPDATE lies SET reply=? WHERE rowid=?",
+            (reply, rowid),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
     async def log_manipulation(self, user_id: int, category: str) -> None:
         """Record a manipulation ``category`` associated with ``user_id``."""
         if not isinstance(category, str) or not category.strip():
