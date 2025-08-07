@@ -45,6 +45,12 @@ class SocialGraphMemory:
     async def get_mutual_affinity(self, user_a: str, user_b: str) -> float:
         return await self._db.get_pair_mutual_affinity(user_a, user_b)
 
+    async def set_personality(self, user_id: str, traits) -> None:
+        await self._db.set_user_profile(user_id, traits)
+
+    async def get_personality(self, user_id: str):
+        return await self._db.get_user_profile(user_id)
+
     async def get_relationship_stats(self, user_a: str, user_b: str) -> dict:
         """Return a summary of interactions and sentiment between two users."""
         ab = await self._db.get_relationship(user_a, user_b)
@@ -98,4 +104,3 @@ class SocialGraphMemory:
 
     async def close(self) -> None:
         await self._db.close()
-

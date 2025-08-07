@@ -21,6 +21,7 @@ TABLES = [
     "sentiment_trends",
     "themes",
     "user_flags",
+    "user_profiles",
     "recent_topics",
     "emotions",
     "manipulations",
