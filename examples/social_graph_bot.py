@@ -277,6 +277,18 @@ PERSONA_REPLIES = {
     "snarky": ["Yeah, yeah, I'll think about it."],
 }
 
+# Mapping of dominant emotions to reply strategies.  Each entry maps an
+# emotion label returned by ``detect_emotions`` to either a persona in
+# ``PERSONA_REPLIES`` or the special value ``"minimal"`` indicating the bot
+# should respond with ``MINIMAL_REPLIES``.
+EMOTION_REPLY_MAP = {
+    "Happy": ("persona", "playful"),
+    "Surprise": ("persona", "playful"),
+    "Sad": ("persona", "friendly"),
+    "Angry": ("minimal", None),
+    "Fear": ("minimal", None),
+}
+
 # -----------------------------
 # Idle text generation helpers
 # -----------------------------
@@ -849,7 +861,16 @@ class SocialGraphBot(discord.Client):
             return
 
         sentiment_score = analyze_sentiment(message.content)
-        log_thought(self, f"Sentiment score: {sentiment_score:+.2f}")
+        emotions = detect_emotions(message.content)
+        dominant_emotion, dom_score = (None, 0.0)
+        if emotions:
+            dominant_emotion, dom_score = max(emotions.items(), key=lambda kv: kv[1])
+            if dom_score == 0:
+                dominant_emotion = None
+        log_thought(
+            self,
+            f"Sentiment score: {sentiment_score:+.2f}, Emotion: {dominant_emotion or 'Neutral'}",
+        )
         topic = "message" if abs(sentiment_score) > SENTIMENT_THRESHOLD else ""
         await store_memory(
             message.author.id,
@@ -859,7 +880,6 @@ class SocialGraphBot(discord.Client):
         )
         await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
 
-        emotions = detect_emotions(message.content)
         await db_manager.record_emotion(message.author.id, emotions)
 
         social_scores = analyze_social(message.content)
@@ -922,12 +942,20 @@ class SocialGraphBot(discord.Client):
             elif social_scores.get("avoidance", 0) > 0.5:
                 reply = AVOIDANCE_REPLY
             else:
-                trust = await trust_service.get_trust(message.author.id)
-                if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
-                    reply = random.choice(MINIMAL_REPLIES)
-                else:
-                    persona = await self.persona_manager.get_persona(message.author.id)
-                    reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
+                reply = None
+                if dominant_emotion:
+                    mode, persona_override = EMOTION_REPLY_MAP.get(dominant_emotion, (None, None))
+                    if mode == "minimal":
+                        reply = random.choice(MINIMAL_REPLIES)
+                    elif mode == "persona":
+                        reply = random.choice(PERSONA_REPLIES.get(persona_override, PERSONA_REPLIES["snarky"]))
+                if reply is None:
+                    trust = await trust_service.get_trust(message.author.id)
+                    if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
+                        reply = random.choice(MINIMAL_REPLIES)
+                    else:
+                        persona = await self.persona_manager.get_persona(message.author.id)
+                        reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
             now = discord.utils.utcnow()
             while our_message_times and (now - our_message_times[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
                 our_message_times.popleft()

@@ -12,10 +12,22 @@ except Exception:  # pragma: no cover - optional dependency may be missing
 __version__ = "0.1.0"
 
 # Re-export modules subpackage for convenient access
-from . import affinity  # noqa: F401
-from . import goal_scheduler  # noqa: F401
-from . import harness  # noqa: F401
-from . import learn  # noqa: F401
+try:
+    from . import affinity  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    pass
+try:
+    from . import goal_scheduler  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    pass
+try:
+    from . import harness  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    pass
+try:
+    from . import learn  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    pass
 
 # modules depends on optional external packages (e.g. nats). Import it lazily
 if not os.environ.get("DEEPTHOUGHT_LIGHT_IMPORT"):
@@ -32,11 +44,11 @@ else:  # pragma: no cover - skip heavy optional import
 try:  # pragma: no cover - optional dependency may be missing
     from . import motivate  # type: ignore  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
-    motivate = None  # type: ignore
+    pass
 try:  # pragma: no cover - optional dependency may be missing
     from . import orchestrator  # type: ignore  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
-    orchestrator = None  # type: ignore
+    pass
 from . import persona  # noqa: F401
 from . import utils  # noqa: F401
 
