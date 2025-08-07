@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import types
 
 try:  # Ensure prometheus_client is loaded before tests patch it
     import prometheus_client  # noqa: F401
@@ -12,22 +14,16 @@ except Exception:  # pragma: no cover - optional dependency may be missing
 __version__ = "0.1.0"
 
 # Re-export modules subpackage for convenient access
-try:
-    from . import affinity  # noqa: F401
-except Exception:  # pragma: no cover - optional dependency may be missing
-    pass
-try:
+from . import affinity  # noqa: F401
+if not os.environ.get("DEEPTHOUGHT_LIGHT_IMPORT"):
     from . import goal_scheduler  # noqa: F401
-except Exception:  # pragma: no cover - optional dependency may be missing
-    pass
-try:
     from . import harness  # noqa: F401
-except Exception:  # pragma: no cover - optional dependency may be missing
-    pass
-try:
     from . import learn  # noqa: F401
-except Exception:  # pragma: no cover - optional dependency may be missing
-    pass
+else:  # pragma: no cover - skip heavy optional imports
+    goal_scheduler = None  # type: ignore
+    harness = None  # type: ignore
+    learn = None  # type: ignore
+
 
 # modules depends on optional external packages (e.g. nats). Import it lazily
 if not os.environ.get("DEEPTHOUGHT_LIGHT_IMPORT"):
@@ -42,6 +38,10 @@ else:  # pragma: no cover - skip heavy optional import
     train = None  # type: ignore
 # motivate requires NATS, which may not be installed in test environments
 try:  # pragma: no cover - optional dependency may be missing
+    mod_name = __name__ + ".motivate"
+    stub = sys.modules.get(mod_name)
+    if isinstance(stub, types.ModuleType) and not getattr(stub, "__file__", None):
+        sys.modules.pop(mod_name, None)
     from . import motivate  # type: ignore  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
     pass

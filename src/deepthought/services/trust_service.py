@@ -112,7 +112,7 @@ class TrustService:
         now = datetime.now(UTC)
         severity, last = self._manipulative_state.get(user_id, (0.0, now))
         elapsed = (now - last).total_seconds()
-        if self.manipulative_decay > 0 and elapsed > 0 and severity:
+        if self.manipulative_decay > 0 and elapsed >= 1.0 and severity:
             severity *= math.exp(-self.manipulative_decay * elapsed)
         severity += 1.0
         self._manipulative_state[user_id] = (severity, now)

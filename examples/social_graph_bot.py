@@ -252,6 +252,13 @@ try:
 except ValueError:
     THOUGHT_CHANNEL_ID = None
 
+# Comma-separated list of developer IDs allowed to run admin commands
+DEVELOPER_IDS = {
+    int(uid)
+    for uid in os.getenv("DEVELOPER_IDS", "").split(",")
+    if uid.strip().isdigit()
+}
+
 # Optional bot-to-bot chatter configuration
 # Accepts values like "true", "1", or "yes" (case-insensitive)
 BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
@@ -590,6 +597,8 @@ async def process_thought_commands(bot: "SocialGraphBot") -> None:
     while not bot.is_closed():
         try:
             message = await bot.wait_for("message", check=check)
+            if message.author.id not in DEVELOPER_IDS:
+                continue
             content = message.content.strip()
             if content.startswith("/goal"):
                 goal = content.removeprefix("/goal").strip()
@@ -599,6 +608,62 @@ async def process_thought_commands(bot: "SocialGraphBot") -> None:
                 mem = content.removeprefix("/memory").strip()
                 if mem:
                     await store_memory(message.author.id, mem)
+            elif content.startswith("/thought"):
+                parts = content.split(maxsplit=3)
+                if len(parts) < 2:
+                    continue
+                cmd = parts[1]
+                if cmd == "list":
+                    limit = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 5
+                    msgs = []
+                    async for msg in message.channel.history(limit=limit):
+                        if msg.author == bot.user:
+                            msgs.append(f"{msg.id}: {msg.content}")
+                    if msgs:
+                        await message.channel.send("\n".join(reversed(msgs)))
+                elif cmd == "delete" and len(parts) > 2:
+                    try:
+                        msg_id = int(parts[2])
+                        target = await message.channel.fetch_message(msg_id)
+                    except Exception:
+                        continue
+                    if target.author == bot.user:
+                        await target.delete()
+                        logger.info("User %s deleted thought %s", message.author.id, msg_id)
+                elif cmd == "edit" and len(parts) > 3:
+                    try:
+                        msg_id = int(parts[2])
+                        new_content = parts[3]
+                        target = await message.channel.fetch_message(msg_id)
+                    except Exception:
+                        continue
+                    if target.author == bot.user:
+                        await target.edit(content=new_content)
+                        logger.info("User %s edited thought %s", message.author.id, msg_id)
+            elif content.startswith("/lies"):
+                parts = content.split(maxsplit=3)
+                if len(parts) < 2:
+                    continue
+                cmd = parts[1]
+                if cmd == "list":
+                    limit = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 5
+                    rows = await db_manager.list_lies(limit)
+                    if rows:
+                        lines = [f"{rowid}: {question} -> {reply} (user {uid})" for rowid, uid, question, reply in rows]
+                        await message.channel.send("\n".join(lines))
+                elif cmd == "delete" and len(parts) > 2:
+                    if parts[2].isdigit():
+                        rowid = int(parts[2])
+                        removed = await db_manager.delete_lie(rowid)
+                        if removed:
+                            logger.info("User %s deleted lie %s", message.author.id, rowid)
+                elif cmd == "edit" and len(parts) > 3:
+                    if parts[2].isdigit():
+                        rowid = int(parts[2])
+                        new_reply = parts[3]
+                        updated = await db_manager.update_lie(rowid, new_reply)
+                        if updated:
+                            logger.info("User %s edited lie %s", message.author.id, rowid)
         except asyncio.CancelledError:
             logger.info("process_thought_commands cancelled")
             break
