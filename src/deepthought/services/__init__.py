@@ -2,6 +2,7 @@
 
 from .cognitive_core_service import CognitiveCoreService
 from .db_manager import DBManager
+from .engagement_policy import EngagementPolicy, should_reply
 from .file_graph_dal import FileGraphDAL
 from .manipulative_detection import manipulation_score
 from .persona_manager import PersonaManager
@@ -16,6 +17,8 @@ __all__ = [
     "PersonaManager",
     "DBManager",
     "TrustService",
+    "EngagementPolicy",
+    "should_reply",
     "SocialGraphService",
     "PlanningService",
     "ReasoningService",
