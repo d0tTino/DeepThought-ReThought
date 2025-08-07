@@ -100,9 +100,7 @@ if "l2p" not in sys.modules:
     def _parse_problem(*args, **kwargs):
         return {}
 
-    l2p_stub.utils = types.SimpleNamespace(
-        parse_domain=_parse_domain, parse_problem=_parse_problem
-    )
+    l2p_stub.utils = types.SimpleNamespace(parse_domain=_parse_domain, parse_problem=_parse_problem)
     sys.modules["l2p"] = l2p_stub
     sys.modules["l2p.utils"] = l2p_stub.utils
 
@@ -200,7 +198,9 @@ if "sentence_transformers" not in sys.modules:
 # ``sys.modules.setdefault`` which can break imports that expect the real
 # submodules. Registering this stub early ensures those imports succeed even when
 # the optional package is missing.
-if "deepthought.motivate" not in sys.modules:
+import importlib.util
+
+if importlib.util.find_spec("deepthought.motivate") is None:
     motivate = types.ModuleType("motivate")
 
     caption = types.ModuleType("caption")
