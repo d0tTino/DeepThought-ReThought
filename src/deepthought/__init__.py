@@ -24,6 +24,7 @@ else:  # pragma: no cover - skip heavy optional imports
     harness = None  # type: ignore
     learn = None  # type: ignore
 
+
 # modules depends on optional external packages (e.g. nats). Import it lazily
 if not os.environ.get("DEEPTHOUGHT_LIGHT_IMPORT"):
     try:  # pragma: no cover - optional dependency may be missing
@@ -43,11 +44,11 @@ try:  # pragma: no cover - optional dependency may be missing
         sys.modules.pop(mod_name, None)
     from . import motivate  # type: ignore  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
-    motivate = None  # type: ignore
+    pass
 try:  # pragma: no cover - optional dependency may be missing
     from . import orchestrator  # type: ignore  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
-    orchestrator = None  # type: ignore
+    pass
 from . import persona  # noqa: F401
 from . import utils  # noqa: F401
 

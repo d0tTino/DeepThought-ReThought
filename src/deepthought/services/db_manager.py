@@ -181,6 +181,12 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            user_id TEXT PRIMARY KEY,
+            traits TEXT
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS recent_topics (
             topic TEXT PRIMARY KEY,
             last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -789,6 +795,35 @@ class DBManager:
         ) as cur:
             row = await cur.fetchone()
             return bool(row[0]) if row else False
+
+    async def set_user_profile(self, user_id: int, traits: dict | list | str) -> None:
+        await self.connect()
+        assert self._db
+        data = json.dumps(traits) if not isinstance(traits, str) else traits
+        await self._db.execute(
+            """
+            INSERT INTO user_profiles (user_id, traits)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET traits=excluded.traits
+            """,
+            (str(user_id), data),
+        )
+        await self._db.commit()
+
+    async def get_user_profile(self, user_id: int) -> dict | list | str | None:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT traits FROM user_profiles WHERE user_id=?",
+            (str(user_id),),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return row[0]
 
     def _affinity_delta(self, value: float) -> int:
         if -1 <= float(value) <= 1:

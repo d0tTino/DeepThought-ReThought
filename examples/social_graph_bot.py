@@ -236,6 +236,7 @@ AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
 AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
 USER_REPLY_RATE_SECONDS = float(os.getenv("USER_REPLY_RATE_SECONDS", "3"))
 BOT_COOLDOWN_SECONDS = int(os.getenv("BOT_COOLDOWN_SECONDS", "30"))
+OTHER_BOT_COOLDOWN_SECONDS = int(os.getenv("OTHER_BOT_COOLDOWN_SECONDS", "10"))
 BOT_MESSAGE_INTERVAL_SECONDS = int(os.getenv("BOT_MESSAGE_INTERVAL_SECONDS", "60"))
 MAX_BOT_MESSAGES_PER_INTERVAL = int(os.getenv("MAX_BOT_MESSAGES_PER_INTERVAL", "5"))
 MINIMAL_REPLY_THRESHOLD = float(os.getenv("MINIMAL_REPLY_THRESHOLD", "-5"))
@@ -282,6 +283,18 @@ PERSONA_REPLIES = {
     "friendly": ["I'm pondering your message..."],
     "playful": ["Hmm, let me think on that!"],
     "snarky": ["Yeah, yeah, I'll think about it."],
+}
+
+# Mapping of dominant emotions to reply strategies.  Each entry maps an
+# emotion label returned by ``detect_emotions`` to either a persona in
+# ``PERSONA_REPLIES`` or the special value ``"minimal"`` indicating the bot
+# should respond with ``MINIMAL_REPLIES``.
+EMOTION_REPLY_MAP = {
+    "Happy": ("persona", "playful"),
+    "Surprise": ("persona", "playful"),
+    "Sad": ("persona", "friendly"),
+    "Angry": ("minimal", None),
+    "Fear": ("minimal", None),
 }
 
 # -----------------------------
@@ -352,6 +365,7 @@ bot_last_messages: dict[int, tuple[str, datetime.datetime]] = {}
 last_bot_reply_time: datetime.datetime | None = None
 bot_message_times: dict[int, deque[datetime.datetime]] = {}
 our_message_times: deque[datetime.datetime] = deque()
+last_other_bot_message_time: datetime.datetime | None = None
 
 # Track handshake completions and per-bot cooldowns
 bot_handshakes: dict[int, datetime.datetime] = {}
@@ -857,9 +871,12 @@ class SocialGraphBot(discord.Client):
         logger.info("Logged in as %s (%s)", self.user.name, self.user.id)
 
     async def on_message(self, message: discord.Message) -> None:
-        global last_bot_reply_time
+        global last_bot_reply_time, last_other_bot_message_time
         if message.author == self.user:
             return
+
+        if getattr(message.author, "bot", False):
+            last_other_bot_message_time = message.created_at.replace(tzinfo=timezone.utc)
 
         if THOUGHT_CHANNEL_ID is not None and message.channel.id == THOUGHT_CHANNEL_ID:
             return
@@ -871,6 +888,13 @@ class SocialGraphBot(discord.Client):
             return
 
         now = discord.utils.utcnow()
+        if not message.author.bot:
+            if (
+                last_other_bot_message_time
+                and (now - last_other_bot_message_time).total_seconds() < OTHER_BOT_COOLDOWN_SECONDS
+            ):
+                return
+
         if message.author.bot:
             q = bot_message_times.setdefault(message.author.id, deque())
             q.append(now)
@@ -914,7 +938,16 @@ class SocialGraphBot(discord.Client):
             return
 
         sentiment_score = analyze_sentiment(message.content)
-        log_thought(self, f"Sentiment score: {sentiment_score:+.2f}")
+        emotions = detect_emotions(message.content)
+        dominant_emotion, dom_score = (None, 0.0)
+        if emotions:
+            dominant_emotion, dom_score = max(emotions.items(), key=lambda kv: kv[1])
+            if dom_score == 0:
+                dominant_emotion = None
+        log_thought(
+            self,
+            f"Sentiment score: {sentiment_score:+.2f}, Emotion: {dominant_emotion or 'Neutral'}",
+        )
         topic = "message" if abs(sentiment_score) > SENTIMENT_THRESHOLD else ""
         await store_memory(
             message.author.id,
@@ -924,7 +957,6 @@ class SocialGraphBot(discord.Client):
         )
         await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
 
-        emotions = detect_emotions(message.content)
         await db_manager.record_emotion(message.author.id, emotions)
 
         social_scores = analyze_social(message.content)
@@ -975,11 +1007,10 @@ class SocialGraphBot(discord.Client):
             return
 
         async with message.channel.typing():
+            start_time = discord.utils.utcnow()
             await asyncio.sleep(random.uniform(1, 3))
-            if hasattr(message.channel, "history"):
-                async for recent in message.channel.history(limit=1):
-                    if recent.id != message.id and getattr(recent.author, "bot", False):
-                        return
+            if last_other_bot_message_time and last_other_bot_message_time > start_time:
+                return
             if bullying and not await is_do_not_mock(message.author.id):
                 reply = BULLYING_RESPONSE
             elif social_scores.get("flirtation", 0) > 0.5:
@@ -987,12 +1018,20 @@ class SocialGraphBot(discord.Client):
             elif social_scores.get("avoidance", 0) > 0.5:
                 reply = AVOIDANCE_REPLY
             else:
-                trust = await trust_service.get_trust(message.author.id)
-                if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
-                    reply = random.choice(MINIMAL_REPLIES)
-                else:
-                    persona = await self.persona_manager.get_persona(message.author.id)
-                    reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
+                reply = None
+                if dominant_emotion:
+                    mode, persona_override = EMOTION_REPLY_MAP.get(dominant_emotion, (None, None))
+                    if mode == "minimal":
+                        reply = random.choice(MINIMAL_REPLIES)
+                    elif mode == "persona":
+                        reply = random.choice(PERSONA_REPLIES.get(persona_override, PERSONA_REPLIES["snarky"]))
+                if reply is None:
+                    trust = await trust_service.get_trust(message.author.id)
+                    if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
+                        reply = random.choice(MINIMAL_REPLIES)
+                    else:
+                        persona = await self.persona_manager.get_persona(message.author.id)
+                        reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
             now = discord.utils.utcnow()
             while our_message_times and (now - our_message_times[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
                 our_message_times.popleft()
