@@ -660,6 +660,19 @@ intention = scheduler.next_intention()
 await publisher.publish(EventSubjects.BDI_INTENTION, intention)
 ```
 
+### Tracking Goal Outcomes
+
+Record the outcome of an intention along with a completion timestamp for later
+analysis:
+
+```python
+goal_id = await scheduler.queue_intention("greet", priority=1)
+# ...execute the goal...
+scheduler.record_result(goal_id, "done")
+info = scheduler.get_record(goal_id)
+print(info.completed_at, info.outcome)
+```
+
 ### RAG Demo Notebook
 
 A minimal notebook demonstrating retrieval-augmented generation is available at [docs/notebooks/rag_demo.ipynb](docs/notebooks/rag_demo.ipynb). It compares a plain prompt with additional context retrieved via `HierarchicalService`. Run `python examples/rag_demo.py` to load the sample dataset and print example retrieval results.

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-"""Simple priority-based goal scheduler."""
+"""Simple priority-based goal scheduler.
+
+The scheduler now tracks relationships between goals and their sub-goals and
+records completion metadata for later analysis.
+"""
 
 import asyncio
 import contextlib
 import heapq
 from dataclasses import dataclass, field
-from typing import List, Optional
+from datetime import UTC, datetime
+from typing import Dict, List, Optional
 
 from .eda.events import BDIIntentionPayload, EventSubjects
 from .eda.publisher import Publisher
@@ -18,6 +23,15 @@ class ScheduledGoal:
     goal: str = field(compare=False)
     intention_id: Optional[int] = field(default=None, compare=False)
     sub_goals: List[str] = field(default_factory=list, compare=False)
+
+
+@dataclass
+class GoalRecord:
+    """Metadata recorded for each persisted goal."""
+
+    sub_goal_ids: List[int] = field(default_factory=list)
+    completed_at: datetime | None = None
+    outcome: str | None = None
 
 
 from .services.db_manager import DBManager
@@ -33,6 +47,7 @@ class GoalScheduler:
         self._publish_task: asyncio.Task | None = None
         self._publisher: Publisher | None = None
         self._interval = 1.0
+        self._records: Dict[int, GoalRecord] = {}
         if self._db_manager is not None:
             try:
                 loop = asyncio.get_running_loop()
@@ -66,6 +81,8 @@ class GoalScheduler:
             self._heap,
             ScheduledGoal(-priority, goal, intention_id, list(sub_goals or [])),
         )
+        if intention_id is not None:
+            self._records.setdefault(intention_id, GoalRecord())
         return intention_id
 
     async def queue_sub_goals(self, sub_goals: List[str], priority: int) -> List[int | None]:
@@ -84,8 +101,22 @@ class GoalScheduler:
                 if self._db_manager is not None and scheduled.intention_id is not None:
                     await self._db_manager.mark_intention_done(scheduled.intention_id)
                 prio = priority if priority is not None else -scheduled.priority
-                return await self.queue_sub_goals(scheduled.sub_goals, prio)
+                ids = await self.queue_sub_goals(scheduled.sub_goals, prio)
+                if scheduled.intention_id is not None:
+                    record = self._records.setdefault(scheduled.intention_id, GoalRecord())
+                    record.sub_goal_ids = [i for i in ids if i is not None]
+                return ids
         return []
+
+    def record_result(self, goal_id: int, outcome: str) -> None:
+        """Store ``outcome`` and completion timestamp for ``goal_id``."""
+        record = self._records.setdefault(goal_id, GoalRecord())
+        record.completed_at = datetime.now(UTC)
+        record.outcome = outcome
+
+    def get_record(self, goal_id: int) -> GoalRecord | None:
+        """Retrieve stored metadata for ``goal_id`` if present."""
+        return self._records.get(goal_id)
 
     async def load_pending_intentions(self) -> int:
         """Load pending intentions from the database into the queue."""
@@ -94,6 +125,7 @@ class GoalScheduler:
         rows = await self._db_manager.list_pending_intentions()
         for iid, goal, priority in rows:
             heapq.heappush(self._heap, ScheduledGoal(-priority, goal, iid))
+            self._records.setdefault(iid, GoalRecord())
         return len(rows)
 
     def next_goal(self) -> str | None:
