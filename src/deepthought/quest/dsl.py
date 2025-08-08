@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import List
 
@@ -17,7 +18,20 @@ def load_quests(path: str | Path) -> List[Quest]:
             id=q.get("id"),
             name=q["name"],
             description=q.get("description", ""),
+            quest_type=q.get("quest_type", ""),
+            priority=q.get("priority", 0),
+            horizon=q.get("horizon", ""),
+            faction=q.get("faction", ""),
+            cover_story=q.get("cover_story", ""),
+            secrecy=q.get("secrecy", ""),
+            risk=q.get("risk", ""),
             status=q.get("status", "pending"),
+            created=(
+                datetime.fromisoformat(q["created"]) if q.get("created") else None
+            ),
+            updated=(
+                datetime.fromisoformat(q["updated"]) if q.get("updated") else None
+            ),
         )
         for o in q.get("objectives", []):
             obj = Objective(
@@ -49,7 +63,16 @@ def quest_to_dict(quest: Quest) -> dict:
         "id": quest.id,
         "name": quest.name,
         "description": quest.description,
+        "quest_type": quest.quest_type,
+        "priority": quest.priority,
+        "horizon": quest.horizon,
+        "faction": quest.faction,
+        "cover_story": quest.cover_story,
+        "secrecy": quest.secrecy,
+        "risk": quest.risk,
         "status": quest.status,
+        "created": quest.created.isoformat() if quest.created else None,
+        "updated": quest.updated.isoformat() if quest.updated else None,
         "objectives": [
             {
                 "id": o.id,

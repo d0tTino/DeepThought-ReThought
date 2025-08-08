@@ -13,6 +13,7 @@ class Evidence:
     objective_id: int
     content: str
     created: Optional[datetime] = None
+    updated: Optional[datetime] = None
 
 
 @dataclass
@@ -21,6 +22,7 @@ class Epiphany:
     quest_id: int
     insight: str
     created: Optional[datetime] = None
+    updated: Optional[datetime] = None
 
 
 @dataclass
@@ -29,6 +31,7 @@ class LieRecord:
     quest_id: int
     lie: str
     created: Optional[datetime] = None
+    updated: Optional[datetime] = None
 
 
 @dataclass
@@ -38,6 +41,7 @@ class Objective:
     description: str
     status: str = "pending"
     created: Optional[datetime] = None
+    updated: Optional[datetime] = None
     evidence: List[Evidence] = field(default_factory=list)
 
 
@@ -46,8 +50,16 @@ class Quest:
     id: Optional[int]
     name: str
     description: str
+    quest_type: str = ""
+    priority: int = 0
+    horizon: str = ""
+    faction: str = ""
+    cover_story: str = ""
+    secrecy: str = ""
+    risk: str = ""
     status: str = "pending"
     created: Optional[datetime] = None
+    updated: Optional[datetime] = None
     objectives: List[Objective] = field(default_factory=list)
     epiphanies: List[Epiphany] = field(default_factory=list)
     lies: List[LieRecord] = field(default_factory=list)
@@ -63,8 +75,24 @@ class QuestStorage:
         await self.db.connect()
         assert self.db._db is not None
         cur = await self.db._db.execute(
-            "INSERT INTO quests (name, description, status) VALUES (?, ?, ?)",
-            (quest.name, quest.description, quest.status),
+            """
+            INSERT INTO quests (
+                name, description, quest_type, priority, horizon, faction,
+                cover_story, secrecy, risk, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                quest.name,
+                quest.description,
+                quest.quest_type,
+                quest.priority,
+                quest.horizon,
+                quest.faction,
+                quest.cover_story,
+                quest.secrecy,
+                quest.risk,
+                quest.status,
+            ),
         )
         await self.db._db.commit()
         quest_id = cur.lastrowid
@@ -123,7 +151,11 @@ class QuestStorage:
         await self.db.connect()
         assert self.db._db is not None
         async with self.db._db.execute(
-            "SELECT quest_id, name, description, status, created FROM quests WHERE quest_id=?",
+            """
+            SELECT quest_id, name, description, quest_type, priority, horizon,
+                   faction, cover_story, secrecy, risk, status, created, updated
+            FROM quests WHERE quest_id=?
+            """,
             (quest_id,),
         ) as cur:
             row = await cur.fetchone()
@@ -133,12 +165,20 @@ class QuestStorage:
             id=row[0],
             name=row[1],
             description=row[2],
-            status=row[3],
-            created=datetime.fromisoformat(row[4]) if row[4] else None,
+            quest_type=row[3] or "",
+            priority=row[4] or 0,
+            horizon=row[5] or "",
+            faction=row[6] or "",
+            cover_story=row[7] or "",
+            secrecy=row[8] or "",
+            risk=row[9] or "",
+            status=row[10],
+            created=datetime.fromisoformat(row[11]) if row[11] else None,
+            updated=datetime.fromisoformat(row[12]) if row[12] else None,
         )
         # objectives
         async with self.db._db.execute(
-            "SELECT objective_id, description, status, created FROM objectives WHERE quest_id=?",
+            "SELECT objective_id, description, status, created, updated FROM objectives WHERE quest_id=?",
             (quest_id,),
         ) as cur:
             obj_rows = await cur.fetchall()
@@ -149,10 +189,11 @@ class QuestStorage:
                 description=o[1],
                 status=o[2],
                 created=datetime.fromisoformat(o[3]) if o[3] else None,
+                updated=datetime.fromisoformat(o[4]) if o[4] else None,
             )
             # evidence for objective
             async with self.db._db.execute(
-                "SELECT evidence_id, content, created FROM evidence WHERE objective_id=?",
+                "SELECT evidence_id, content, created, updated FROM evidence WHERE objective_id=?",
                 (obj.id,),
             ) as ecur:
                 e_rows = await ecur.fetchall()
@@ -163,12 +204,13 @@ class QuestStorage:
                         objective_id=obj.id,
                         content=e[1],
                         created=datetime.fromisoformat(e[2]) if e[2] else None,
+                        updated=datetime.fromisoformat(e[3]) if e[3] else None,
                     )
                 )
             quest.objectives.append(obj)
         # epiphanies
         async with self.db._db.execute(
-            "SELECT epiphany_id, insight, created FROM epiphanies WHERE quest_id=?",
+            "SELECT epiphany_id, insight, created, updated FROM epiphanies WHERE quest_id=?",
             (quest_id,),
         ) as cur:
             epi_rows = await cur.fetchall()
@@ -179,11 +221,12 @@ class QuestStorage:
                     quest_id=quest_id,
                     insight=e[1],
                     created=datetime.fromisoformat(e[2]) if e[2] else None,
+                    updated=datetime.fromisoformat(e[3]) if e[3] else None,
                 )
             )
         # lies
         async with self.db._db.execute(
-            "SELECT lie_id, lie, created FROM lie_ledger WHERE quest_id=?",
+            "SELECT lie_id, lie, created, updated FROM lie_ledger WHERE quest_id=?",
             (quest_id,),
         ) as cur:
             lie_rows = await cur.fetchall()
@@ -194,6 +237,48 @@ class QuestStorage:
                     quest_id=quest_id,
                     lie=record[1],
                     created=datetime.fromisoformat(record[2]) if record[2] else None,
+                    updated=datetime.fromisoformat(record[3]) if record[3] else None,
                 )
             )
         return quest
+
+    async def update_quest(self, quest: Quest) -> None:
+        """Persist changes to a quest and update the timestamp."""
+        if quest.id is None:
+            raise ValueError("quest.id is required for update")
+        await self.db.connect()
+        assert self.db._db is not None
+        await self.db._db.execute(
+            """
+            UPDATE quests SET
+                name=?, description=?, quest_type=?, priority=?, horizon=?,
+                faction=?, cover_story=?, secrecy=?, risk=?, status=?,
+                updated=CURRENT_TIMESTAMP
+            WHERE quest_id=?
+            """,
+            (
+                quest.name,
+                quest.description,
+                quest.quest_type,
+                quest.priority,
+                quest.horizon,
+                quest.faction,
+                quest.cover_story,
+                quest.secrecy,
+                quest.risk,
+                quest.status,
+                quest.id,
+            ),
+        )
+        await self.db._db.commit()
+
+    async def delete_quest(self, quest_id: int) -> None:
+        """Delete a quest and its related records."""
+        await self.db.connect()
+        assert self.db._db is not None
+        # Delete child records first to maintain integrity
+        await self.db._db.execute("DELETE FROM objectives WHERE quest_id=?", (quest_id,))
+        await self.db._db.execute("DELETE FROM epiphanies WHERE quest_id=?", (quest_id,))
+        await self.db._db.execute("DELETE FROM lie_ledger WHERE quest_id=?", (quest_id,))
+        await self.db._db.execute("DELETE FROM quests WHERE quest_id=?", (quest_id,))
+        await self.db._db.commit()
