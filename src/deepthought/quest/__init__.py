@@ -17,6 +17,7 @@ from .templates import (
     auto_spawn_quests,
     TEMPLATES,
 )
+from .fsm import QuestState, QuestFSM
 
 __all__ = [
     "Quest",
@@ -31,4 +32,6 @@ __all__ = [
     "bind_slot",
     "auto_spawn_quests",
     "TEMPLATES",
+    "QuestState",
+    "QuestFSM",
 ]
