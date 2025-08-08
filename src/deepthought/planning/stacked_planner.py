@@ -103,21 +103,40 @@ class StackedPlanner:
     # ------------------------------------------------------------------
     # Layer processing
     def _reactive_layer(self, actions: List[str]) -> List[str]:
-        return actions
+        """First pass to handle immediate reactions.
+
+        Each action is prefixed with ``"react:"`` so later stages can
+        differentiate work performed at this layer.
+        """
+
+        return [f"react:{act}" for act in actions]
 
     def _investigative_layer(self, actions: List[str]) -> List[str]:
-        return actions
+        """Second pass to gather more information.
+
+        Actions are turned into questions by appending ``"?"``.
+        """
+
+        return [f"{act}?" for act in actions]
 
     def _arc_layer(self, actions: List[str]) -> List[str]:
-        return actions
+        """Final pass to craft a longer term narrative arc.
+
+        Actions are capitalised to represent committed intentions.
+        """
+
+        return [act.upper() for act in actions]
 
     # ------------------------------------------------------------------
     def generate_plan(self, goal: str) -> List[str]:
         domain, problem = self._translator.translate(goal)
         actions = self._planner_fn(domain, problem)
         actions = self._reactive_layer(actions)
+        self._persist_layer_snapshot(goal, actions, "reactive")
         actions = self._investigative_layer(actions)
+        self._persist_layer_snapshot(goal, actions, "investigative")
         actions = self._arc_layer(actions)
+        self._persist_layer_snapshot(goal, actions, "arc")
 
         filtered: List[str] = []
         for act in actions:
@@ -144,6 +163,38 @@ class StackedPlanner:
             path.write_text(json.dumps(snapshot), encoding="utf-8")
         except Exception:  # pragma: no cover - disk errors
             logger.warning("Failed to write planner snapshot", exc_info=True)
+
+    def _persist_layer_snapshot(
+        self, goal: str, actions: List[str], layer: str
+    ) -> None:
+        """Persist the state of a single planning layer.
+
+        Parameters
+        ----------
+        goal:
+            The goal being pursued.
+        actions:
+            The list of actions after the layer transformation.
+        layer:
+            Name of the layer (``reactive``, ``investigative`` or ``arc``).
+        """
+
+        snapshot = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "goal": goal,
+            "layer": layer,
+            "actions": actions,
+        }
+        fname = (
+            datetime.utcnow().strftime("%Y%m%d%H%M%S%f") + f"_{layer}.json"
+        )
+        path = self._snapshot_dir / fname
+        try:
+            path.write_text(json.dumps(snapshot), encoding="utf-8")
+        except Exception:  # pragma: no cover - disk errors
+            logger.warning(
+                "Failed to write %s layer snapshot", layer, exc_info=True
+            )
 
     def _maybe_send_summary(self) -> None:
         now = datetime.utcnow()
