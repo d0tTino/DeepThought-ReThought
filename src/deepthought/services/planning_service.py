@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import json
 import logging
 import re
@@ -17,7 +16,7 @@ from ..eda.events import (
     PlanRequestedPayload,
 )
 from ..goal_scheduler import GoalScheduler
-from ..planning import L2PTranslator, plan
+from ..planning import L2PTranslator, StackedPlanner, plan
 from .base import BaseService
 
 logger = logging.getLogger(__name__)
@@ -45,6 +44,7 @@ class PlanningService(BaseService):
         )
         self._desires_file = desires_file
         self._translator = L2PTranslator()
+        self._planner = StackedPlanner(self._translator, plan)
         self._desires: List[str] = []
         self._beliefs: List[str] = []
         self._load_desires()
@@ -56,7 +56,12 @@ class PlanningService(BaseService):
             ds = data.get("desires", [])
             if isinstance(ds, list):
                 self._desires = [str(d) for d in ds]
-            logger.info("Loaded %d desires from %s", len(self._desires), self._desires_file)
+            self._planner.set_desires(self._desires)
+            logger.info(
+                "Loaded %d desires from %s",
+                len(self._desires),
+                self._desires_file,
+            )
         except FileNotFoundError:
             logger.warning("Desires file %s not found", self._desires_file)
         except Exception:  # pragma: no cover - defensive
@@ -67,6 +72,7 @@ class PlanningService(BaseService):
             data = json.loads(msg.data.decode())
             payload = MemoryRetrievedPayload.from_dict(data)
             self._beliefs = payload.retrieved_knowledge.get("facts", [])
+            self._planner.set_beliefs(self._beliefs)
             await self._form_intentions(payload.input_id)
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
@@ -79,8 +85,7 @@ class PlanningService(BaseService):
         try:
             data = json.loads(msg.data.decode())
             payload = PlanRequestedPayload.from_dict(data)
-            domain, problem = self._translator.translate(payload.goal)
-            actions = plan(domain, problem)
+            actions = self._planner.generate_plan(payload.goal)
             out = PlanGeneratedPayload(plan=actions, input_id=payload.input_id)
             await self._publisher.publish(
                 EventSubjects.PLAN_GENERATED,
