@@ -17,18 +17,14 @@ logger = logging.getLogger(__name__)
 class DiscordThoughtWriter:
     """Send planner summaries to a Discord channel."""
 
-    def __init__(
-        self, channel_id: str | None = None, token: str | None = None
-    ) -> None:
+    def __init__(self, channel_id: str | None = None, token: str | None = None) -> None:
         self._channel_id = channel_id or os.getenv("THOUGHT_CHANNEL")
         self._token = token or os.getenv("DISCORD_TOKEN")
 
     def send(self, summary: dict) -> None:
         if not self._channel_id or not self._token:
             return
-        url = (
-            f"https://discord.com/api/v10/channels/{self._channel_id}/messages"
-        )
+        url = f"https://discord.com/api/v10/channels/{self._channel_id}/messages"
         headers = {"Authorization": f"Bot {self._token}"}
         payload = {"content": json.dumps(summary)}
         try:  # pragma: no cover - network operations
@@ -57,6 +53,14 @@ class StackedPlanner:
         self._desires: List[str] = []
         self._intentions: List[str] = []
         self._last_summary = datetime.utcnow()
+        self._weights = {
+            "info_gain": 1.0,
+            "social_capital": 1.0,
+            "cover_risk": 1.0,
+            "effort": 1.0,
+            "vibes_fit": 1.0,
+        }
+        self._next_action_time = datetime.min
 
     # ------------------------------------------------------------------
     # Beliefs, Desires, Intentions state
@@ -79,8 +83,16 @@ class StackedPlanner:
         social_capital: float = 0.0,
         cover_risk: float = 0.0,
         effort: float = 0.0,
+        vibes_fit: float = 0.0,
     ) -> float:
-        return info_gain + social_capital - cover_risk - effort
+        w = self._weights
+        return (
+            info_gain * w["info_gain"]
+            + social_capital * w["social_capital"]
+            + vibes_fit * w["vibes_fit"]
+            - cover_risk * w["cover_risk"]
+            - effort * w["effort"]
+        )
 
     def should_act(
         self,
@@ -89,16 +101,22 @@ class StackedPlanner:
         social_capital: float = 0.0,
         cover_risk: float = 0.0,
         effort: float = 0.0,
+        vibes_fit: float = 0.0,
+        silence_threshold: float = 0.0,
+        cooldown: float = 0.0,
     ) -> bool:
-        return (
-            self.utility_score(
-                info_gain=info_gain,
-                social_capital=social_capital,
-                cover_risk=cover_risk,
-                effort=effort,
-            )
-            >= 0.0
+        now = datetime.utcnow()
+        if now < self._next_action_time:
+            return False
+        score = self.utility_score(
+            info_gain=info_gain,
+            social_capital=social_capital,
+            cover_risk=cover_risk,
+            effort=effort,
+            vibes_fit=vibes_fit,
         )
+        self._next_action_time = now + timedelta(seconds=cooldown)
+        return score >= silence_threshold
 
     # ------------------------------------------------------------------
     # Layer processing
@@ -159,4 +177,3 @@ class StackedPlanner:
             except Exception:  # pragma: no cover - network errors
                 logger.warning("Failed to publish planner summary", exc_info=True)
             self._last_summary = now
-
