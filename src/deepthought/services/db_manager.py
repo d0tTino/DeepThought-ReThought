@@ -223,6 +223,48 @@ class DBManager:
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS quests (
+            quest_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            status TEXT DEFAULT 'pending',
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS objectives (
+            objective_id INTEGER PRIMARY KEY,
+            quest_id INTEGER REFERENCES quests(quest_id),
+            description TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS evidence (
+            evidence_id INTEGER PRIMARY KEY,
+            objective_id INTEGER REFERENCES objectives(objective_id),
+            content TEXT NOT NULL,
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS epiphanies (
+            epiphany_id INTEGER PRIMARY KEY,
+            quest_id INTEGER REFERENCES quests(quest_id),
+            insight TEXT NOT NULL,
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS lie_ledger (
+            lie_id INTEGER PRIMARY KEY,
+            quest_id INTEGER REFERENCES quests(quest_id),
+            lie TEXT NOT NULL,
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
     ]
 
     def __init__(self, db_path: str = DB_PATH) -> None:
