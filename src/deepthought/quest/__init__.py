@@ -18,6 +18,12 @@ from .templates import (
     bind_slot,
 )
 from .writer import QuestWriter
+from .reports import (
+    SummaryScheduler,
+    case_files,
+    compile_narratives,
+    weekly_faction_shifts,
+)
 
 
 __all__ = [
@@ -36,5 +42,9 @@ __all__ = [
     "QuestState",
     "QuestFSM",
     "QuestWriter",
+    "SummaryScheduler",
+    "compile_narratives",
+    "weekly_faction_shifts",
+    "case_files",
 
 ]

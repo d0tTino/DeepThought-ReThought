@@ -112,6 +112,16 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS social_edges (
+            source_id TEXT,
+            target_id TEXT,
+            edge_type TEXT,
+            weight REAL DEFAULT 0,
+            last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(source_id, target_id, edge_type)
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS interaction_decay (
             id INTEGER PRIMARY KEY CHECK(id=1),
             weight_decay REAL DEFAULT 1.0,
@@ -1085,6 +1095,83 @@ class DBManager:
         ) as cur:
             row = await cur.fetchone()
         return row[0] if row else None
+
+    async def update_edge(
+        self, source_id: int, target_id: int, edge_type: str, weight_delta: float
+    ) -> None:
+        """Insert or update a typed edge applying decay to the stored weight."""
+        await self.connect()
+        assert self._db
+        w_decay, _ = await self.get_decay_params()
+        now = datetime.utcnow()
+        async with self._db.execute(
+            "SELECT weight, last_updated FROM social_edges WHERE source_id=? AND target_id=? AND edge_type=?",
+            (str(source_id), str(target_id), edge_type),
+        ) as cur:
+            row = await cur.fetchone()
+        if row:
+            weight, last_ts = row
+            if last_ts:
+                last_dt = datetime.fromisoformat(str(last_ts))
+                elapsed = (now - last_dt).total_seconds()
+                weight = float(weight) * (w_decay**elapsed)
+            weight += float(weight_delta)
+            await self._db.execute(
+                """
+                UPDATE social_edges
+                SET weight=?, last_updated=CURRENT_TIMESTAMP
+                WHERE source_id=? AND target_id=? AND edge_type=?
+                """,
+                (weight, str(source_id), str(target_id), edge_type),
+            )
+        else:
+            await self._db.execute(
+                """
+                INSERT INTO social_edges (source_id, target_id, edge_type, weight, last_updated)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (str(source_id), str(target_id), edge_type, float(weight_delta)),
+            )
+        await self._db.commit()
+
+    async def get_edge_weight(self, source_id: int, target_id: int, edge_type: str) -> float:
+        """Return the decayed weight for the edge between ``source_id`` and ``target_id``."""
+        await self.connect()
+        assert self._db
+        w_decay, _ = await self.get_decay_params()
+        async with self._db.execute(
+            "SELECT weight, last_updated FROM social_edges WHERE source_id=? AND target_id=? AND edge_type=?",
+            (str(source_id), str(target_id), edge_type),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return 0.0
+        weight, last_ts = row
+        if last_ts:
+            last_dt = datetime.fromisoformat(str(last_ts))
+            elapsed = (datetime.utcnow() - last_dt).total_seconds()
+            weight = float(weight) * (w_decay**elapsed)
+        return float(weight)
+
+    async def get_edges(self, edge_type: str | None = None) -> list[tuple[str, str, float]]:
+        """Return all edges, optionally filtered by ``edge_type`` with decay applied."""
+        await self.connect()
+        assert self._db
+        w_decay, _ = await self.get_decay_params()
+        query = "SELECT source_id, target_id, edge_type, weight, last_updated FROM social_edges"
+        params: tuple = ()
+        if edge_type:
+            query += " WHERE edge_type=?"
+            params = (edge_type,)
+        results: list[tuple[str, str, float]] = []
+        async with self._db.execute(query, params) as cur:
+            async for src, tgt, etype, weight, last_ts in cur:
+                if last_ts:
+                    last_dt = datetime.fromisoformat(str(last_ts))
+                    elapsed = (datetime.utcnow() - last_dt).total_seconds()
+                    weight = float(weight) * (w_decay**elapsed)
+                results.append((src, tgt, float(weight)))
+        return results
 
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
         if not isinstance(theme, str) or not theme.strip():
