@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 
 from ..services.db_manager import DBManager
+from .writer import QuestWriter
 
 
 @dataclass
@@ -68,8 +69,9 @@ class Quest:
 class QuestStorage:
     """DAO layer for quests and related entities."""
 
-    def __init__(self, db: DBManager) -> None:
+    def __init__(self, db: DBManager, writer: QuestWriter | None = None) -> None:
         self.db = db
+        self.writer = writer
 
     async def add_quest(self, quest: Quest) -> int:
         await self.db.connect()
@@ -97,6 +99,8 @@ class QuestStorage:
         await self.db._db.commit()
         quest_id = cur.lastrowid
         quest.id = quest_id
+        if self.writer:
+            self.writer.send_board_update(quest, event="created")
         return quest_id
 
     async def add_objective(self, objective: Objective) -> int:
@@ -145,6 +149,8 @@ class QuestStorage:
         await self.db._db.commit()
         lie_id = cur.lastrowid
         lie.id = lie_id
+        if self.writer:
+            self.writer.send_lie(lie.quest_id, lie.lie)
         return lie_id
 
     async def get_quest(self, quest_id: int) -> Optional[Quest]:
@@ -271,6 +277,8 @@ class QuestStorage:
             ),
         )
         await self.db._db.commit()
+        if self.writer:
+            self.writer.send_board_update(quest, event="updated")
 
     async def delete_quest(self, quest_id: int) -> None:
         """Delete a quest and its related records."""

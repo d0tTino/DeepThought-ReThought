@@ -4,33 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Iterable, List
 
-import requests
+from ..quest.writer import QuestWriter
 
 logger = logging.getLogger(__name__)
-
-
-class DiscordThoughtWriter:
-    """Send planner summaries to a Discord channel."""
-
-    def __init__(self, channel_id: str | None = None, token: str | None = None) -> None:
-        self._channel_id = channel_id or os.getenv("THOUGHT_CHANNEL")
-        self._token = token or os.getenv("DISCORD_TOKEN")
-
-    def send(self, summary: dict) -> None:
-        if not self._channel_id or not self._token:
-            return
-        url = f"https://discord.com/api/v10/channels/{self._channel_id}/messages"
-        headers = {"Authorization": f"Bot {self._token}"}
-        payload = {"content": json.dumps(summary)}
-        try:  # pragma: no cover - network operations
-            requests.post(url, headers=headers, json=payload, timeout=5)
-        except Exception:  # pragma: no cover - failure is non-fatal
-            logger.warning("Failed to send summary to Thought Server", exc_info=True)
 
 
 class StackedPlanner:
@@ -42,13 +22,13 @@ class StackedPlanner:
         planner_fn: Callable[[str, str], List[str]],
         snapshot_dir: str | Path = "planner_snapshots",
         *,
-        thought_writer: DiscordThoughtWriter | None = None,
+        writer: QuestWriter | None = None,
     ) -> None:
         self._translator = translator
         self._planner_fn = planner_fn
         self._snapshot_dir = Path(snapshot_dir)
         self._snapshot_dir.mkdir(parents=True, exist_ok=True)
-        self._writer = thought_writer or DiscordThoughtWriter()
+        self._writer = writer or QuestWriter()
         self._beliefs: List[str] = []
         self._desires: List[str] = []
         self._intentions: List[str] = []
@@ -182,9 +162,7 @@ class StackedPlanner:
         except Exception:  # pragma: no cover - disk errors
             logger.warning("Failed to write planner snapshot", exc_info=True)
 
-    def _persist_layer_snapshot(
-        self, goal: str, actions: List[str], layer: str
-    ) -> None:
+    def _persist_layer_snapshot(self, goal: str, actions: List[str], layer: str) -> None:
         """Persist the state of a single planning layer.
 
         Parameters
@@ -203,16 +181,12 @@ class StackedPlanner:
             "layer": layer,
             "actions": actions,
         }
-        fname = (
-            datetime.utcnow().strftime("%Y%m%d%H%M%S%f") + f"_{layer}.json"
-        )
+        fname = datetime.utcnow().strftime("%Y%m%d%H%M%S%f") + f"_{layer}.json"
         path = self._snapshot_dir / fname
         try:
             path.write_text(json.dumps(snapshot), encoding="utf-8")
         except Exception:  # pragma: no cover - disk errors
-            logger.warning(
-                "Failed to write %s layer snapshot", layer, exc_info=True
-            )
+            logger.warning("Failed to write %s layer snapshot", layer, exc_info=True)
 
     def _maybe_send_summary(self) -> None:
         now = datetime.utcnow()
@@ -224,7 +198,7 @@ class StackedPlanner:
                 "intentions": self._intentions,
             }
             try:
-                self._writer.send(summary)
+                self._writer.send_daily_summary(summary)
             except Exception:  # pragma: no cover - network errors
                 logger.warning("Failed to publish planner summary", exc_info=True)
             self._last_summary = now
