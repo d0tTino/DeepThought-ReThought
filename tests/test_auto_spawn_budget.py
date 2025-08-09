@@ -1,8 +1,13 @@
 import pytest
 
+from deepthought.quest.templates import (
+    CooldownTracker,
+    HorizonManager,
+    HorizonRule,
+    auto_spawn_quests,
+)
 from deepthought.services import DBManager
 from deepthought.services.social_graph_memory import SocialGraphMemory
-from deepthought.quest.templates import CooldownTracker, auto_spawn_quests
 
 pytest.importorskip("aiosqlite")
 
@@ -14,13 +19,18 @@ async def test_auto_spawn_respects_budget(tmp_path):
     await db.adjust_affinity("u1", 5)
 
     tracker = CooldownTracker()
-    budget = {"short": 1, "medium": 1, "long": 0}
+    rules = {
+        "short": HorizonRule(limit=1),
+        "medium": HorizonRule(limit=1),
+        "long": HorizonRule(limit=0),
+    }
+    manager = HorizonManager(rules)
 
-    quests = await auto_spawn_quests(budget, memory, tracker)
+    quests = await auto_spawn_quests(manager, memory, tracker)
     names = [q.name for q in quests]
 
     assert names == ["Investigation", "Side"]
-    assert budget["short"] == 0
-    assert budget["medium"] == 0
+    assert not manager.can_spawn("short")
+    assert not manager.can_spawn("medium")
 
-    await db.close()
+    await memory.close()
