@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Iterable
 
 from deepthought.services.db_manager import DBManager
 
@@ -27,3 +27,24 @@ async def log_interaction(
     sentiment_score: float | None = None,
 ) -> None:
     await _db().log_interaction(user_id, target_id, sentiment_score=sentiment_score)
+
+
+def is_bot(user: object) -> bool:
+    """Return ``True`` if a user object or name appears bot-like.
+
+    The heuristic checks for a truthy ``bot`` attribute or the substring
+    ``"bot"`` in the user's name.  It operates on minimal information to avoid
+    depending on any specific chat platform.
+    """
+
+    if hasattr(user, "bot") and bool(getattr(user, "bot")):
+        return True
+    name = getattr(user, "name", str(user))
+    return "bot" in name.lower()
+
+
+def is_crowded(participants: Iterable[object], bot_threshold: int = 2) -> bool:
+    """Return ``True`` if a conversation has too many bot participants."""
+
+    bot_count = sum(1 for p in participants if is_bot(p))
+    return bot_count >= bot_threshold
