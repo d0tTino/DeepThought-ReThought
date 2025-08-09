@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Iterable, List
 
+from ..bot import interaction as bot_interaction
 from ..quest.writer import QuestWriter
 
 logger = logging.getLogger(__name__)
@@ -84,9 +85,14 @@ class StackedPlanner:
         vibes_fit: float = 0.0,
         silence_threshold: float = 0.0,
         cooldown: float = 0.0,
+        participants: Iterable[object] | None = None,
+        bot_threshold: int = 2,
     ) -> bool:
         now = datetime.utcnow()
         if now < self._next_action_time:
+            return False
+        if participants and bot_interaction.is_crowded(participants, bot_threshold):
+            self._next_action_time = now + timedelta(seconds=cooldown)
             return False
         score = self.utility_score(
             info_gain=info_gain,

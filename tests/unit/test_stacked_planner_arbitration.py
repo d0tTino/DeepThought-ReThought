@@ -36,3 +36,9 @@ def test_silence_threshold_and_cooldown(monkeypatch):
     assert not planner.should_act(info_gain=1.0, silence_threshold=0.0)
     fake_now = fake_now + timedelta(seconds=10)
     assert planner.should_act(info_gain=1.0, silence_threshold=0.0)
+
+
+def test_should_act_silent_when_crowded_bots():
+    planner = StackedPlanner(DummyTranslator(), dummy_planner)
+    participants = ["AlphaBot", "BetaBot", "Charlie"]
+    assert not planner.should_act(info_gain=1.0, participants=participants)
