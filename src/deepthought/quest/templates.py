@@ -16,14 +16,66 @@ Two helpers are provided:
 ``auto_spawn_quests``
     Spawn quests automatically when budget allows. The function returns a list
     of ``Quest`` instances ready for persistence via :class:`QuestStorage`.
+
+Auto spawning further enforces per-horizon budgets with cooldown and TTL rules
+through :class:`HorizonManager`.
 """
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from .storage import Quest
 from ..services.social_graph_memory import SocialGraphMemory
+from .storage import Quest
+
+
+@dataclass
+class HorizonRule:
+    """Configuration for a quest horizon.
+
+    ``limit``
+        Maximum concurrent quests allowed for the horizon.
+    ``cooldown``
+        Minimum time that must elapse between quest spawns for the horizon.
+    ``ttl``
+        Time-to-live for quests; once expired they free up budget again.
+    """
+
+    limit: int
+    cooldown: timedelta = timedelta(0)
+    ttl: timedelta = timedelta(hours=1)
+
+
+class HorizonManager:
+    """Track active quests per horizon enforcing budget, cooldown and TTL."""
+
+    def __init__(self, rules: Dict[str, HorizonRule]) -> None:
+        self.rules = rules
+        self._active: Dict[str, List[datetime]] = {h: [] for h in rules}
+        self._last_spawn: Dict[str, datetime] = {}
+
+    def _cleanup(self, horizon: str, now: datetime) -> None:
+        rule = self.rules[horizon]
+        self._active[horizon] = [t for t in self._active[horizon] if now - t < rule.ttl]
+
+    def can_spawn(self, horizon: str, *, now: Optional[datetime] = None) -> bool:
+        now = now or datetime.utcnow()
+        if horizon not in self.rules:
+            return False
+        self._cleanup(horizon, now)
+        rule = self.rules[horizon]
+        if len(self._active[horizon]) >= rule.limit:
+            return False
+        last = self._last_spawn.get(horizon)
+        if last and now - last < rule.cooldown:
+            return False
+        return True
+
+    def record_spawn(self, horizon: str, *, now: Optional[datetime] = None) -> None:
+        now = now or datetime.utcnow()
+        self._cleanup(horizon, now)
+        self._active[horizon].append(now)
+        self._last_spawn[horizon] = now
 
 
 @dataclass
@@ -109,28 +161,68 @@ async def bind_slot(
     return best_user
 
 
+async def _find_low_affinity_pair(memory: SocialGraphMemory) -> Optional[Tuple[str, str]]:
+    """Return the pair of users with the lowest mutual affinity.
+
+    This uses :class:`SocialGraphMemory` to inspect relationship metrics and
+    identify users most in need of a bridge-building quest.
+    """
+
+    users = await _list_users(memory)
+    if len(users) < 2:
+        return None
+    worst_pair: Optional[Tuple[str, str]] = None
+    worst_score = float("inf")
+    for i, a in enumerate(users):
+        start = i + 1
+        for b in users[start:]:
+            score = await memory.get_mutual_affinity(a, b)
+            if score < worst_score:
+                worst_score = score
+                worst_pair = (a, b)
+    return worst_pair
+
+
 async def auto_spawn_quests(
-    budget: Dict[str, int],
+    manager: HorizonManager,
     memory: SocialGraphMemory,
     tracker: CooldownTracker,
     templates: Iterable[QuestTemplate] = TEMPLATES,
+    *,
+    now: Optional[datetime] = None,
 ) -> List[Quest]:
-    """Spawn quests automatically based on ``budget``.
+    """Spawn quests automatically based on horizon rules.
 
-    ``budget`` maps horizon names to remaining spawn counts. For each template
-    we attempt to bind a slot and, if the horizon's budget permits, create a
-    ``Quest`` instance.
+    ``manager`` encapsulates horizon budgets with cooldown and TTL enforcement.
+    For each template we attempt to bind a slot (or pair) and, if allowed by the
+    horizon, create a ``Quest`` instance.
     """
 
+    current = now or datetime.utcnow()
     spawned: List[Quest] = []
     for tmpl in templates:
-        remaining = budget.get(tmpl.horizon, 0)
-        if remaining <= 0:
+        if not manager.can_spawn(tmpl.horizon, now=current):
             continue
-        slot = await bind_slot(tmpl, memory, tracker)
-        if slot is None:
-            continue
-        quest = Quest(id=None, name=tmpl.name, description=tmpl.description)
+        if tmpl is BRIDGE_BUILDER:
+            pair = await _find_low_affinity_pair(memory)
+            if pair is None:
+                continue
+            quest = Quest(
+                id=None,
+                name=tmpl.name,
+                description=f"{tmpl.description}: {pair[0]} vs {pair[1]}",
+                horizon=tmpl.horizon,
+            )
+        else:
+            slot = await bind_slot(tmpl, memory, tracker)
+            if slot is None:
+                continue
+            quest = Quest(
+                id=None,
+                name=tmpl.name,
+                description=tmpl.description,
+                horizon=tmpl.horizon,
+            )
         spawned.append(quest)
-        budget[tmpl.horizon] = remaining - 1
+        manager.record_spawn(tmpl.horizon, now=current)
     return spawned
