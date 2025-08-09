@@ -13,7 +13,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List
 
-from ..planning.stacked_planner import DiscordThoughtWriter
+try:  # pragma: no cover - optional dependency
+    from ..planning.stacked_planner import DiscordThoughtWriter
+except Exception:  # pragma: no cover
+    class DiscordThoughtWriter:  # type: ignore[no-redef]
+        def send(self, summary: dict) -> None:  # pragma: no cover - placeholder
+            """Fallback writer used when planner module is unavailable."""
+            pass
+
 from .storage import Quest
 
 # ---------------------------------------------------------------------------

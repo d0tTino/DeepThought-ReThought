@@ -98,9 +98,48 @@ class SocialGraphMemory:
             elif avg <= RIVAL_THRESHOLD:
                 status = "rival"
         await self._db.set_relationship_type(user_a, user_b, status)
+        if status == "friend":
+            await self._db.update_edge(user_a, user_b, "ally", 1.0)
+        elif status == "rival":
+            await self._db.update_edge(user_a, user_b, "rival", 1.0)
 
     async def get_relationship_status(self, user_a: str, user_b: str) -> str | None:
         return await self._db.get_relationship_type(user_a, user_b)
+
+    async def update_edge(
+        self, source: str, target: str, edge_type: str, weight: float = 1.0
+    ) -> None:
+        """Add or update a typed edge between ``source`` and ``target``."""
+        await self._db.update_edge(source, target, edge_type, weight)
+
+    async def get_edge_weight(self, source: str, target: str, edge_type: str) -> float:
+        """Return the current weight of a typed edge."""
+        return await self._db.get_edge_weight(source, target, edge_type)
+
+    async def discover_factions(self, edge_type: str = "ally") -> list[list[str]]:
+        """Cluster users into factions based on their positive edges.
+
+        Uses ``networkx``'s greedy modularity communities algorithm to find
+        clusters. Only edges with positive weight are considered.
+        """
+        try:  # pragma: no cover - networkx may be missing
+            import importlib
+
+            nx = importlib.import_module("networkx")
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ImportError("networkx is required for faction discovery") from exc
+
+        edges = await self._db.get_edges(edge_type=edge_type)
+        graph = nx.Graph()
+        for src, tgt, weight in edges:
+            if weight > 0:
+                graph.add_edge(src, tgt, weight=weight)
+        if graph.number_of_nodes() == 0:
+            return []
+        communities = nx.algorithms.community.greedy_modularity_communities(
+            graph, weight="weight"
+        )
+        return [sorted(list(c)) for c in communities]
 
     async def close(self) -> None:
         await self._db.close()
