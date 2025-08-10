@@ -29,6 +29,46 @@ async def log_interaction(
     await _db().log_interaction(user_id, target_id, sentiment_score=sentiment_score)
 
 
+STYLE_LEVELS = ["silence", "emoji", "word", "one-liner", "paragraph"]
+
+
+def choose_style(utility: float, tone: str = "neutral") -> str:
+    """Select a reply style based on utility and tone preference.
+
+    Parameters
+    ----------
+    utility:
+        A score in ``[0, 1]`` indicating how useful a response would be.  Higher
+        values correspond to longer replies.
+    tone:
+        User tone preference. ``"concise"`` biases toward shorter replies while
+        ``"verbose"`` biases toward longer replies.
+
+    Returns
+    -------
+    str
+        One of ``"silence"``, ``"emoji"``, ``"word"``, ``"one-liner"``, or
+        ``"paragraph"``.
+    """
+
+    idx = 0
+    if utility >= 0.2:
+        idx = 1
+    if utility >= 0.4:
+        idx = 2
+    if utility >= 0.6:
+        idx = 3
+    if utility >= 0.8:
+        idx = 4
+
+    if tone == "concise":
+        idx = max(0, idx - 1)
+    elif tone == "verbose":
+        idx = min(len(STYLE_LEVELS) - 1, idx + 1)
+
+    return STYLE_LEVELS[idx]
+
+
 def is_bot(user: object) -> bool:
     """Return ``True`` if a user object or name appears bot-like.
 
