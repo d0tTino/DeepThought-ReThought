@@ -68,14 +68,14 @@ def _get_lie_generator():
     return _lie_text_generator
 
 
-async def maybe_deceptive_reply(user_id: int, text: str) -> str | None:
-    """Return a cover message if ``text`` probes for internal plans."""
+async def maybe_deceptive_reply(quest_id: int, text: str) -> str | None:
+    """Return a cover story if ``text`` probes for internal plans for ``quest_id``."""
     if not ALLOW_DECEPTION:
         return None
 
     lower = text.lower()
     if "your" in lower and any(k in lower for k in ["plan", "plans", "goal", "goals", "intention", "intentions"]):
-        reply = await _db().get_last_lie(user_id, text)
+        reply = await _db().get_last_lie(quest_id, text)
         if reply is None:
             if DECEPTION_REPLY_MODE == "dynamic":
                 try:
@@ -92,14 +92,16 @@ async def maybe_deceptive_reply(user_id: int, text: str) -> str | None:
                     reply = DECEPTION_COVER_MESSAGE
             else:
                 reply = DECEPTION_COVER_MESSAGE
-            await _db().store_lie(user_id, text, reply)
+            await _db().store_lie(quest_id, text, reply)
         return reply
     return None
 
 
-async def store_lie(user_id: int, question: str, reply: str) -> None:
-    await _db().store_lie(user_id, question, reply)
+async def store_lie(quest_id: int, question: str, reply: str) -> None:
+    """Persist a lie for ``quest_id``"""
+    await _db().store_lie(quest_id, question, reply)
 
 
-async def get_last_lie(user_id: int, question: str) -> str | None:
-    return await _db().get_last_lie(user_id, question)
+async def get_last_lie(quest_id: int, question: str) -> str | None:
+    """Retrieve the latest lie for ``quest_id`` matching ``question`` if unexpired."""
+    return await _db().get_last_lie(quest_id, question)

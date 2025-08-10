@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import aiosqlite
 
@@ -213,9 +213,10 @@ class DBManager:
         """,
         """
         CREATE TABLE IF NOT EXISTS lies (
-            user_id TEXT,
+            quest_id INTEGER,
             question TEXT,
             reply TEXT,
+            expires TIMESTAMP,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """,
@@ -563,8 +564,11 @@ class DBManager:
         ) as cur:
             return await cur.fetchall()
 
-    async def store_lie(self, user_id: int, question: str, reply: str) -> None:
-        """Store a fabricated ``reply`` for ``question`` asked by ``user_id``."""
+    async def store_lie(self, quest_id: int, question: str, reply: str, ttl: int = 3600) -> None:
+        """Store a fabricated ``reply`` for ``question`` tied to ``quest_id``.
+
+        ``ttl`` is the number of seconds before the record expires.
+        """
         if not isinstance(question, str) or not question.strip():
             raise ValueError("question must be a non-empty string")
         if not isinstance(reply, str) or not reply.strip():
@@ -572,33 +576,39 @@ class DBManager:
 
         await self.connect()
         assert self._db
+        expires = datetime.utcnow() + timedelta(seconds=int(ttl))
+        expires_str = expires.strftime("%Y-%m-%d %H:%M:%S")
         await self._db.execute(
-            "INSERT INTO lies (user_id, question, reply) VALUES (?, ?, ?)",
-            (str(user_id), question, reply),
+            "INSERT INTO lies (quest_id, question, reply, expires) VALUES (?, ?, ?, ?)",
+            (quest_id, question, reply, expires_str),
         )
         await self._db.commit()
 
-    async def get_last_lie(self, user_id: int, question: str) -> str | None:
-        """Return the most recent fabricated reply for ``question`` by ``user_id``."""
+    async def get_last_lie(self, quest_id: int, question: str) -> str | None:
+        """Return the most recent lie for ``question`` by ``quest_id`` if not expired."""
         await self.connect()
         assert self._db
+        await self._db.execute("DELETE FROM lies WHERE expires <= CURRENT_TIMESTAMP")
+        await self._db.commit()
         async with self._db.execute(
-            "SELECT reply FROM lies WHERE user_id=? AND question=? " "ORDER BY rowid DESC LIMIT 1",
-            (str(user_id), question),
+            "SELECT reply FROM lies WHERE quest_id=? AND question=? AND expires > CURRENT_TIMESTAMP "
+            "ORDER BY rowid DESC LIMIT 1",
+            (quest_id, question),
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else None
 
-    async def list_lies(self, limit: int = 20) -> list[tuple[int, str, str, str]]:
-        """Return recent entries from the ``lies`` table.
+    async def list_lies(self, limit: int = 20) -> list[tuple[int, int, str, str]]:
+        """Return recent non-expired entries from the ``lies`` table.
 
-        Each result is a tuple of ``(rowid, user_id, question, reply)`` ordered by
-        ``rowid`` descending. ``limit`` constrains the number of rows returned.
+        Each result is ``(rowid, quest_id, question, reply)`` ordered by
+        ``rowid`` descending.
         """
         await self.connect()
         assert self._db
         async with self._db.execute(
-            "SELECT rowid, user_id, question, reply FROM lies ORDER BY rowid DESC LIMIT ?",
+            "SELECT rowid, quest_id, question, reply FROM lies "
+            "WHERE expires > CURRENT_TIMESTAMP ORDER BY rowid DESC LIMIT ?",
             (limit,),
         ) as cur:
             return await cur.fetchall()
@@ -1096,9 +1106,7 @@ class DBManager:
             row = await cur.fetchone()
         return row[0] if row else None
 
-    async def update_edge(
-        self, source_id: int, target_id: int, edge_type: str, weight_delta: float
-    ) -> None:
+    async def update_edge(self, source_id: int, target_id: int, edge_type: str, weight_delta: float) -> None:
         """Insert or update a typed edge applying decay to the stored weight."""
         await self.connect()
         assert self._db
