@@ -7,6 +7,7 @@ from deepthought.quest import (
     LieRecord,
     Objective,
     Quest,
+    QuestWriter,
     SummaryScheduler,
     case_files,
     compile_narratives,
@@ -66,3 +67,44 @@ def test_scheduler_sends_summary_when_due():
     scheduler.maybe_send([quest])
     assert set(sent) == {"narratives", "faction_shifts", "case_files"}
     assert sent["faction_shifts"] == {"alpha": 1}
+
+
+def test_send_quest_story_posts_to_autopsy(monkeypatch):
+    quest = _sample_quest()
+    posted = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        posted.update({"url": url, "json": json})
+
+        class Resp:
+            status_code = 200
+
+        return Resp()
+
+    monkeypatch.setenv("AUTOPSY_CHANNEL", "42")
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setattr("requests.post", fake_post)
+
+    writer = QuestWriter()
+    compile_narratives([quest], writer=writer)
+
+    assert posted["url"].endswith("/42/messages")
+    assert "Secret Mission" in posted["json"]["content"]
+
+
+def test_send_quest_story_ignores_incomplete(monkeypatch):
+    quest = _sample_quest()
+    quest.status = "pending"
+    called = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        called["called"] = True
+
+    monkeypatch.setenv("AUTOPSY_CHANNEL", "42")
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setattr("requests.post", fake_post)
+
+    writer = QuestWriter()
+    compile_narratives([quest], writer=writer)
+
+    assert called == {}

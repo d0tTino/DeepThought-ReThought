@@ -16,22 +16,26 @@ from typing import Any, Dict, Iterable, List
 try:  # pragma: no cover - optional dependency
     from ..planning.stacked_planner import DiscordThoughtWriter
 except Exception:  # pragma: no cover
+
     class DiscordThoughtWriter:  # type: ignore[no-redef]
         def send(self, summary: dict) -> None:  # pragma: no cover - placeholder
             """Fallback writer used when planner module is unavailable."""
             pass
 
+
 from .storage import Quest
+from .writer import QuestWriter
 
 # ---------------------------------------------------------------------------
 # Report compilation helpers
 
 
-def compile_narratives(quests: Iterable[Quest]) -> List[str]:
+def compile_narratives(quests: Iterable[Quest], writer: QuestWriter | None = None) -> List[str]:
     """Return human readable narratives for each quest.
 
     The narrative includes the quest description, objectives, epiphanies and
-    notable lies recorded along the way.
+    notable lies recorded along the way. If ``writer`` is provided, narratives
+    for completed quests are posted via ``QuestWriter.send_quest_story``.
     """
 
     narratives: List[str] = []
@@ -43,6 +47,8 @@ def compile_narratives(quests: Iterable[Quest]) -> List[str]:
         if quest.lies:
             narrative += " Lies: " + "; ".join(lie.lie for lie in quest.lies) + "."
         narratives.append(narrative)
+        if writer:
+            writer.send_quest_story(quest, narrative)
     return narratives
 
 

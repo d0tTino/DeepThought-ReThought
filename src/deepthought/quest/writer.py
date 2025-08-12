@@ -21,6 +21,10 @@ class QuestWriter:
     - ``QUEST_JOURNAL_TEMPLATE``: template for per-quest journals, e.g. ``"quest-{id}"``.
     - ``OPSSEC_LIES_CHANNEL``: channel for lie ledger updates.
     - ``DAILY_SUMMARY_CHANNEL``: channel for daily planner summaries.
+    - ``WHISPERS_DAILY_CHANNEL``: channel for daily whisper summaries.
+    - ``ALERTS_CHANNEL``: channel for runtime alerts.
+    - ``AUTOPSY_CHANNEL``: channel for quest autopsies.
+    - ``PARAMETERS_CHANNEL``: channel for parameter dumps.
     - ``DISCORD_TOKEN``: bot token for authentication.
     """
 
@@ -31,12 +35,20 @@ class QuestWriter:
         journal_template: str | None = None,
         opssec_channel: str | None = None,
         daily_channel: str | None = None,
+        whispers_daily_channel: str | None = None,
+        alerts_channel: str | None = None,
+        autopsy_channel: str | None = None,
+        parameters_channel: str | None = None,
         token: str | None = None,
     ) -> None:
         self._board_channel = board_channel or os.getenv("QUEST_BOARD_CHANNEL")
         self._journal_template = journal_template or os.getenv("QUEST_JOURNAL_TEMPLATE")
         self._opssec_channel = opssec_channel or os.getenv("OPSSEC_LIES_CHANNEL")
         self._daily_channel = daily_channel or os.getenv("DAILY_SUMMARY_CHANNEL")
+        self._whispers_daily_channel = whispers_daily_channel or os.getenv("WHISPERS_DAILY_CHANNEL")
+        self._alerts_channel = alerts_channel or os.getenv("ALERTS_CHANNEL")
+        self._autopsy_channel = autopsy_channel or os.getenv("AUTOPSY_CHANNEL")
+        self._parameters_channel = parameters_channel or os.getenv("PARAMETERS_CHANNEL")
         self._token = token or os.getenv("DISCORD_TOKEN")
 
     # ------------------------------------------------------------------
@@ -79,3 +91,25 @@ class QuestWriter:
         """Publish a daily planner summary."""
 
         self._post(self._daily_channel, json.dumps(summary))
+
+    def send_whispers_daily(self, message: str) -> None:
+        """Publish the daily whispers summary."""
+
+        self._post(self._whispers_daily_channel, message)
+
+    def send_alert(self, message: str) -> None:
+        """Send an alert message."""
+
+        self._post(self._alerts_channel, message)
+
+    def send_parameters(self, params: dict) -> None:
+        """Dump parameter information."""
+
+        self._post(self._parameters_channel, json.dumps(params))
+
+    def send_quest_story(self, quest: Any, narrative: str) -> None:
+        """Publish a quest narrative to the autopsy channel when completed."""
+
+        if getattr(quest, "status", "") != "completed":
+            return
+        self._post(self._autopsy_channel, narrative)
