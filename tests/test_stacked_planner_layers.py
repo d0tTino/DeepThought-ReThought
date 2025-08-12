@@ -38,3 +38,24 @@ def test_layers_modify_actions_and_persist(tmp_path: Path):
     arc_file = next(tmp_path.glob("*_arc.json"))
     arc = json.loads(arc_file.read_text())
     assert arc["actions"] == plan
+
+
+def test_high_low_utility_decision():
+    planner = StackedPlanner(translator=DummyTranslator(), planner_fn=dummy_planner)
+    planner.silence_threshold = 0.5
+
+    low_ctx = ["hello world"]
+    high_ctx = ["please vibe cool awesome thanks"]
+
+    assert not planner.should_act(low_ctx)
+    assert planner.should_act(high_ctx)
+
+
+def test_silence_heuristic_blocks_spam():
+    planner = StackedPlanner(translator=DummyTranslator(), planner_fn=dummy_planner)
+    planner.silence_rate = 2
+    conv = ["hello world"]
+
+    assert planner.should_act(conv)
+    assert planner.should_act(conv)
+    assert not planner.should_act(conv)
