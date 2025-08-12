@@ -27,6 +27,9 @@ class EventSubjects:
     # LLM events
     RESPONSE_GENERATED = "dtr.llm.response_generated"
 
+    # Perception events
+    PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings"
+
     # Raw chat message events
     CHAT_RAW = "chat.raw"
 
@@ -155,6 +158,18 @@ class PlanGeneratedPayload(EventPayload):
     plan: list[str]
     input_id: Optional[str] = None
     timestamp: Optional[str] = None
+
+
+@dataclass
+class PerceptionEmbeddingsPayload(EventPayload):
+    """Payload containing embeddings produced by perception."""
+
+    message_id: str
+    user_id: str
+    spans: list[tuple[int, int]]
+    embeddings: list[list[float]]
+    encoders: list[str]
+    provenance: Dict[str, Any]
 
 
 @dataclass
