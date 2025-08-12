@@ -53,6 +53,6 @@ async def test_sweep_expired_moves_and_summarizes():
 
     assert moved == [expired]
     assert expired.status == QuestState.ABANDONED.value
-    assert writer.messages[0][0] == {"abandoned": [1]}
+    assert writer.messages == [({"abandoned": [1]}, "sweeper")]
     # ensure TTL hook works
     assert expired_fsm.expires_at() == base + timedelta(seconds=10)
