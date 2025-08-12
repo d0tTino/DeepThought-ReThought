@@ -257,6 +257,11 @@ class DBManager:
             quest_id INTEGER REFERENCES quests(quest_id),
             description TEXT NOT NULL,
             status TEXT DEFAULT 'pending',
+            preconditions TEXT,
+            success_criteria TEXT,
+            fail_criteria TEXT,
+            fallbacks TEXT,
+            cooldowns TEXT,
             created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -266,6 +271,9 @@ class DBManager:
             evidence_id INTEGER PRIMARY KEY,
             objective_id INTEGER REFERENCES objectives(objective_id),
             content TEXT NOT NULL,
+            who TEXT,
+            confidence_delta REAL DEFAULT 0,
+            expiry TIMESTAMP,
             created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -275,6 +283,9 @@ class DBManager:
             epiphany_id INTEGER PRIMARY KEY,
             quest_id INTEGER REFERENCES quests(quest_id),
             insight TEXT NOT NULL,
+            who TEXT,
+            confidence_delta REAL DEFAULT 0,
+            expiry TIMESTAMP,
             created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -284,6 +295,9 @@ class DBManager:
             lie_id INTEGER PRIMARY KEY,
             quest_id INTEGER REFERENCES quests(quest_id),
             lie TEXT NOT NULL,
+            who TEXT,
+            confidence_delta REAL DEFAULT 0,
+            expiry TIMESTAMP,
             created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )

@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from .storage import Quest, Objective, Evidence, Epiphany, LieRecord
+from .storage import Epiphany, Evidence, LieRecord, Objective, Quest
 
 
 def load_quests(path: str | Path) -> List[Quest]:
@@ -26,12 +26,8 @@ def load_quests(path: str | Path) -> List[Quest]:
             secrecy=q.get("secrecy", ""),
             risk=q.get("risk", ""),
             status=q.get("status", "pending"),
-            created=(
-                datetime.fromisoformat(q["created"]) if q.get("created") else None
-            ),
-            updated=(
-                datetime.fromisoformat(q["updated"]) if q.get("updated") else None
-            ),
+            created=(datetime.fromisoformat(q["created"]) if q.get("created") else None),
+            updated=(datetime.fromisoformat(q["updated"]) if q.get("updated") else None),
         )
         for o in q.get("objectives", []):
             obj = Objective(
@@ -39,14 +35,55 @@ def load_quests(path: str | Path) -> List[Quest]:
                 quest_id=quest.id or 0,
                 description=o["description"],
                 status=o.get("status", "pending"),
+                preconditions=o.get("preconditions", []),
+                success_criteria=o.get("success_criteria", []),
+                fail_criteria=o.get("fail_criteria", []),
+                fallbacks=o.get("fallbacks", []),
+                cooldowns=o.get("cooldowns", []),
             )
             for ev in o.get("evidence", []):
-                obj.evidence.append(Evidence(id=None, objective_id=obj.id or 0, content=ev))
+                if isinstance(ev, dict):
+                    obj.evidence.append(
+                        Evidence(
+                            id=None,
+                            objective_id=obj.id or 0,
+                            content=ev.get("content", ""),
+                            who=ev.get("who", ""),
+                            confidence_delta=ev.get("confidence_delta", 0.0),
+                            expiry=datetime.fromisoformat(ev["expiry"]) if ev.get("expiry") else None,
+                        )
+                    )
+                else:
+                    obj.evidence.append(Evidence(id=None, objective_id=obj.id or 0, content=ev))
             quest.objectives.append(obj)
         for epi in q.get("epiphanies", []):
-            quest.epiphanies.append(Epiphany(id=None, quest_id=quest.id or 0, insight=epi))
+            if isinstance(epi, dict):
+                quest.epiphanies.append(
+                    Epiphany(
+                        id=None,
+                        quest_id=quest.id or 0,
+                        insight=epi.get("insight", ""),
+                        who=epi.get("who", ""),
+                        confidence_delta=epi.get("confidence_delta", 0.0),
+                        expiry=datetime.fromisoformat(epi["expiry"]) if epi.get("expiry") else None,
+                    )
+                )
+            else:
+                quest.epiphanies.append(Epiphany(id=None, quest_id=quest.id or 0, insight=epi))
         for lie in q.get("lies", []):
-            quest.lies.append(LieRecord(id=None, quest_id=quest.id or 0, lie=lie))
+            if isinstance(lie, dict):
+                quest.lies.append(
+                    LieRecord(
+                        id=None,
+                        quest_id=quest.id or 0,
+                        lie=lie.get("lie", ""),
+                        who=lie.get("who", ""),
+                        confidence_delta=lie.get("confidence_delta", 0.0),
+                        expiry=datetime.fromisoformat(lie["expiry"]) if lie.get("expiry") else None,
+                    )
+                )
+            else:
+                quest.lies.append(LieRecord(id=None, quest_id=quest.id or 0, lie=lie))
         quests.append(quest)
     return quests
 
@@ -78,10 +115,39 @@ def quest_to_dict(quest: Quest) -> dict:
                 "id": o.id,
                 "description": o.description,
                 "status": o.status,
-                "evidence": [e.content for e in o.evidence],
+                "preconditions": o.preconditions,
+                "success_criteria": o.success_criteria,
+                "fail_criteria": o.fail_criteria,
+                "fallbacks": o.fallbacks,
+                "cooldowns": o.cooldowns,
+                "evidence": [
+                    {
+                        "content": e.content,
+                        "who": e.who,
+                        "confidence_delta": e.confidence_delta,
+                        "expiry": e.expiry.isoformat() if e.expiry else None,
+                    }
+                    for e in o.evidence
+                ],
             }
             for o in quest.objectives
         ],
-        "epiphanies": [e.insight for e in quest.epiphanies],
-        "lies": [lr.lie for lr in quest.lies],
+        "epiphanies": [
+            {
+                "insight": e.insight,
+                "who": e.who,
+                "confidence_delta": e.confidence_delta,
+                "expiry": e.expiry.isoformat() if e.expiry else None,
+            }
+            for e in quest.epiphanies
+        ],
+        "lies": [
+            {
+                "lie": lr.lie,
+                "who": lr.who,
+                "confidence_delta": lr.confidence_delta,
+                "expiry": lr.expiry.isoformat() if lr.expiry else None,
+            }
+            for lr in quest.lies
+        ],
     }
