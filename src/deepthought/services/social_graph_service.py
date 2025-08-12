@@ -12,6 +12,8 @@ from ..eda.events import EventSubjects
 from .base import BaseService
 from .db_manager import DBManager
 from .persona_manager import PersonaManager
+from .prism_adapter import PrismAdapter
+from .social_graph_memory import SocialGraphMemory
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ class SocialGraphService(BaseService):
         db_manager: Optional[DBManager] = None,
         persona_manager: Optional[PersonaManager] = None,
         cognitive_core: CognitiveCoreService | None = None,
+        prism_adapter: Optional[PrismAdapter] = None,
         *,
         nats_url: str | None = None,
         connect_retries: int = 1,
@@ -39,10 +42,12 @@ class SocialGraphService(BaseService):
             connect_timeout=connect_timeout,
         )
         self._db = db_manager or DBManager()
+        self._memory = SocialGraphMemory(self._db)
         self._persona = persona_manager or PersonaManager(self._db)
         if cognitive_core is None:
             raise ValueError("cognitive_core service is required")
         self._core = cognitive_core
+        self._prism = prism_adapter or PrismAdapter(self._memory)
 
     async def _handle_input(self, msg: Msg) -> None:
         """Process an INPUT_RECEIVED message."""

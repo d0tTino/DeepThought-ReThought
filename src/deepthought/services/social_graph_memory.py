@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from .prism_adapter import PrismEvent
+
 from textblob import TextBlob
 
 from .db_manager import DBManager
@@ -14,6 +16,10 @@ logger = logging.getLogger(__name__)
 FRIEND_THRESHOLD = 0.5
 RIVAL_THRESHOLD = -0.5
 MIN_INTERACTIONS = 3
+
+POSITIVE_EMOJIS = {"❤️", "👍"}
+NEGATIVE_EMOJIS = {"💔", "👎"}
+LATENCY_THRESHOLD = 5.0
 
 
 class SocialGraphMemory:
@@ -140,6 +146,26 @@ class SocialGraphMemory:
             graph, weight="weight"
         )
         return [sorted(list(c)) for c in communities]
+
+    async def ingest_prism_event(self, event: PrismEvent) -> None:
+        """Update the social graph using a preprocessed Prism event."""
+
+        await self._db.log_interaction(
+            event.source, event.target, sentiment_score=event.sentiment
+        )
+        if event.target is not None:
+            await self._update_relationship_type(event.source, event.target)
+
+        if event.reply_latency is not None:
+            delta = 1 if event.reply_latency <= LATENCY_THRESHOLD else -1
+            await self._db.adjust_affinity(event.source, delta)
+
+        if event.target is not None and event.emoji_counts:
+            for emoji, count in event.emoji_counts.items():
+                if emoji in POSITIVE_EMOJIS:
+                    await self.update_edge(event.source, event.target, "ally", float(count))
+                elif emoji in NEGATIVE_EMOJIS:
+                    await self.update_edge(event.source, event.target, "rival", float(count))
 
     async def close(self) -> None:
         await self._db.close()
