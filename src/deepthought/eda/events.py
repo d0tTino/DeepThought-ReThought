@@ -32,6 +32,9 @@ class EventSubjects:
 
     # Scheduler events
     REMINDER_TRIGGERED = "dtr.scheduler.reminder_triggered"
+    MICRO_TICK = "dtr.scheduler.micro_tick"
+    DAILY_STANDUP = "dtr.scheduler.daily_standup"
+    WEEKLY_PLANNING = "dtr.scheduler.weekly_planning"
 
     # Code generation events
     CODE_TEMPLATE_REQUEST = "dtr.codegen.template_request"
@@ -107,6 +110,13 @@ class ReminderTriggeredPayload(EventPayload):
     message: str
     reminder_id: Optional[str] = None
     timestamp: Optional[str] = None
+
+
+@dataclass
+class TickPayload(EventPayload):
+    """Payload for periodic scheduler ticks."""
+
+    timestamp: str
 
 
 @dataclass
