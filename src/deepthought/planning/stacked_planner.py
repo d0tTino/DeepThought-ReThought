@@ -17,6 +17,16 @@ logger = logging.getLogger(__name__)
 class StackedPlanner:
     """Planner with reactive, investigative and arc layers."""
 
+    UTILITY_WEIGHTS = {
+        "info_gain": 1.0,
+        "social_capital": 1.0,
+        "cover_risk": 1.0,
+        "effort": 1.0,
+        "vibes_fit": 1.0,
+    }
+    SILENCE_THRESHOLD = 0.0
+    SILENCE_RATE = 5
+
     def __init__(
         self,
         translator: object,
@@ -34,13 +44,10 @@ class StackedPlanner:
         self._desires: List[str] = []
         self._intentions: List[str] = []
         self._last_summary = datetime.utcnow()
-        self._weights = {
-            "info_gain": 1.0,
-            "social_capital": 1.0,
-            "cover_risk": 1.0,
-            "effort": 1.0,
-            "vibes_fit": 1.0,
-        }
+        self._weights = self.UTILITY_WEIGHTS.copy()
+        self.silence_threshold = self.SILENCE_THRESHOLD
+        self.silence_rate = self.SILENCE_RATE
+        self._action_history: List[datetime] = []
         self._next_action_time = datetime.min
 
     # ------------------------------------------------------------------
@@ -57,33 +64,37 @@ class StackedPlanner:
 
     # ------------------------------------------------------------------
     # Utility scoring and policy
-    def utility_score(
-        self,
-        *,
-        info_gain: float = 0.0,
-        social_capital: float = 0.0,
-        cover_risk: float = 0.0,
-        effort: float = 0.0,
-        vibes_fit: float = 0.0,
-    ) -> float:
+    def _compute_context_metrics(self, conversation: Iterable[str]) -> dict[str, float]:
+        text = " ".join(conversation).lower()
+        words = set(text.split())
+        info_gain = len(words) / 10.0
+        social_capital = 1.0 if any(w in text for w in ["please", "thanks", "thank you"]) else 0.0
+        cover_risk = 1.0 if any(w in text for w in ["risky", "danger"]) else 0.0
+        effort = len(list(conversation)) / 10.0
+        vibes_fit = 1.0 if any(w in text for w in ["vibe", "cool", "awesome"]) else 0.0
+        return {
+            "info_gain": info_gain,
+            "social_capital": social_capital,
+            "cover_risk": cover_risk,
+            "effort": effort,
+            "vibes_fit": vibes_fit,
+        }
+
+    def utility_score(self, conversation: Iterable[str] | None = None) -> float:
+        metrics = self._compute_context_metrics(conversation or [])
         w = self._weights
         return (
-            info_gain * w["info_gain"]
-            + social_capital * w["social_capital"]
-            + vibes_fit * w["vibes_fit"]
-            - cover_risk * w["cover_risk"]
-            - effort * w["effort"]
+            metrics["info_gain"] * w["info_gain"]
+            + metrics["social_capital"] * w["social_capital"]
+            + metrics["vibes_fit"] * w["vibes_fit"]
+            - metrics["cover_risk"] * w["cover_risk"]
+            - metrics["effort"] * w["effort"]
         )
 
     def should_act(
         self,
+        conversation: Iterable[str] | None = None,
         *,
-        info_gain: float = 0.0,
-        social_capital: float = 0.0,
-        cover_risk: float = 0.0,
-        effort: float = 0.0,
-        vibes_fit: float = 0.0,
-        silence_threshold: float = 0.0,
         cooldown: float = 0.0,
         participants: Iterable[object] | None = None,
         bot_threshold: int = 2,
@@ -94,15 +105,16 @@ class StackedPlanner:
         if participants and bot_interaction.is_crowded(participants, bot_threshold):
             self._next_action_time = now + timedelta(seconds=cooldown)
             return False
-        score = self.utility_score(
-            info_gain=info_gain,
-            social_capital=social_capital,
-            cover_risk=cover_risk,
-            effort=effort,
-            vibes_fit=vibes_fit,
-        )
+        score = self.utility_score(conversation or [])
+        threshold = self.silence_threshold
+        self._action_history = [t for t in self._action_history if now - t < timedelta(minutes=1)]
+        if len(self._action_history) >= self.silence_rate:
+            threshold += 1.0
         self._next_action_time = now + timedelta(seconds=cooldown)
-        return score >= silence_threshold
+        if score >= threshold:
+            self._action_history.append(now)
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Layer processing
