@@ -122,6 +122,24 @@ async def test_silence_on_recent_bot(monkeypatch, tmp_path):
     await sg.db_manager.close()
 
 
+def test_novelty_helper_blocks_redundant():
+    from deepthought.bot import interaction
+    from deepthought.planning.stacked_planner import StackedPlanner
+
+    class DummyTranslator:
+        def translate(self, goal: str):
+            return "domain", "problem"
+
+    def dummy_planner(domain: str, problem: str):
+        return []
+
+    planner = StackedPlanner(DummyTranslator(), dummy_planner)
+    interaction.recent_bot_messages.clear()
+    assert planner.should_act(participants=["Alice"], planned_text="hello world", bot_threshold=5)
+    assert not planner.should_act(participants=["Alice"], planned_text="hello world", bot_threshold=5)
+    interaction.recent_bot_messages.clear()
+
+
 @pytest.mark.asyncio
 async def test_silence_on_message_cap(monkeypatch, tmp_path):
     sg = reload_sg(monkeypatch)

@@ -17,9 +17,7 @@ def reload_sg(monkeypatch):
     sys.modules.setdefault("pydantic_settings", types.ModuleType("pydantic_settings"))
     sys.modules.setdefault("prometheus_client", types.ModuleType("prometheus_client"))
     tb_mod = types.ModuleType("textblob")
-    tb_mod.TextBlob = lambda text: types.SimpleNamespace(
-        sentiment=types.SimpleNamespace(polarity=0.0)
-    )
+    tb_mod.TextBlob = lambda text: types.SimpleNamespace(sentiment=types.SimpleNamespace(polarity=0.0))
     sys.modules.setdefault("textblob", tb_mod)
     rdf_mod = types.ModuleType("rdflib")
     rdf_mod.Namespace = lambda *a, **k: None
@@ -119,3 +117,22 @@ async def test_multi_bot_silence(monkeypatch, tmp_path):
 
     assert message.channel.sent_messages == []
     await sg.db_manager.close()
+
+
+def test_silence_when_room_crowded_simple():
+    from deepthought.bot import interaction
+    from deepthought.planning.stacked_planner import StackedPlanner
+
+    class DummyTranslator:
+        def translate(self, goal: str):
+            return "domain", "problem"
+
+    def dummy_planner(domain: str, problem: str):
+        return []
+
+    planner = StackedPlanner(DummyTranslator(), dummy_planner)
+    interaction.recent_bot_messages.clear()
+    interaction.record_bot_message("alpha")
+    interaction.record_bot_message("beta")
+    assert not planner.should_act(participants=["Alice"], planned_text="hello")
+    interaction.recent_bot_messages.clear()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import deque
+from datetime import datetime, timedelta
 from typing import Callable, Iterable
 
 from deepthought.services.db_manager import DBManager
@@ -83,8 +85,40 @@ def is_bot(user: object) -> bool:
     return "bot" in name.lower()
 
 
-def is_crowded(participants: Iterable[object], bot_threshold: int = 2) -> bool:
-    """Return ``True`` if a conversation has too many bot participants."""
+recent_bot_messages: deque[tuple[datetime, str]] = deque(maxlen=20)
+
+
+def record_bot_message(text: str) -> None:
+    """Record a message sent by a bot for etiquette checks."""
+
+    recent_bot_messages.append((datetime.utcnow(), text))
+
+
+def is_crowded(participants: Iterable[object], bot_threshold: int = 2, *, window: float = 10.0) -> bool:
+    """Return ``True`` if a conversation has too many bot participants or messages."""
 
     bot_count = sum(1 for p in participants if is_bot(p))
-    return bot_count >= bot_threshold
+    if bot_count >= bot_threshold:
+        return True
+
+    cutoff = datetime.utcnow() - timedelta(seconds=window)
+    while recent_bot_messages and recent_bot_messages[0][0] < cutoff:
+        recent_bot_messages.popleft()
+    return len(recent_bot_messages) >= bot_threshold
+
+
+def novel_response(text: str, *, threshold: float = 0.5, window: float = 60.0) -> bool:
+    """Return ``True`` if ``text`` is sufficiently different from recent bot messages."""
+
+    cutoff = datetime.utcnow() - timedelta(seconds=window)
+    tokens = set(text.lower().split())
+    for ts, msg in list(recent_bot_messages):
+        if ts < cutoff:
+            continue
+        other = set(msg.lower().split())
+        if not tokens or not other:
+            continue
+        jaccard = len(tokens & other) / len(tokens | other)
+        if jaccard >= threshold:
+            return False
+    return True
