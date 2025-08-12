@@ -213,3 +213,10 @@ Launch the social graph bot with deception enabled:
 export ALLOW_DECEPTION=true
 python examples/social_graph_bot.py
 ```
+
+## Perception Service
+
+The project includes a dedicated service for scoring social cues in user
+messages. The service consumes `dtr.input.received` events and publishes
+its analysis so other components can adjust trust or select personas. See
+[perception_service.md](perception_service.md) for details.
