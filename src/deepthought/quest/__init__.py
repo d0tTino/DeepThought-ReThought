@@ -22,6 +22,7 @@ from .reports import (
     SummaryScheduler,
     case_files,
     compile_narratives,
+    generate_living_report,
     weekly_faction_shifts,
 )
 
@@ -44,6 +45,7 @@ __all__ = [
     "QuestWriter",
     "SummaryScheduler",
     "compile_narratives",
+    "generate_living_report",
     "weekly_faction_shifts",
     "case_files",
 
