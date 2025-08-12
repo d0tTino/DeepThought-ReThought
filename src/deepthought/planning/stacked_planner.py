@@ -98,12 +98,16 @@ class StackedPlanner:
         cooldown: float = 0.0,
         participants: Iterable[object] | None = None,
         bot_threshold: int = 2,
+        planned_text: str | None = None,
+        novelty_threshold: float = 0.5,
     ) -> bool:
         now = datetime.utcnow()
         if now < self._next_action_time:
             return False
         if participants and bot_interaction.is_crowded(participants, bot_threshold):
             self._next_action_time = now + timedelta(seconds=cooldown)
+            return False
+        if planned_text and not bot_interaction.novel_response(planned_text, threshold=novelty_threshold):
             return False
         score = self.utility_score(conversation or [])
         threshold = self.silence_threshold
@@ -113,6 +117,8 @@ class StackedPlanner:
         self._next_action_time = now + timedelta(seconds=cooldown)
         if score >= threshold:
             self._action_history.append(now)
+            if planned_text:
+                bot_interaction.record_bot_message(planned_text)
             return True
         return False
 
