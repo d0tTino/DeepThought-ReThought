@@ -33,23 +33,70 @@ from .writer import QuestWriter
 def compile_narratives(quests: Iterable[Quest], writer: QuestWriter | None = None) -> List[str]:
     """Return human readable narratives for each quest.
 
-    The narrative includes the quest description, objectives, epiphanies and
-    notable lies recorded along the way. If ``writer`` is provided, narratives
-    for completed quests are posted via ``QuestWriter.send_quest_story``.
+    The narrative includes the quest description and objectives along with
+    cast lists, evidence summaries, unexpected twists and lessons learned.
+    If ``writer`` is provided, narratives for completed quests are posted via
+    ``QuestWriter.send_quest_story``.
     """
 
     narratives: List[str] = []
     for quest in quests:
         objectives = "; ".join(o.description for o in quest.objectives) or "no objectives"
         narrative = f"{quest.name}: {quest.description}. Objectives: {objectives}."
-        if quest.epiphanies:
-            narrative += " Epiphanies: " + "; ".join(e.insight for e in quest.epiphanies) + "."
+
+        cast = set()
+        evidence_summaries: List[str] = []
+        for obj in quest.objectives:
+            for ev in obj.evidence:
+                evidence_summaries.append(ev.content)
+                if ev.who:
+                    cast.add(ev.who)
+        for epi in quest.epiphanies:
+            if epi.who:
+                cast.add(epi.who)
+        for lie in quest.lies:
+            if lie.who:
+                cast.add(lie.who)
+
+        if cast:
+            narrative += " Cast: " + ", ".join(sorted(cast)) + "."
+        if evidence_summaries:
+            narrative += " Evidence: " + "; ".join(evidence_summaries) + "."
         if quest.lies:
-            narrative += " Lies: " + "; ".join(lie.lie for lie in quest.lies) + "."
+            narrative += " Twists: " + "; ".join(lie.lie for lie in quest.lies) + "."
+        if quest.epiphanies:
+            narrative += " Lessons: " + "; ".join(e.insight for e in quest.epiphanies) + "."
         narratives.append(narrative)
         if writer:
             writer.send_quest_story(quest, narrative)
     return narratives
+
+
+def generate_living_report(
+    quests: Iterable[Quest],
+    channel_activity: Dict[str, int],
+    writer: QuestWriter | None = None,
+) -> Dict[str, Any]:
+    """Return a "living" report of weekly arcs and channel heatmap.
+
+    ``channel_activity`` should map channel names to message counts. When a
+    ``writer`` is supplied the report is dispatched via
+    :meth:`QuestWriter.send_living_report`.
+    """
+
+    arcs: Dict[str, List[str]] = {}
+    for quest in quests:
+        timestamp = quest.updated or quest.created or datetime.utcnow()
+        week_start = (timestamp - timedelta(days=timestamp.weekday())).date().isoformat()
+        arcs.setdefault(week_start, []).append(f"{quest.name}: {quest.status}")
+
+    weekly_arcs = [
+        {"week": week, "summary": "; ".join(entries)} for week, entries in sorted(arcs.items())
+    ]
+    report = {"weekly_arcs": weekly_arcs, "channel_heatmap": channel_activity}
+    if writer:
+        writer.send_living_report(report)
+    return report
 
 
 def weekly_faction_shifts(quests: Iterable[Quest]) -> Dict[str, int]:

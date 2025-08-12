@@ -25,6 +25,7 @@ class QuestWriter:
     - ``ALERTS_CHANNEL``: channel for runtime alerts.
     - ``AUTOPSY_CHANNEL``: channel for quest autopsies.
     - ``PARAMETERS_CHANNEL``: channel for parameter dumps.
+    - ``LIVING_REPORT_CHANNEL``: channel for weekly living reports.
     - ``DISCORD_TOKEN``: bot token for authentication.
     """
 
@@ -39,6 +40,7 @@ class QuestWriter:
         alerts_channel: str | None = None,
         autopsy_channel: str | None = None,
         parameters_channel: str | None = None,
+        living_channel: str | None = None,
         token: str | None = None,
     ) -> None:
         self._board_channel = board_channel or os.getenv("QUEST_BOARD_CHANNEL")
@@ -49,6 +51,7 @@ class QuestWriter:
         self._alerts_channel = alerts_channel or os.getenv("ALERTS_CHANNEL")
         self._autopsy_channel = autopsy_channel or os.getenv("AUTOPSY_CHANNEL")
         self._parameters_channel = parameters_channel or os.getenv("PARAMETERS_CHANNEL")
+        self._living_channel = living_channel or os.getenv("LIVING_REPORT_CHANNEL")
         self._token = token or os.getenv("DISCORD_TOKEN")
 
     # ------------------------------------------------------------------
@@ -113,3 +116,8 @@ class QuestWriter:
         if getattr(quest, "status", "") != "completed":
             return
         self._post(self._autopsy_channel, narrative)
+
+    def send_living_report(self, report: dict) -> None:
+        """Publish the weekly living report."""
+
+        self._post(self._living_channel, json.dumps(report))
