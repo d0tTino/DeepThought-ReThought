@@ -2,10 +2,13 @@ from __future__ import annotations
 
 """Utilities for fusing multi-modal embeddings."""
 
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
 import torch
 from torch import nn
+
+if TYPE_CHECKING:  # pragma: no cover - only for type checkers
+    from deepthought.services.perception.user_embeddings import UserEmbeddings
 
 
 class ModalityFuser(nn.Module):
@@ -40,14 +43,21 @@ class ModalityFuser(nn.Module):
         self.project = nn.Linear(input_dim, fused_dim)
 
     def forward(
-        self, modalities: Dict[str, torch.Tensor], user_embedding: Optional[torch.Tensor] = None
+        self,
+        modalities: Dict[str, torch.Tensor],
+        user_embedding: Optional[torch.Tensor] = None,
+        *,
+        user_id: str | None = None,
+        embedding_store: "UserEmbeddings" | None = None,
     ) -> torch.Tensor:
         """Return a fused embedding from provided modality tensors.
 
         Each modality tensor should have shape ``(batch, dim)``. If
         ``user_embedding`` is provided it must have shape ``(batch, user_dim)``.
-        Modality dropout randomly zeroes whole modality vectors during
-        training with probability ``dropout_prob``.
+        When ``embedding_store`` and ``user_id`` are given, the store is queried
+        for a matching embedding which is appended when present. Modality
+        dropout randomly zeroes whole modality vectors during training with
+        probability ``dropout_prob``.
         """
 
         if not modalities:
@@ -59,6 +69,15 @@ class ModalityFuser(nn.Module):
                 mask = (torch.rand(tensor.size(0), 1, device=tensor.device) > self.dropout_prob).float()
                 tensor = tensor * mask
             pieces.append(tensor)
+
+        if user_embedding is None and embedding_store is not None and user_id is not None and self.user_dim > 0:
+            stored = embedding_store.get(user_id)
+            if stored is not None:
+                base = next(iter(modalities.values()))
+                stored = stored.to(base.device)
+                if stored.ndim == 1:
+                    stored = stored.unsqueeze(0)
+                user_embedding = stored.expand(base.size(0), -1)
 
         if user_embedding is not None:
             pieces.append(user_embedding)

@@ -1,10 +1,7 @@
-import importlib
-import sys
-
-sys.modules.pop("torch", None)
-torch = importlib.import_module("torch")
+import torch
 
 from deepthought.modules.fuser import ModalityFuser
+from deepthought.services.perception.user_embeddings import UserEmbeddings
 
 
 def test_fuser_shape_with_user_embedding():
@@ -25,3 +22,13 @@ def test_fuser_modality_dropout_bias_only():
     result = fuser(modalities)
     expected = fuser.project.bias.unsqueeze(0)
     assert torch.allclose(result, expected)
+
+
+def test_fuser_uses_store_when_available(tmp_path):
+    store = UserEmbeddings(tmp_path / "store.json")
+    store.set("u1", torch.ones(3))
+
+    fuser = ModalityFuser({"text": 2}, fused_dim=4, user_dim=3)
+    mods = {"text": torch.randn(1, 2)}
+    out = fuser(mods, user_id="u1", embedding_store=store)
+    assert out.shape == (1, 4)
