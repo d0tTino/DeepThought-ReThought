@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Sequence
 
-from ...eda.events import EventSubjects, PerceptionEmbeddingsPayload
-from ...eda.publisher import Publisher
+from .publisher import PerceptionPublisher
 
 Worker = Callable[..., Any]
 Fuser = Callable[[Sequence[Any]], dict]
@@ -29,7 +28,7 @@ class PerceptionService:
 
     workers: Sequence[Worker]
     fuser: Fuser
-    publisher: Publisher
+    publisher: PerceptionPublisher
 
     async def run(self, message_id: str, user_id: str, *args: Any, **kwargs: Any) -> dict:
         """Execute workers, fuse their outputs and publish the result.
@@ -52,7 +51,7 @@ class PerceptionService:
             results.append(result)
 
         fused = self.fuser(results)
-        payload = PerceptionEmbeddingsPayload(
+        await self.publisher.publish(
             message_id=message_id,
             user_id=user_id,
             spans=fused.get("spans", []),
@@ -60,7 +59,6 @@ class PerceptionService:
             encoders=fused.get("encoders", []),
             provenance=fused.get("provenance", {}),
         )
-        await self.publisher.publish(EventSubjects.PERCEPTION_EMBEDDINGS, payload)
         return fused
 
 
