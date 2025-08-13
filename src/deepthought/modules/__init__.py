@@ -17,9 +17,10 @@ except Exception as exc:  # pragma: no cover - optional dependency may be missin
         """Placeholder that raises if instantiated without nats available."""
 
         def __init__(self, *args: object, **kwargs: object) -> None:
-            raise ImportError(
-                "InputHandler requires the 'nats-py' package"
-            ) from _missing_nats_err
+            raise ImportError("InputHandler requires the 'nats-py' package") from _missing_nats_err
+
+
+from .fuser import ModalityFuser
 from .memory_basic import BasicMemory
 from .memory_graph import GraphMemory
 from .memory_stub import MemoryStub
@@ -82,4 +83,5 @@ __all__ = [
     "BasicLLM",
     "ProductionLLM",
     "RemoteLLM",
+    "ModalityFuser",
 ]
