@@ -203,6 +203,13 @@ def _cmd_orchestrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_perception_run(args: argparse.Namespace) -> int:
+    from ..services.perception import service as perception_service
+
+    asyncio.run(perception_service.run())
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dtrt")
     sub = parser.add_subparsers(dest="command")
@@ -285,6 +292,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     orchestrate_p.add_argument("config", help="Path to YAML or JSON config")
     orchestrate_p.set_defaults(func=_cmd_orchestrate)
+
+    perception_p = sub.add_parser("perception", description="Perception utilities")
+    perception_sub = perception_p.add_subparsers(dest="perception_cmd")
+    perception_run = perception_sub.add_parser("run", description="Run perception service")
+    perception_run.set_defaults(func=_cmd_perception_run)
 
     init_p = sub.add_parser("init")
     init_sub = init_p.add_subparsers(dest="target")
