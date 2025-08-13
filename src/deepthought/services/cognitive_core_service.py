@@ -12,7 +12,12 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 from ..config import Settings, get_settings
-from ..eda.events import BDIIntentionPayload, EventSubjects, MemoryRetrievedPayload
+from ..eda.events import (
+    BDIIntentionPayload,
+    EventSubjects,
+    MemoryRetrievedPayload,
+    PerceptionEmbeddingsPayload,
+)
 from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
@@ -197,6 +202,37 @@ class CognitiveCoreService(BaseService):
             INPUTS_TOTAL.labels(service="cognitive_core_service").inc()
             INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(duration)
 
+    async def _handle_embeddings(self, msg: Msg) -> None:
+        """Store fused perception embeddings in the vector store and KG."""
+        try:
+            payload = PerceptionEmbeddingsPayload.from_json(msg.data.decode())
+            vectors = payload.embeddings
+            if vectors:
+                vector = vectors[0]
+                store = getattr(self._memory, "_store", None)
+                if store and hasattr(store, "upsert_vectors"):
+                    store.upsert_vectors([vector], [payload.message_id])
+                graph = getattr(self._memory, "graph_backend", None)
+                if graph:
+                    graph.query_subgraph(
+                        "MERGE (m:Message {id: $id}) SET m.embedding = $embedding",
+                        {"id": payload.message_id, "embedding": vector},
+                    )
+            if hasattr(msg, "ack") and callable(msg.ack):
+                await msg.ack()
+        except Exception:
+            logger.error("Failed to handle PERCEPTION_EMBEDDINGS", exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                except Exception:
+                    logger.error("Failed to NAK message", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:
+                    logger.error("Failed to ack message after error", exc_info=True)
+
     async def _handle_intention(self, msg: Msg) -> None:
         """React to BDI_INTENTION events by logging the goal."""
         try:
@@ -224,6 +260,12 @@ class CognitiveCoreService(BaseService):
             handler=self._handle_input,
             use_jetstream=True,
             durable=durable_name,
+        )
+        self.add_subscription(
+            subject=EventSubjects.PERCEPTION_EMBEDDINGS,
+            handler=self._handle_embeddings,
+            use_jetstream=True,
+            durable=f"{durable_name}_perception",
         )
         self.add_subscription(
             subject=EventSubjects.BDI_INTENTION,

@@ -49,6 +49,13 @@ def test_add_twice_without_ids():
     assert store.collection.count() == 2
 
 
+def test_upsert_vectors_chroma():
+    store = ChromaVectorStore(collection_name="test_vs4", embedding_function=SimpleEmbeddingFunction())
+    store.upsert_vectors([[0.1, 0.2]], ids=["m1"])
+    store.upsert_vectors([[0.2, 0.3]], ids=["m1"])
+    assert store.collection.count() == 1
+
+
 def test_faiss_store():
     import types
 
