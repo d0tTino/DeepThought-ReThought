@@ -16,11 +16,15 @@ except Exception:  # pragma: no cover - chromadb not installed
 
     class _DummyCollection:
         def __init__(self) -> None:
-            self.docs: dict[str, str] = {}
+            self.docs: dict[str, Any] = {}
 
         def add(self, documents, ids, metadatas=None):  # type: ignore[override]
             for i, doc in zip(ids, documents):
                 self.docs[str(i)] = doc
+
+        def upsert(self, embeddings, ids, metadatas=None):  # type: ignore[override]
+            for i, emb in zip(ids, embeddings):
+                self.docs[str(i)] = emb
 
         def query(self, query_texts, n_results=3):  # type: ignore[override]
             docs = [list(self.docs.values())[:n_results] for _ in query_texts]
@@ -76,6 +80,15 @@ class VectorStore(ABC):
     def query(self, query_texts: Sequence[str], n_results: int = 3):
         """Query the vector store for matching texts."""
 
+    @abstractmethod
+    def upsert_vectors(
+        self,
+        vectors: Sequence[Sequence[float]],
+        ids: Sequence[str],
+        metadatas: Optional[Sequence[dict]] = None,
+    ) -> None:
+        """Upsert pre-computed vectors keyed by ``ids``."""
+
 
 class ChromaVectorStore(VectorStore):
     """Thin wrapper around a Chroma collection."""
@@ -114,6 +127,18 @@ class ChromaVectorStore(VectorStore):
 
     def query(self, query_texts: Sequence[str], n_results: int = 3):
         return self._collection.query(query_texts=list(query_texts), n_results=n_results)
+
+    def upsert_vectors(
+        self,
+        vectors: Sequence[Sequence[float]],
+        ids: Sequence[str],
+        metadatas: Optional[Sequence[dict]] = None,
+    ) -> None:
+        self._collection.upsert(
+            embeddings=[list(map(float, v)) for v in vectors],
+            ids=list(ids),
+            metadatas=list(metadatas) if metadatas else None,
+        )
 
 
 try:  # pragma: no cover - optional dependency
@@ -188,6 +213,24 @@ class FaissVectorStore(VectorStore):
             self._id_to_internal_id[str(_id)] = int(iid)
             self._internal_id_to_text_idx[int(iid)] = len(self._texts) - 1
         self._next_internal_id += len(texts)
+
+    def upsert_vectors(
+        self,
+        vectors: Sequence[Sequence[float]],
+        ids: Sequence[str],
+        metadatas: Optional[Sequence[dict]] = None,
+    ) -> None:
+        self._delete(ids)
+        import numpy as np
+
+        ids = list(ids)
+        internal_ids = np.arange(self._next_internal_id, self._next_internal_id + len(ids), dtype="int64")
+        self._index.add_with_ids(np.asarray(list(vectors), dtype="float32"), internal_ids)
+        for _id, iid in zip(ids, internal_ids):
+            self._texts.append(None)
+            self._id_to_internal_id[str(_id)] = int(iid)
+            self._internal_id_to_text_idx[int(iid)] = len(self._texts) - 1
+        self._next_internal_id += len(ids)
 
     def query(self, query_texts: Sequence[str], n_results: int = 3):
         import numpy as np

@@ -102,7 +102,11 @@ import pytest
 
 import deepthought.services.cognitive_core_service as cognitive_core_service
 from deepthought.config import Settings
-from deepthought.eda.events import EventSubjects, InputReceivedPayload
+from deepthought.eda.events import (
+    EventSubjects,
+    InputReceivedPayload,
+    PerceptionEmbeddingsPayload,
+)
 from deepthought.services.cognitive_core_service import CognitiveCoreService
 
 
@@ -212,3 +216,50 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
     assert "hello" in sent_payload.retrieved_knowledge["facts"]
+
+
+class DummyStore:
+    def __init__(self) -> None:
+        self.upserts: list = []
+
+    def upsert_vectors(self, vectors, ids, metadatas=None):
+        self.upserts.append((list(vectors), list(ids)))
+
+
+class DummyGraph:
+    def __init__(self) -> None:
+        self.queries: list = []
+
+    def query_subgraph(self, query, params):
+        self.queries.append((query, params))
+
+    def merge_entity(self, name):
+        pass
+
+
+class DummyMem2:
+    def __init__(self):
+        self._store = DummyStore()
+        self.graph_backend = DummyGraph()
+
+
+@pytest.mark.asyncio
+async def test_handle_embeddings_upserts(monkeypatch):
+    memory = DummyMem2()
+    db = DummyDB()
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+    payload = PerceptionEmbeddingsPayload(
+        message_id="m1",
+        user_id="u",
+        spans=[],
+        embeddings=[[0.1, 0.2]],
+        encoders=[],
+        provenance={},
+    )
+    msg = DummyMsg(payload.to_json())
+    await service._handle_embeddings(msg)
+    assert msg.acked
+    assert memory._store.upserts == [([[0.1, 0.2]], ["m1"])]
+    assert memory.graph_backend.queries[0][1]["id"] == "m1"
