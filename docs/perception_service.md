@@ -44,3 +44,19 @@ python -m deepthought.services.perception_service
 The module listens for new inputs and continuously publishes
 `dtr.perception.scored` events to the bus.
 
+## Replaying Perception Events
+
+You can replay stored perception events from JetStream using the NATS CLI. The
+following commands retrieve the next 10 messages from each durable consumer:
+
+```bash
+# Replay from the memory consumer
+nats consumer next PERCEPTION memory-perception-consumer --count=10 --json
+
+# Replay from the analytics consumer
+nats consumer next PERCEPTION analytics-perception-consumer --count=10 --json
+```
+
+These commands help inspect past perception embeddings for debugging or
+analysis.
+

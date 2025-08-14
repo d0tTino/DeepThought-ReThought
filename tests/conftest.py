@@ -76,8 +76,11 @@ if spec is None:
     sys.modules.setdefault("nats.errors", nats_stub.errors)
 
 # Provide lightweight stubs for optional heavy packages so tests can run in
-# minimal environments.
-if "torch" not in sys.modules:
+# minimal environments. Attempt to import the real library first and only fall
+# back to a stub when it is truly unavailable.
+try:  # pragma: no cover - optional dependency may be missing
+    import torch  # noqa: F401
+except Exception:  # pragma: no cover - executed only when torch is absent
     torch_stub = types.ModuleType("torch")
 
     class _NoGrad:
