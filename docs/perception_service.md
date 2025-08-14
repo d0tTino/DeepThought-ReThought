@@ -1,7 +1,9 @@
 # Perception Service
 
+## Purpose
+
 The **PerceptionService** evaluates incoming user messages for social cues
-like flirtation, avoidance, manipulation, sarcasm and supportiveness.
+such as flirtation, avoidance, manipulation, sarcasm and supportiveness.
 Downstream modules can use the scores to adjust trust levels, choose
 personas or trigger safeguards.
 
