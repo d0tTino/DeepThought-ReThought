@@ -1,8 +1,9 @@
-import importlib
-import sys
+import pytest
 
-sys.modules.pop("torch", None)
-torch = importlib.import_module("torch")
+try:  # Attempt to import the real torch library
+    import torch  # noqa: F401
+except Exception as exc:  # pragma: no cover - optional dependency
+    pytest.skip(f"torch import failed: {exc}")
 
 from deepthought.services.perception.user_embeddings import UserEmbeddings
 

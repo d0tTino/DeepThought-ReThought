@@ -58,11 +58,7 @@ class RewardThresholds(BaseSettings):
     buffer_size: int = 50
 
 
-DEFAULT_SOCIAL_MODEL = (
-    Path(__file__).resolve().parent
-    / "perception"
-    / "default_social_perception_model.json"
-)
+DEFAULT_SOCIAL_MODEL = Path(__file__).resolve().parent / "perception" / "default_social_perception_model.json"
 
 
 class Settings(BaseSettings):
@@ -78,12 +74,16 @@ class Settings(BaseSettings):
 
     db: DatabaseSettings = DatabaseSettings()
     model_path: str = "distilgpt2"
-    social_perception_model: str = Field(
-        str(DEFAULT_SOCIAL_MODEL), env="SOCIAL_PERCEPTION_MODEL"
-    )
+    social_perception_model: str = Field(str(DEFAULT_SOCIAL_MODEL), env="SOCIAL_PERCEPTION_MODEL")
     memory_file: str = "memory.json"
     search_db: str | None = None
     social_graph_db: str = os.getenv("SOCIAL_GRAPH_DB", "social_graph.db")
+
+    # Weights & Biases integration
+    wandb_enabled: bool = Field(False, env="DT_WANDB_ENABLED")
+    wandb_project: str | None = Field(None, env="DT_WANDB_PROJECT")
+    wandb_sweep_id: str | None = Field(None, env="DT_WANDB_SWEEP_ID")
+    wandb_upload_artifacts: bool = Field(False, env="DT_WANDB_UPLOAD_ARTIFACTS")
 
     vector_backend: str = Field("chroma", env="DT_VECTOR_BACKEND")
     vector_use_gpu: bool = Field(False, env="DT_VECTOR_USE_GPU")

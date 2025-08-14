@@ -10,10 +10,13 @@ processing.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence, Tuple
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
+
+from deepthought.config import get_settings
 
 # A token is represented as ``(text, start_time, end_time)`` where times are in seconds.
 Token = Tuple[str, float, float]
@@ -68,4 +71,21 @@ class TextPerceptionWorker:
             features[start_idx:end_idx] = embedding
 
         features.flush()
+
+        settings = get_settings()
+        if settings.wandb_enabled:
+            try:  # pragma: no cover - optional dependency
+                import wandb
+
+                wandb.log({"text_tokens": len(tokens)})
+                if settings.wandb_upload_artifacts:
+                    art = wandb.Artifact(
+                        name=f"text_features_{Path(memmap_path).stem}",
+                        type="features",
+                    )
+                    art.add_file(memmap_path)
+                    wandb.log_artifact(art)
+            except Exception:  # pragma: no cover - wandb may be missing
+                pass
+
         return features

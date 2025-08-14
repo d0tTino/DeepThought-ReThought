@@ -78,18 +78,21 @@ if spec is None:
 # Provide lightweight stubs for optional heavy packages so tests can run in
 # minimal environments.
 if "torch" not in sys.modules:
-    torch_stub = types.ModuleType("torch")
+    try:  # pragma: no cover - best effort to import the real library
+        import torch  # noqa: F401
+    except Exception:
+        torch_stub = types.ModuleType("torch")
 
-    class _NoGrad:
-        def __enter__(self):
-            return None
+        class _NoGrad:
+            def __enter__(self):
+                return None
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+            def __exit__(self, exc_type, exc, tb):
+                return False
 
-    torch_stub.no_grad = lambda: _NoGrad()
-    torch_stub.softmax = lambda x, dim=None: x
-    sys.modules["torch"] = torch_stub
+        torch_stub.no_grad = lambda: _NoGrad()
+        torch_stub.softmax = lambda x, dim=None: x
+        sys.modules["torch"] = torch_stub
 
 if "l2p" not in sys.modules:
     l2p_stub = types.ModuleType("l2p")
