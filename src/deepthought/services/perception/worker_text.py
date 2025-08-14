@@ -42,7 +42,7 @@ class TextPerceptionWorker:
             raise ValueError("hop_seconds must be between 0.025 and 0.05 seconds")
         self._model = SentenceTransformer(self.model_name)
 
-    def __call__(self, tokens: Sequence[Token], memmap_path: str) -> np.memmap:
+    def __call__(self, tokens: Sequence[Token], memmap_path: str | Path) -> np.memmap:
         """Process ``tokens`` and write embeddings to ``memmap_path``.
 
         Each hop is filled with the embedding of the token active during that
@@ -52,23 +52,21 @@ class TextPerceptionWorker:
         if not tokens:
             raise ValueError("tokens must not be empty")
 
-        # Determine embedding dimension using the first token
-        first_emb = np.asarray(self._model.encode(tokens[0][0]))
+        memmap_path = Path(memmap_path)
+
+        # Pre-compute embeddings to determine dimensionality
+        embeddings = [np.asarray(self._model.encode(text)) for text, _, _ in tokens]
+        emb_dim = embeddings[0].shape[0]
+
         duration = max(end for _, _, end in tokens)
         num_steps = int(np.ceil(duration / self.hop_seconds))
-        features = np.memmap(memmap_path, dtype="float32", mode="w+", shape=(num_steps, len(first_emb)))
+        features = np.memmap(memmap_path, dtype="float32", mode="w+", shape=(num_steps, emb_dim))
         features[:] = 0.0
 
-        # Fill with first token embedding
-        start_idx = int(tokens[0][1] / self.hop_seconds)
-        end_idx = int(np.ceil(tokens[0][2] / self.hop_seconds))
-        features[start_idx:end_idx] = first_emb
-
-        for text, start, end in tokens[1:]:
-            embedding = np.asarray(self._model.encode(text))
+        for emb, (_, start, end) in zip(embeddings, tokens):
             start_idx = int(start / self.hop_seconds)
             end_idx = int(np.ceil(end / self.hop_seconds))
-            features[start_idx:end_idx] = embedding
+            features[start_idx:end_idx] = emb
 
         features.flush()
 
@@ -80,7 +78,7 @@ class TextPerceptionWorker:
                 wandb.log({"text_tokens": len(tokens)})
                 if settings.wandb_upload_artifacts:
                     art = wandb.Artifact(
-                        name=f"text_features_{Path(memmap_path).stem}",
+                        name=f"text_features_{memmap_path.stem}",
                         type="features",
                     )
                     art.add_file(memmap_path)
