@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Sequence
 
+from deepthought.config import get_settings
+
 from .publisher import PerceptionPublisher
 
 Worker = Callable[..., Any]
@@ -43,6 +45,20 @@ class PerceptionService:
             Additional arguments forwarded to each worker.
         """
 
+        settings = get_settings()
+        if settings.wandb_enabled:
+            try:  # pragma: no cover - optional dependency
+                import wandb
+
+                if wandb.run is None:
+                    wandb.init(
+                        project=settings.wandb_project,
+                        sweep_id=settings.wandb_sweep_id,
+                    )
+                wandb.log({"perception_workers": len(self.workers)})
+            except Exception:  # pragma: no cover - wandb may be missing
+                pass
+
         results: list[Any] = []
         for worker in self.workers:
             result = worker(*args, **kwargs)
@@ -51,6 +67,13 @@ class PerceptionService:
             results.append(result)
 
         fused = self.fuser(results)
+        if settings.wandb_enabled:
+            try:  # pragma: no cover - optional dependency
+                import wandb
+
+                wandb.log({"num_embeddings": len(fused.get("embeddings", []))})
+            except Exception:  # pragma: no cover - wandb may be missing
+                pass
         await self.publisher.publish(
             message_id=message_id,
             user_id=user_id,

@@ -14,6 +14,8 @@ import numpy as np
 import torch
 from PIL import Image
 
+from deepthought.config import get_settings
+
 try:  # pragma: no cover - optional dependency
     import open_clip
 except Exception:  # pragma: no cover - optional dependency
@@ -142,4 +144,14 @@ def video_to_feature_grid(
     step = 1.0 / grid_fps
     grid_times = np.arange(start, end + step, step)
     grid_feats = interpolate_features(feats, timestamps, grid_times)
+
+    settings = get_settings()
+    if settings.wandb_enabled:
+        try:  # pragma: no cover - optional dependency
+            import wandb
+
+            wandb.log({"video_frames": len(frames)})
+        except Exception:  # pragma: no cover - wandb may be missing
+            pass
+
     return grid_feats, grid_times

@@ -13,6 +13,8 @@ from typing import Tuple
 import numpy as np
 from scipy.io import wavfile
 
+from deepthought.config import get_settings
+
 
 def extract_windowed_features(
     audio_path: str | Path,
@@ -72,4 +74,21 @@ def extract_windowed_features(
     starts = np.arange(num_windows) * step_size
     ends = starts + window_size
     timestamps = np.column_stack((starts, ends)).astype(np.float32)
+
+    settings = get_settings()
+    if settings.wandb_enabled:
+        try:  # pragma: no cover - optional dependency
+            import wandb
+
+            wandb.log({"audio_windows": num_windows})
+            if settings.wandb_upload_artifacts:
+                art = wandb.Artifact(
+                    name=f"audio_features_{memmap_path.stem}",
+                    type="features",
+                )
+                art.add_file(str(memmap_path))
+                wandb.log_artifact(art)
+        except Exception:  # pragma: no cover - wandb may be missing
+            pass
+
     return features, timestamps

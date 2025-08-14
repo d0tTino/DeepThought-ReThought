@@ -76,23 +76,24 @@ if spec is None:
     sys.modules.setdefault("nats.errors", nats_stub.errors)
 
 # Provide lightweight stubs for optional heavy packages so tests can run in
-# minimal environments. Attempt to import the real library first and only fall
-# back to a stub when it is truly unavailable.
-try:  # pragma: no cover - optional dependency may be missing
-    import torch  # noqa: F401
-except Exception:  # pragma: no cover - executed only when torch is absent
-    torch_stub = types.ModuleType("torch")
+# minimal environments.
+if "torch" not in sys.modules:
+    try:  # pragma: no cover - best effort to import the real library
+        import torch  # noqa: F401
+    except Exception:
+        torch_stub = types.ModuleType("torch")
 
-    class _NoGrad:
-        def __enter__(self):
-            return None
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+        class _NoGrad:
+            def __enter__(self):
+                return None
 
-    torch_stub.no_grad = lambda: _NoGrad()
-    torch_stub.softmax = lambda x, dim=None: x
-    sys.modules["torch"] = torch_stub
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        torch_stub.no_grad = lambda: _NoGrad()
+        torch_stub.softmax = lambda x, dim=None: x
+        sys.modules["torch"] = torch_stub
 
 if "l2p" not in sys.modules:
     l2p_stub = types.ModuleType("l2p")

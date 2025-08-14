@@ -1,4 +1,10 @@
-import torch
+import sys
+
+import pytest
+
+torch = sys.modules.get("torch")
+if not getattr(torch, "nn", None):  # pragma: no cover - optional dependency missing
+    pytest.skip("torch not available", allow_module_level=True)
 
 from deepthought.modules.fuser import ModalityFuser
 from deepthought.services.perception.user_embeddings import UserEmbeddings
