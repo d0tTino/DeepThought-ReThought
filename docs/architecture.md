@@ -219,4 +219,5 @@ python examples/social_graph_bot.py
 The project includes a dedicated service for scoring social cues in user
 messages. The service consumes `dtr.input.received` events and publishes
 its analysis so other components can adjust trust or select personas. See
-[perception_service.md](perception_service.md) for details.
+[perception_service.md](perception_service.md) for the service's purpose,
+event schema and CLI usage.
