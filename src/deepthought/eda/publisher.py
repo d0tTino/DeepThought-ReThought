@@ -1,4 +1,5 @@
 # File: src/deepthought/eda/publisher.py
+import asyncio
 import logging
 import ssl
 
@@ -31,8 +32,12 @@ class Publisher:
         payload: Union[str, Dict, Any],
         use_jetstream: bool = True,
         timeout: float = 10.0,
+        retries: int = 3,
     ) -> Optional[Dict]:
-        """Publish message, using JetStream if requested."""
+        """Publish message, retrying for at-least-once semantics."""
+        if retries < 1:
+            raise ValueError("retries must be at least 1")
+
         # Convert payload
         if isinstance(payload, bytes):
             data = payload
@@ -51,25 +56,34 @@ class Publisher:
         if len(payload_summary) > 100:
             payload_summary = payload_summary[:97] + "..."
 
-        try:
-            if use_jetstream:
-                # Use JetStream publish with timeout
-                ack = await self._js.publish(subject, data, timeout=timeout)  # Use timeout
-                logger.debug(f"Published to '{subject}' via JetStream: seq={ack.seq}")
-                return {"seq": ack.seq, "stream": ack.stream}
-            else:
+        last_error: Exception | None = None
+        for attempt in range(1, retries + 1):
+            try:
+                if use_jetstream:
+                    ack = await self._js.publish(subject, data, timeout=timeout)
+                    logger.debug("Published to '%s' via JetStream: seq=%s", subject, ack.seq)
+                    return {"seq": ack.seq, "stream": ack.stream}
                 # Use regular NATS publish
                 await self._nc.publish(subject, data)
-                logger.debug(f"Published basic NATS message to '{subject}'")
+                logger.debug("Published basic NATS message to '%s'", subject)
                 return None
-        except nats.errors.TimeoutError as e:
-            message = f"Publish timeout for '{subject}' with payload {payload_summary}: {e}"
-            logger.error(message, exc_info=True)
-            raise type(e)(message) from e
-        except Exception as e:
-            message = f"Failed to publish to '{subject}' with payload {payload_summary}: {e}"
-            logger.error(message, exc_info=True)  # Log traceback
-            raise type(e)(message) from e
+            except nats.errors.TimeoutError as err:
+                last_error = err
+                logger.warning("Publish timeout for '%s' with payload %s: %s", subject, payload_summary, err)
+            except Exception as err:
+                last_error = err
+                logger.warning(
+                    "Failed to publish to '%s' with payload %s: %s",
+                    subject,
+                    payload_summary,
+                    err,
+                )
+            if attempt < retries:
+                await asyncio.sleep(min(0.1 * attempt, 1.0))
+
+        assert last_error is not None
+        logger.error("Failed to publish to '%s' after %s attempts", subject, retries)
+        raise last_error
 
 
 async def connect(

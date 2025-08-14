@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Dict, Sequence
 
@@ -59,18 +58,9 @@ class PerceptionPublisher:
             provenance=dict(provenance or {}),
         )
 
-        last_error: Exception | None = None
-        for attempt in range(1, retries + 1):
-            try:
-                return await self._publisher.publish(
-                    EventSubjects.PERCEPTION_EMBEDDINGS,
-                    payload,
-                    use_jetstream=True,
-                )
-            except Exception as err:  # pragma: no cover - network issues
-                last_error = err
-                logger.warning("Publish attempt %s failed for message %s: %s", attempt, message_id, err)
-                await asyncio.sleep(min(0.1 * attempt, 1.0))
-        assert last_error is not None
-        logger.error("Failed to publish perception embeddings after %s attempts", retries)
-        raise last_error
+        return await self._publisher.publish(
+            EventSubjects.PERCEPTION_EMBEDDINGS,
+            payload,
+            use_jetstream=True,
+            retries=retries,
+        )

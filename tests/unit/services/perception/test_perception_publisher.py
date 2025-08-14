@@ -15,10 +15,11 @@ async def test_publish_embeddings(monkeypatch):
 
     captured: dict = {}
 
-    async def fake_publish(subject, payload, use_jetstream=True):
+    async def fake_publish(subject, payload, use_jetstream=True, retries=3):
         captured["subject"] = subject
         captured["payload"] = payload
         captured["use_jetstream"] = use_jetstream
+        captured["retries"] = retries
         return {"seq": 1}
 
     class FakePublisher:
@@ -44,39 +45,36 @@ async def test_publish_embeddings(monkeypatch):
     assert captured["payload"].encoders == [{"name": "test", "dim": 2}]
     assert captured["payload"].provenance == {"source": "unit"}
     assert captured["use_jetstream"] is True
+    assert captured["retries"] == 3
 
 
 @pytest.mark.asyncio
-async def test_publish_retries(monkeypatch):
-    """Verify that publish retries on failure."""
+async def test_publish_forwards_retries(monkeypatch):
+    """Ensure PerceptionPublisher forwards retry count to Publisher."""
 
-    attempts = 0
+    captured: dict = {}
 
-    async def failing_publish(subject, payload, use_jetstream=True):
-        nonlocal attempts
-        attempts += 1
-        if attempts < 2:
-            raise RuntimeError("fail")
+    async def fake_publish(subject, payload, use_jetstream=True, retries=3):
+        captured["retries"] = retries
         return {"seq": 2}
 
     class FakePublisher:
         def __init__(self, nats, js):  # pragma: no cover - unused
-            self.publish = AsyncMock(side_effect=failing_publish)
+            self.publish = AsyncMock(side_effect=fake_publish)
 
     monkeypatch.setattr(perception_publisher, "Publisher", FakePublisher)
 
     publisher = perception_publisher.PerceptionPublisher(object(), object())
-    ack = await publisher.publish("msg1", "user1", retries=3)
+    await publisher.publish("msg1", "user1", retries=5)
 
-    assert ack == {"seq": 2}
-    assert attempts == 2
+    assert captured["retries"] == 5
 
 
 @pytest.mark.asyncio
 async def test_publish_raises_after_retries(monkeypatch):
-    """Ensure publish raises after exhausting retries."""
+    """Ensure publish raises if underlying Publisher fails."""
 
-    async def always_fail(subject, payload, use_jetstream=True):
+    async def always_fail(subject, payload, use_jetstream=True, retries=1):
         raise RuntimeError("fail")
 
     class FakePublisher:
