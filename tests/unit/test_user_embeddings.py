@@ -1,8 +1,4 @@
-import importlib
-import sys
-
-sys.modules.pop("torch", None)
-torch = importlib.import_module("torch")
+import torch
 
 from deepthought.services.perception.user_embeddings import UserEmbeddings
 

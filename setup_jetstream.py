@@ -13,7 +13,14 @@ from urllib.parse import urlparse
 
 from nats.aio.client import Client as NATS
 from nats.errors import TimeoutError
-from nats.js.api import DiscardPolicy, RetentionPolicy, StorageType, StreamConfig
+from nats.js.api import (
+    ConsumerConfig,
+    DeliverPolicy,
+    DiscardPolicy,
+    RetentionPolicy,
+    StorageType,
+    StreamConfig,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -105,6 +112,41 @@ async def setup_jetstream() -> None:
             logger.info(f"Stream might already exist, trying to update: {e}")
             stream = await js.update_stream(config=stream_config)
             logger.info(f"Updated JetStream stream: {stream.config.name}")
+
+        # Define PERCEPTION stream
+        perception_stream = StreamConfig(
+            name="PERCEPTION",
+            subjects=["dtr.perception.>"],
+            retention=RetentionPolicy.LIMITS,
+            storage=StorageType.MEMORY,
+            max_msgs_per_subject=10000,
+            discard=DiscardPolicy.OLD,
+        )
+
+        try:
+            await js.add_stream(config=perception_stream)
+            logger.info("Created JetStream stream: PERCEPTION")
+        except Exception as e:
+            logger.info(f"PERCEPTION stream might already exist, trying to update: {e}")
+            await js.update_stream(config=perception_stream)
+            logger.info("Updated JetStream stream: PERCEPTION")
+
+        # Create durable consumers for PERCEPTION stream
+        for durable in [
+            "memory-perception-consumer",
+            "analytics-perception-consumer",
+        ]:
+            consumer_config = ConsumerConfig(
+                durable_name=durable,
+                deliver_policy=DeliverPolicy.ALL,
+            )
+            try:
+                await js.add_consumer("PERCEPTION", consumer_config)
+                logger.info("Created durable consumer %s", durable)
+            except Exception as e:  # pragma: no cover - consumer exists
+                logger.info(
+                    "Durable consumer %s might already exist: %s", durable, e
+                )
 
         logger.info("JetStream setup completed successfully")
 
