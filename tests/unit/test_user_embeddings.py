@@ -5,6 +5,7 @@ try:  # Attempt to import the real torch library
 except Exception as exc:  # pragma: no cover - optional dependency
     pytest.skip(f"torch import failed: {exc}")
 
+
 from deepthought.services.perception.user_embeddings import UserEmbeddings
 
 

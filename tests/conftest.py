@@ -83,6 +83,7 @@ if "torch" not in sys.modules:
     except Exception:
         torch_stub = types.ModuleType("torch")
 
+
         class _NoGrad:
             def __enter__(self):
                 return None
