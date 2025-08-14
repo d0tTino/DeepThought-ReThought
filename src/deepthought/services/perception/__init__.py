@@ -1,5 +1,7 @@
 """Perception utilities for DeepThought services."""
 
+from .cli import main
+from .config import PerceptionConfig
 from .publisher import PerceptionPublisher
 from .service import PerceptionService
 from .user_embeddings import UserEmbeddings
@@ -10,4 +12,6 @@ __all__ = [
     "PerceptionService",
     "PerceptionPublisher",
     "UserEmbeddings",
+    "PerceptionConfig",
+    "main",
 ]
