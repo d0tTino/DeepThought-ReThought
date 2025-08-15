@@ -220,17 +220,45 @@ class FaissVectorStore(VectorStore):
         ids: Sequence[str],
         metadatas: Optional[Sequence[dict]] = None,
     ) -> None:
-        self._delete(ids)
         import numpy as np
 
-        ids = list(ids)
-        internal_ids = np.arange(self._next_internal_id, self._next_internal_id + len(ids), dtype="int64")
-        self._index.add_with_ids(np.asarray(list(vectors), dtype="float32"), internal_ids)
-        for _id, iid in zip(ids, internal_ids):
-            self._texts.append(None)
-            self._id_to_internal_id[str(_id)] = int(iid)
-            self._internal_id_to_text_idx[int(iid)] = len(self._texts) - 1
-        self._next_internal_id += len(ids)
+        vectors = list(vectors)
+        ids = [str(i) for i in ids]
+
+        # Separate ids into existing and new to maintain stable internal ids
+        existing_ids: list[int] = []
+        new_ids: list[int] = []
+        new_vectors: list[Sequence[float]] = []
+        existing_vectors: list[Sequence[float]] = []
+
+        for vec, _id in zip(vectors, ids):
+            internal_id = self._id_to_internal_id.get(_id)
+            if internal_id is not None:
+                existing_ids.append(int(internal_id))
+                existing_vectors.append(vec)
+            else:
+                internal_id = self._next_internal_id
+                self._next_internal_id += 1
+                self._id_to_internal_id[_id] = int(internal_id)
+                self._internal_id_to_text_idx[int(internal_id)] = len(self._texts)
+                self._texts.append(None)
+                new_ids.append(int(internal_id))
+                new_vectors.append(vec)
+
+        # Remove and re-add existing ids to update vectors
+        if existing_ids:
+            self._index.remove_ids(np.asarray(existing_ids, dtype="int64"))
+            self._index.add_with_ids(
+                np.asarray(existing_vectors, dtype="float32"),
+                np.asarray(existing_ids, dtype="int64"),
+            )
+
+        # Insert new ids
+        if new_ids:
+            self._index.add_with_ids(
+                np.asarray(new_vectors, dtype="float32"),
+                np.asarray(new_ids, dtype="int64"),
+            )
 
     def query(self, query_texts: Sequence[str], n_results: int = 3):
         import numpy as np
