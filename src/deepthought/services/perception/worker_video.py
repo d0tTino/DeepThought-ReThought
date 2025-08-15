@@ -10,10 +10,12 @@ resulting features onto a uniform time grid.
 
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Tuple
 
 import numpy as np
 
+from deepthought.config import get_settings
 from deepthought.perception.worker_video import video_to_feature_grid
 
 
@@ -51,5 +53,27 @@ class VideoPerceptionWorker:
         times: np.ndarray
             Uniform timestamps in seconds with shape ``[T]``.
         """
+        feats, times = video_to_feature_grid(
+            str(path), self.decode_fps, self.model_type, self.grid_fps
+        )
 
-        return video_to_feature_grid(str(path), self.decode_fps, self.model_type, self.grid_fps)
+        settings = get_settings()
+        if settings.wandb_enabled:
+            try:  # pragma: no cover - optional dependency
+                import wandb
+
+                wandb.log({"video_frames": feats.shape[0]})
+                if settings.wandb_upload_artifacts:
+                    with NamedTemporaryFile(suffix=".npy", delete=False) as tmp:
+                        np.save(tmp.name, feats)
+                    art = wandb.Artifact(
+                        name=f"video_features_{Path(path).stem}",
+                        type="features",
+                    )
+                    art.add_file(tmp.name)
+                    wandb.log_artifact(art)
+                    Path(tmp.name).unlink(missing_ok=True)
+            except Exception:  # pragma: no cover - wandb may be missing
+                pass
+
+        return feats, times
