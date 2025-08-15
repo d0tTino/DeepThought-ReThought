@@ -191,6 +191,18 @@ def test_parse_bus_init_service():
     assert args.language == "go"
 
 
+def test_parse_perception_run():
+    parser = _build_parser()
+    args = parser.parse_args(
+        ["perception", "run", "--message-id", "m1", "--user-id", "u1"]
+    )
+    assert args.command == "perception"
+    assert args.perception_cmd == "run"
+    assert args.message_id == "m1"
+    assert args.user_id == "u1"
+    assert args.func.__name__ == "_cmd_perception_run"
+
+
 def test_finetune_estimate_vram(tmp_path: Path, monkeypatch) -> None:
     pytest.importorskip("torch")
     pytest.importorskip("bitsandbytes")

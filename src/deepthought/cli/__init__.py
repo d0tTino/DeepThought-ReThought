@@ -204,13 +204,27 @@ def _cmd_orchestrate(args: argparse.Namespace) -> int:
 
 
 def _cmd_perception_run(args: argparse.Namespace) -> int:
-    from ..services.perception import service as perception_service
+    from nats.aio.client import Client as NATS
 
-    asyncio.run(perception_service.run())
+    from ..services.perception.publisher import PerceptionPublisher
+    from ..services.perception.service import PerceptionService
+
+    async def _main() -> None:
+        nc = NATS()
+        await nc.connect(args.nats_url)
+        js = nc.jetstream()
+        publisher = PerceptionPublisher(nc, js)
+        service = PerceptionService(publisher)
+        await service.run(message_id=args.message_id, user_id=args.user_id)
+        await nc.drain()
+
+    asyncio.run(_main())
     return 0
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    from ..services.perception.config import PerceptionConfig
+
     parser = argparse.ArgumentParser(prog="dtrt")
     sub = parser.add_subparsers(dest="command")
 
@@ -296,6 +310,9 @@ def _build_parser() -> argparse.ArgumentParser:
     perception_p = sub.add_parser("perception", description="Perception utilities")
     perception_sub = perception_p.add_subparsers(dest="perception_cmd")
     perception_run = perception_sub.add_parser("run", description="Run perception service")
+    perception_run.add_argument("--nats-url", default=PerceptionConfig().nats_url)
+    perception_run.add_argument("--message-id", required=True)
+    perception_run.add_argument("--user-id", required=True)
     perception_run.set_defaults(func=_cmd_perception_run)
 
     init_p = sub.add_parser("init")
