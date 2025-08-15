@@ -23,11 +23,19 @@ from nats.js.api import (
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # NATS server URL (can be overridden via environment variable)
 NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
+
+# Durable consumers for the PERCEPTION stream
+PERCEPTION_CONSUMERS = [
+    "memory-perception-consumer",
+    "analytics-perception-consumer",
+]
 
 
 def check_nats_server_running(url: str = NATS_URL) -> bool:
@@ -43,7 +51,9 @@ def check_nats_server_running(url: str = NATS_URL) -> bool:
                 logger.info(f"NATS server appears to be running at {host}:{port}")
                 return True
             else:
-                logger.error(f"No NATS server detected at {host}:{port} (connection refused)")
+                logger.error(
+                    f"No NATS server detected at {host}:{port} (connection refused)"
+                )
                 return False
     except Exception as e:
         logger.error(f"Error checking NATS server: {e}")
@@ -61,7 +71,9 @@ async def setup_jetstream() -> None:
     # First check if NATS server is running
     if not check_nats_server_running(NATS_URL):
         logger.error("NATS server does not appear to be running!")
-        logger.error("Please start a NATS server with JetStream enabled before running this script.")
+        logger.error(
+            "Please start a NATS server with JetStream enabled before running this script."
+        )
         logger.error("Example command: 'nats-server -js'")
         raise JetStreamSetupError("NATS server unavailable")
 
@@ -80,9 +92,7 @@ async def setup_jetstream() -> None:
                 break
             except Exception as exc:  # pragma: no cover - network dependent
                 last_exc = exc
-                logger.warning(
-                    "Connection attempt %s failed: %s", attempt, exc
-                )
+                logger.warning("Connection attempt %s failed: %s", attempt, exc)
                 if attempt < 3:
                     await asyncio.sleep(1)
         else:  # pragma: no cover - loop exhausted
@@ -132,10 +142,7 @@ async def setup_jetstream() -> None:
             logger.info("Updated JetStream stream: PERCEPTION")
 
         # Create durable consumers for PERCEPTION stream
-        for durable in [
-            "memory-perception-consumer",
-            "analytics-perception-consumer",
-        ]:
+        for durable in PERCEPTION_CONSUMERS:
             consumer_config = ConsumerConfig(
                 durable_name=durable,
                 deliver_policy=DeliverPolicy.ALL,
@@ -144,9 +151,7 @@ async def setup_jetstream() -> None:
                 await js.add_consumer("PERCEPTION", consumer_config)
                 logger.info("Created durable consumer %s", durable)
             except Exception as e:  # pragma: no cover - consumer exists
-                logger.info(
-                    "Durable consumer %s might already exist: %s", durable, e
-                )
+                logger.info("Durable consumer %s might already exist: %s", durable, e)
 
         logger.info("JetStream setup completed successfully")
 
@@ -159,13 +164,20 @@ async def setup_jetstream() -> None:
     except Exception as e:
         logger.error(f"Failed to set up JetStream: {e}")
         if "Connection refused" in str(e):  # This check is good
-            logger.error(f"Connection refused while trying to connect to NATS server at {NATS_URL}.")
+            logger.error(
+                f"Connection refused while trying to connect to NATS server at {NATS_URL}."
+            )
             logger.error("Please ensure your NATS server is running.")
-        elif "Permissions Violation" in str(e) or "authorization violation" in str(e).lower():  # Added this
+        elif (
+            "Permissions Violation" in str(e)
+            or "authorization violation" in str(e).lower()
+        ):  # Added this
             logger.error(
                 "NATS JetStream reported a permissions violation. This can sometimes happen if JetStream is not enabled on the server."
             )
-            logger.error("Please ensure your NATS server is started with JetStream enabled (e.g., 'nats-server -js').")
+            logger.error(
+                "Please ensure your NATS server is started with JetStream enabled (e.g., 'nats-server -js')."
+            )
         else:  # General advice for other errors
             logger.error(
                 "An unexpected error occurred. Ensure NATS is running, JetStream is enabled ('-js' flag), and the server is accessible at %s."

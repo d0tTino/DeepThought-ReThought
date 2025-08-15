@@ -48,8 +48,11 @@ The module listens for new inputs and continuously publishes
 
 ## Replaying Perception Events
 
-You can replay stored perception events from JetStream using the NATS CLI. The
-following commands retrieve the next 10 messages from each durable consumer:
+The `setup_jetstream.py` script provisions a `PERCEPTION` stream with two
+durable consumers: `memory-perception-consumer` and
+`analytics-perception-consumer`. You can replay stored perception events from
+JetStream using the NATS CLI. The following commands retrieve the next 10
+messages from each consumer:
 
 ```bash
 # Replay from the memory consumer
