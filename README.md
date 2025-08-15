@@ -6,6 +6,9 @@ DeepThought-ReThought is an experimental Artificial Intelligence (AI) project fo
 
 The project is hosted on GitHub: [https://github.com/d0tTino/DeepThought-ReThought](https://github.com/d0tTino/DeepThought-ReThought)
 
+See [docs/licenses.md](docs/licenses.md) for a list of bundled models and
+libraries along with their permissive licenses.
+
 ## Installation
 
 Install the package from PyPI:
@@ -785,6 +788,17 @@ uvicorn deepthought.api.server:app
   The response includes the generated `input_id`.
 * `GET /memory/query?input_id=<id>` – retrieve the latest `MEMORY_RETRIEVED` payload.
 
+## Privacy Controls
+
+DeepThought-ReThought offers switches to manage user data handling:
+
+- **Consent toggle:** set `PERCEPTION_REQUIRE_CONSENT=1` to require an explicit
+  consent flag on incoming messages. Events without consent are ignored.
+- **Retention policy:** the JetStream setup uses `limits` retention by default.
+  Override `PERCEPTION_RETENTION_POLICY` with `limits`, `interest`, or
+  `workqueue` when provisioning streams to control how long perception events
+  persist.
+
 ## Testing
 
 Tests are implemented using the `pytest` framework. To run the tests:
@@ -894,6 +908,12 @@ published. You can also trigger it manually thanks to the
 select the **Release** workflow, click **Run workflow**, and confirm to
 start a manual release. This is useful for verifying the packaging steps
 without creating a new tag.
+
+## License
+
+DeepThought-ReThought is released under the MIT License. See
+[LICENSE](LICENSE) for the full text and [docs/licenses.md](docs/licenses.md)
+for third-party models and libraries and their permissive licenses.
 
 ## Contributing
 
