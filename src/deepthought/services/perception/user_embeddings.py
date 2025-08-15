@@ -37,6 +37,16 @@ class UserEmbeddings:
 
         return self._store.get(user_id)
 
+    def __contains__(self, user_id: str) -> bool:
+        """Return ``True`` if an embedding for ``user_id`` exists."""
+
+        return user_id in self._store
+
+    def __len__(self) -> int:
+        """Return the number of stored user embeddings."""
+
+        return len(self._store)
+
     def set(self, user_id: str, embedding: Sequence[float] | "torch.Tensor") -> None:
         """Store ``embedding`` for ``user_id`` and persist to disk."""
 
