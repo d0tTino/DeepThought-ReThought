@@ -10,6 +10,7 @@ from typing import Any, Dict, Sequence
 import numpy as np
 import torch
 
+from ...config import get_settings
 from ...modules import ModalityFuser
 from .publisher import PerceptionPublisher
 from .worker_audio import AudioPerceptionWorker
@@ -38,6 +39,18 @@ class PerceptionService:
         audio_path: str | Path | None = None,
     ) -> None:
         """Fuse worker outputs and publish via the ``publisher``."""
+        settings = get_settings()
+        wandb_run = None
+        if settings.wandb_enabled:
+            try:  # pragma: no cover - optional dependency
+                import wandb
+
+                wandb_run = wandb.init(
+                    project=settings.wandb_project,
+                    id=settings.wandb_sweep_id,
+                )
+            except Exception:  # pragma: no cover - wandb may be missing
+                wandb_run = None
 
         if embeddings is None and self.fuser is not None:
             modalities: Dict[str, torch.Tensor] = {}
@@ -65,6 +78,24 @@ class PerceptionService:
             encoders=encoders,
             provenance=provenance,
         )
+
+        if wandb_run is not None:
+            try:  # pragma: no cover - optional dependency
+                import wandb
+
+                wandb.log({"embeddings_published": len(embeddings or [])})
+                if settings.wandb_upload_artifacts and embeddings is not None:
+                    with NamedTemporaryFile(suffix=".npy", delete=False) as tmp:
+                        np.save(tmp.name, np.asarray(embeddings))
+                    art = wandb.Artifact(
+                        name=f"embeddings_{message_id}",
+                        type="checkpoint",
+                    )
+                    art.add_file(tmp.name)
+                    wandb.log_artifact(art)
+                    Path(tmp.name).unlink(missing_ok=True)
+            finally:  # pragma: no cover - wandb may be missing
+                wandb_run.finish()
 
 
 async def run(*args: Any, **kwargs: Any) -> None:
