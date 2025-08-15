@@ -55,9 +55,10 @@ class ModalityFuser(nn.Module):
         Each modality tensor should have shape ``(batch, dim)``. If
         ``user_embedding`` is provided it must have shape ``(batch, user_dim)``.
         When ``embedding_store`` and ``user_id`` are given, the store is queried
-        for a matching embedding which is appended when present. Modality
-        dropout randomly zeroes whole modality vectors during training with
-        probability ``dropout_prob``.
+        for a matching embedding which is appended when present. If a
+        ``user_embedding`` is provided it is persisted back to ``embedding_store``
+        for future calls. Modality dropout randomly zeroes whole modality
+        vectors during training with probability ``dropout_prob``.
         """
 
         if not modalities:
@@ -70,14 +71,17 @@ class ModalityFuser(nn.Module):
                 tensor = tensor * mask
             pieces.append(tensor)
 
-        if user_embedding is None and embedding_store is not None and user_id is not None and self.user_dim > 0:
-            stored = embedding_store.get(user_id)
-            if stored is not None:
-                base = next(iter(modalities.values()))
-                stored = stored.to(base.device)
-                if stored.ndim == 1:
-                    stored = stored.unsqueeze(0)
-                user_embedding = stored.expand(base.size(0), -1)
+        if embedding_store is not None and user_id is not None:
+            if user_embedding is not None:
+                embedding_store.set(user_id, user_embedding.mean(dim=0))
+            elif self.user_dim > 0:
+                stored = embedding_store.get(user_id)
+                if stored is not None:
+                    base = next(iter(modalities.values()))
+                    stored = stored.to(base.device)
+                    if stored.ndim == 1:
+                        stored = stored.unsqueeze(0)
+                    user_embedding = stored.expand(base.size(0), -1)
 
         if user_embedding is not None:
             pieces.append(user_embedding)

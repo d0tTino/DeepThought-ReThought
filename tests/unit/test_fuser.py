@@ -38,3 +38,15 @@ def test_fuser_uses_store_when_available(tmp_path):
     mods = {"text": torch.randn(1, 2)}
     out = fuser(mods, user_id="u1", embedding_store=store)
     assert out.shape == (1, 4)
+
+
+def test_fuser_persists_user_embedding(tmp_path):
+    store = UserEmbeddings(tmp_path / "store.json")
+    fuser = ModalityFuser({"text": 2}, fused_dim=4, user_dim=3)
+    mods = {"text": torch.randn(1, 2)}
+    user_embed = torch.randn(1, 3)
+    fuser(mods, user_embed, user_id="bob", embedding_store=store)
+
+    retrieved = store.get("bob")
+    assert retrieved is not None
+    assert torch.allclose(retrieved, user_embed.squeeze(0))
