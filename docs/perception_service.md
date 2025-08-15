@@ -65,3 +65,19 @@ nats consumer next PERCEPTION analytics-perception-consumer --count=10 --json
 These commands help inspect past perception embeddings for debugging or
 analysis.
 
+## Privacy Controls
+
+The perception service provides basic controls over user consent and data
+retention:
+
+- **Consent toggle:** set `PERCEPTION_REQUIRE_CONSENT=1` to require incoming
+  messages to include a `"consent": true` flag. Events without consent are
+  ignored.
+- **Retention policy:** the `PERCEPTION` stream defaults to the JetStream
+  `limits` retention policy. Override `PERCEPTION_RETENTION_POLICY` with
+  `limits`, `interest`, or `workqueue` when provisioning streams to control how
+  long scored events are stored.
+
+These options allow deployments to honor user preferences and organizational
+data policies.
+
