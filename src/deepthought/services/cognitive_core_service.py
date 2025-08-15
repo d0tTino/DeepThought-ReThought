@@ -206,17 +206,17 @@ class CognitiveCoreService(BaseService):
         """Store fused perception embeddings in the vector store and KG."""
         try:
             payload = PerceptionEmbeddingsPayload.from_json(msg.data.decode())
-            vectors = payload.embeddings
-            if vectors:
-                vector = vectors[0]
+            if payload.embeddings:
+                vector = [float(x) for x in payload.embeddings[0]]
+                message_id = str(payload.message_id)
                 store = getattr(self._memory, "_store", None)
                 if store and hasattr(store, "upsert_vectors"):
-                    store.upsert_vectors([vector], [payload.message_id])
+                    store.upsert_vectors([vector], [message_id])
                 graph = getattr(self._memory, "graph_backend", None)
                 if graph:
                     graph.query_subgraph(
                         "MERGE (m:Message {id: $id}) SET m.embedding = $embedding",
-                        {"id": payload.message_id, "embedding": vector},
+                        {"id": message_id, "embedding": vector},
                     )
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()

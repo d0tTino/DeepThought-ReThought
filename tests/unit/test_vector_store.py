@@ -169,6 +169,44 @@ def test_faiss_delete(monkeypatch):
     assert "hello" not in res["documents"][0]
 
 
+def test_faiss_upsert_idempotent(monkeypatch):
+    import types
+
+    class DummyIndex:
+        def __init__(self, dim: int) -> None:
+            self.count = 0
+
+        def add_with_ids(self, vecs, ids):
+            self.count += len(ids)
+
+        def remove_ids(self, ids):
+            self.count -= len(ids)
+
+        def search(self, vecs, k):
+            import numpy as np
+
+            k = min(k, self.count)
+            idx = np.arange(k)
+            return np.zeros((len(vecs), k), dtype="float32"), np.tile(idx, (len(vecs), 1))
+
+    fake_faiss = types.SimpleNamespace(
+        IndexFlatL2=DummyIndex,
+        IndexIDMap=lambda idx: idx,
+        StandardGpuResources=object,
+        index_cpu_to_gpu=lambda res, device, index: index,
+    )
+    vector_store.faiss = fake_faiss
+
+    store = FaissVectorStore(embedding_function=SimpleEmbeddingFunction())
+    store.upsert_vectors([[0.1, 0.2]], ids=["m1"])
+    first_internal = store._id_to_internal_id["m1"]
+    first_next = store._next_internal_id
+    store.upsert_vectors([[0.3, 0.4]], ids=["m1"])
+    assert store._id_to_internal_id["m1"] == first_internal
+    assert store._next_internal_id == first_next
+    assert store._index.count == 1
+
+
 def test_create_vector_store_invalid_backend():
     with pytest.raises(ValueError, match="chroma|faiss"):
         create_vector_store(backend="invalid")
