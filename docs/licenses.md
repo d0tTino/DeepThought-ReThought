@@ -1,7 +1,10 @@
 # Third-Party Licenses
 
 This project relies on several open-source models and libraries. The table below
-summarizes each component and its permissive license.
+summarizes each component and its permissive license. All entries use
+OSI-approved terms that allow commercial and derivative use with attribution.
+The list reflects the components bundled with DeepThought-ReThought; consult the
+upstream projects for the most current license information.
 
 | Component | License | Notes |
 | --- | --- | --- |
@@ -38,5 +41,3 @@ summarizes each component and its permissive license.
 | torchvision | BSD-3-Clause | Computer vision models |
 | opencv-python-headless | Apache-2.0 | Computer vision toolkit |
 | Default social perception model | MIT | Bundled classifier weights |
-
-All of these licenses permit commercial and derivative use with attribution.
