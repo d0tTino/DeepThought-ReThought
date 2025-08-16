@@ -50,3 +50,9 @@ def test_fuser_persists_user_embedding(tmp_path):
     retrieved = store.get("bob")
     assert retrieved is not None
     assert torch.allclose(retrieved, user_embed.squeeze(0))
+
+
+def test_fuser_missing_modalities_raises():
+    fuser = ModalityFuser({"text": 2, "audio": 1}, fused_dim=3)
+    with pytest.raises(RuntimeError):
+        fuser({"text": torch.randn(1, 2)})

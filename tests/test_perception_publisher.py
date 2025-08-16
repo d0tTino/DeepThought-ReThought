@@ -34,3 +34,21 @@ async def test_perception_publisher(monkeypatch):
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
     assert isinstance(payload, PerceptionEmbeddingsPayload)
     assert payload.message_id == "msg1"
+
+
+@pytest.mark.asyncio
+async def test_perception_publisher_defaults(monkeypatch):
+    monkeypatch.setattr(
+        "deepthought.services.perception.publisher.Publisher",
+        DummyPublisher,
+    )
+    pub = PerceptionPublisher(nats_client=object(), js_context=object())
+    result = await pub.publish("m2", "u2")
+    assert result == {"seq": 1}
+    args, kwargs = pub._publisher.publish.call_args
+    subject, payload = args
+    assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
+    assert payload.spans == []
+    assert payload.embeddings == []
+    assert payload.encoders == []
+    assert payload.provenance == {}
