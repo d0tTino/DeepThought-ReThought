@@ -78,6 +78,13 @@ retention:
   `limits`, `interest`, or `workqueue` when provisioning streams to control how
   long scored events are stored.
 
-These options allow deployments to honor user preferences and organizational
-data policies.
+Example configuration:
+
+```bash
+export PERCEPTION_REQUIRE_CONSENT=1
+export PERCEPTION_RETENTION_POLICY=workqueue
+```
+
+These options allow deployments to honor user preferences and organizational data
+policies.
 

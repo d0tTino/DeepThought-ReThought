@@ -6,8 +6,8 @@ DeepThought-ReThought is an experimental Artificial Intelligence (AI) project fo
 
 The project is hosted on GitHub: [https://github.com/d0tTino/DeepThought-ReThought](https://github.com/d0tTino/DeepThought-ReThought)
 
-See [docs/licenses.md](docs/licenses.md) for a list of bundled models and
-libraries along with their permissive licenses.
+See the [licenses guide](docs/licenses.md) for a list of bundled models and
+libraries and their permissive licenses.
 
 ## Installation
 
@@ -725,6 +725,16 @@ scores = detect_emotions("I'm feeling thrilled today!")
 print(scores["Happy"])
 ```
 
+### Privacy Controls
+
+Set `PERCEPTION_REQUIRE_CONSENT=1` to require incoming messages include a
+`"consent": true` flag before they are scored. Configure JetStream retention with
+`PERCEPTION_RETENTION_POLICY`, choosing `limits`, `interest`, or `workqueue` to
+control how long perception events are stored.
+
+See [docs/perception_service.md](docs/perception_service.md#privacy-controls) for
+details.
+
 ## Discord Bot Roadmap
 
 For a detailed overview of the Discord bot progress, see [docs/discord_bot_roadmap.md](docs/discord_bot_roadmap.md).
@@ -912,8 +922,9 @@ without creating a new tag.
 ## License
 
 DeepThought-ReThought is released under the MIT License. See
-[LICENSE](LICENSE) for the full text and [docs/licenses.md](docs/licenses.md)
-for third-party models and libraries and their permissive licenses.
+[LICENSE](LICENSE) for the full text and the
+[third-party licenses](docs/licenses.md) for bundled models and libraries with
+permissive terms.
 
 ## Contributing
 
