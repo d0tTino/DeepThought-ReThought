@@ -253,9 +253,8 @@ async def test_handle_embeddings_upserts(monkeypatch):
     payload = PerceptionEmbeddingsPayload(
         message_id="m1",
         user_id="u",
-        spans=[],
-        embeddings=[[0.1, 0.2]],
-        encoders=[],
+        fused=[0.1, 0.2],
+        by_modality={},
         provenance={},
     )
     msg = DummyMsg(payload.to_json())

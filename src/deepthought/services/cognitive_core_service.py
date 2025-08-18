@@ -206,8 +206,8 @@ class CognitiveCoreService(BaseService):
         """Store fused perception embeddings in the vector store and KG."""
         try:
             payload = PerceptionEmbeddingsPayload.from_json(msg.data.decode())
-            if payload.embeddings:
-                vector = [float(x) for x in payload.embeddings[0]]
+            if payload.fused:
+                vector = [float(x) for x in payload.fused]
                 message_id = str(payload.message_id)
                 store = getattr(self._memory, "_store", None)
                 if store and hasattr(store, "upsert_vectors"):

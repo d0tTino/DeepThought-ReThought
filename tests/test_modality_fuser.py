@@ -1,5 +1,14 @@
+import importlib
 import pytest
 import torch
+import torch.nn.parameter as torch_parameter
+
+
+@pytest.fixture(autouse=True)
+def _ensure_real_torch():
+    if not hasattr(torch_parameter.torch, "SymBool"):
+        importlib.reload(torch_parameter)
+        importlib.reload(torch.nn.modules.linear)
 
 from deepthought.modules.fuser import ModalityFuser
 

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Mapping, Sequence
 
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
-from ...eda.events import EventSubjects, PerceptionEmbeddingsPayload
+from ...eda.events import (
+    EncoderMetadata,
+    EventSubjects,
+    ModalityEmbeddings,
+    PerceptionEmbeddingsPayload,
+)
 from ...eda.publisher import Publisher
 
 logger = logging.getLogger(__name__)
@@ -23,9 +28,8 @@ class PerceptionPublisher:
         message_id: str,
         user_id: str,
         *,
-        spans: Sequence[Sequence[int]] | None = None,
-        embeddings: Sequence[Sequence[float]] | None = None,
-        encoders: Sequence[Dict[str, Any]] | None = None,
+        fused: Sequence[float] | None = None,
+        by_modality: Mapping[str, Mapping[str, Any]] | None = None,
         provenance: Dict[str, Any] | None = None,
         retries: int = 3,
     ) -> Dict | None:
@@ -37,24 +41,30 @@ class PerceptionPublisher:
             Identifier of the message being processed.
         user_id:
             Identifier of the user who produced the message.
-        spans:
-            Span indices for each embedding.
-        embeddings:
-            Vector embeddings.
-        encoders:
-            Metadata describing each encoder.
+        fused:
+            Fused embedding vector representing all modalities.
+        by_modality:
+            Mapping of modality name to its embeddings, spans and encoders.
         provenance:
             Provenance information about how the embeddings were generated.
         retries:
             Number of times to retry publishing on failure.
         """
 
+        modality_payloads = {
+            name: ModalityEmbeddings(
+                spans=[tuple(span) for span in meta.get("spans", [])],
+                embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
+                encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
+            )
+            for name, meta in (by_modality or {}).items()
+        }
+
         payload = PerceptionEmbeddingsPayload(
             message_id=message_id,
             user_id=user_id,
-            spans=list(spans or []),
-            embeddings=[list(map(float, emb)) for emb in (embeddings or [])],
-            encoders=[dict(meta) for meta in (encoders or [])],
+            fused=[float(x) for x in fused] if fused is not None else None,
+            by_modality=modality_payloads,
             provenance=dict(provenance or {}),
         )
 

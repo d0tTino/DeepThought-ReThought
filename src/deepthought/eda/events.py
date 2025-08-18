@@ -6,7 +6,7 @@ in the DeepThought reThought system's event-driven architecture.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional
 
 
@@ -64,7 +64,7 @@ class EventPayload:
 
     def to_json(self) -> str:
         """Convert the payload to a JSON string."""
-        return json.dumps(self.__dict__)
+        return json.dumps(asdict(self))
 
     @classmethod
     def from_json(cls, json_str: str) -> "EventPayload":
@@ -161,15 +161,56 @@ class PlanGeneratedPayload(EventPayload):
 
 
 @dataclass
+class EncoderMetadata(EventPayload):
+    """Metadata describing an encoder used for perception."""
+
+    name: str
+    modality: Optional[str] = None
+    dim: Optional[int] = None
+    parameters: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ModalityEmbeddings(EventPayload):
+    """Embeddings and spans associated with a single modality."""
+
+    spans: list[tuple[int, int]] = field(default_factory=list)
+    embeddings: list[list[float]] = field(default_factory=list)
+    encoders: list[EncoderMetadata] = field(default_factory=list)
+
+
+@dataclass
 class PerceptionEmbeddingsPayload(EventPayload):
     """Payload containing embeddings produced by perception."""
 
     message_id: str
     user_id: str
-    spans: list[tuple[int, int]]
-    embeddings: list[list[float]]
-    encoders: list[str]
-    provenance: Dict[str, Any]
+    fused: Optional[list[float]] = None
+    by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
+    provenance: Dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsPayload":
+        by_modality = {
+            name: ModalityEmbeddings(
+                spans=[tuple(span) for span in meta.get("spans", [])],
+                embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
+                encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
+            )
+            for name, meta in data.get("by_modality", {}).items()
+        }
+        fused = data.get("fused")
+        return cls(
+            message_id=data["message_id"],
+            user_id=data["user_id"],
+            fused=[float(x) for x in fused] if fused is not None else None,
+            by_modality=by_modality,
+            provenance=data.get("provenance", {}),
+        )
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "PerceptionEmbeddingsPayload":
+        return cls.from_dict(json.loads(json_str))
 
 
 @dataclass
