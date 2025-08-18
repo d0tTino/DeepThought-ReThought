@@ -95,12 +95,19 @@ class PerceptionService:
                 fused = self.fuser({k: v.mean(0, keepdim=True) for k, v in modalities.items()})
                 _ = fused  # pragma: no cover - fused embedding currently unused
 
+        modality_payload = {}
+        if embeddings is not None:
+            modality_payload["generic"] = {
+                "spans": list(spans or []),
+                "embeddings": [list(map(float, e)) for e in embeddings],
+                "encoders": [dict(meta) for meta in (encoders or [])],
+            }
+
         await self.publisher.publish(
             message_id=message_id,
             user_id=user_id,
-            spans=spans,
-            embeddings=embeddings,
-            encoders=encoders,
+            fused=embeddings[0] if embeddings else None,
+            by_modality=modality_payload,
             provenance=provenance,
         )
 

@@ -32,9 +32,14 @@ async def test_publish_embeddings(monkeypatch):
     ack = await publisher.publish(
         message_id="msg1",
         user_id="user1",
-        spans=[(0, 1)],
-        embeddings=[[0.0, 0.1]],
-        encoders=[{"name": "test", "dim": 2}],
+        fused=[0.0, 0.1],
+        by_modality={
+            "text": {
+                "spans": [(0, 1)],
+                "embeddings": [[0.0, 0.1]],
+                "encoders": [{"name": "test", "dim": 2, "modality": "text"}],
+            }
+        },
         provenance={"source": "unit"},
     )
 
@@ -42,7 +47,9 @@ async def test_publish_embeddings(monkeypatch):
     assert captured["subject"] == EventSubjects.PERCEPTION_EMBEDDINGS
     assert isinstance(captured["payload"], PerceptionEmbeddingsPayload)
     assert captured["payload"].message_id == "msg1"
-    assert captured["payload"].encoders == [{"name": "test", "dim": 2}]
+    assert captured["payload"].fused == [0.0, 0.1]
+    text_mod = captured["payload"].by_modality["text"]
+    assert text_mod.encoders[0].name == "test"
     assert captured["payload"].provenance == {"source": "unit"}
     assert captured["use_jetstream"] is True
     assert captured["retries"] == 3

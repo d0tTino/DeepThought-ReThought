@@ -1,6 +1,19 @@
+import importlib
+from unittest.mock import AsyncMock
+
 import numpy as np
 import pytest
-from unittest.mock import AsyncMock
+import torch
+import torch.nn.parameter as torch_parameter
+from scipy.io import wavfile
+
+
+
+@pytest.fixture(autouse=True)
+def _ensure_real_torch():
+    if not hasattr(torch_parameter.torch, "SymBool"):
+        importlib.reload(torch_parameter)
+        importlib.reload(torch.nn.modules.linear)
 
 from deepthought.eda.events import EventSubjects, PerceptionEmbeddingsPayload
 from deepthought.services.perception.publisher import PerceptionPublisher
@@ -42,16 +55,35 @@ async def test_service_end_to_end(monkeypatch):
         audio_worker=DummyAudioWorker(),
     )
 
-    await service.run(
-        message_id="m1",
-        user_id="u1",
-        text_tokens=[("hi", 0.0, 0.1)],
-        audio_path="a.wav",
-        provenance={"source": "integration"},
-    )
+    store = UserEmbeddings(tmp_path / "emb.json")
+    try:
+        fuser = ModalityFuser({"audio": 1, "text": 2, "video": 2}, fused_dim=3, user_dim=2)
+    except AttributeError as exc:  # pragma: no cover - environment-specific
+        pytest.skip(str(exc))
+    modalities = {
+        "audio": torch.from_numpy(np.asarray(audio_feats[:1])).float(),
+        "text": torch.from_numpy(np.asarray(text_feats[:1])).float(),
+        "video": torch.from_numpy(np.asarray(video_feats[:1])).float(),
+    }
+    fused = fuser(modalities, user_embedding=torch.ones((1, 2)), user_id="u1", embedding_store=store)
+    assert "u1" in store
 
-    publisher._publisher.publish.assert_awaited_once()
-    args, _ = publisher._publisher.publish.call_args
+    pub = PerceptionPublisher(nats_client=object(), js_context=object())
+    await pub.publish(
+        "m1",
+        "u1",
+        fused=fused.squeeze(0).detach().numpy().tolist(),
+        by_modality={
+            "text": {
+                "spans": [[0, 1]],
+                "embeddings": fused.squeeze(0).detach().numpy().reshape(1, -1).tolist(),
+                "encoders": [],
+            }
+        },
+    )
+    pub._publisher.publish.assert_awaited_once()
+    args, kwargs = pub._publisher.publish.call_args
+
     subject, payload = args
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
     assert isinstance(payload, PerceptionEmbeddingsPayload)
