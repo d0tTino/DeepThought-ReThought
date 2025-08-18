@@ -2,13 +2,14 @@ from __future__ import annotations
 
 """Audio worker utilities.
 
-This module extracts simple windowed features from ``.wav`` files and caches
-results using memory-mapped arrays. Each window emits a ``[start, end]``
- timestamp that aligns with the text worker grid.
+This module extracts windowed audio embeddings and caches results using
+memory-mapped arrays. Each window emits a ``[start, end]`` timestamp that
+aligns with the text worker grid. Embeddings are produced from either
+``WavLM`` or ``CLAP`` models.
 """
 
 from pathlib import Path
-from typing import Tuple
+from typing import Callable, Tuple
 
 import numpy as np
 from scipy.io import wavfile
@@ -16,13 +17,71 @@ from scipy.io import wavfile
 from deepthought.config import get_settings
 
 
+def _select_embedding_fn(
+    model: str,
+    model_path: str | None,
+    sampling_rate: int,
+) -> Callable[[np.ndarray], np.ndarray]:
+    """Return a function that maps a waveform to an embedding.
+
+    Parameters
+    ----------
+    model:
+        Which embedding model to use (``"wavlm"`` or ``"clap"``).
+    model_path:
+        Optional Hugging Face model identifier.
+    sampling_rate:
+        Sampling rate of the audio in Hertz.
+    """
+
+    model = model.lower()
+    if model == "wavlm":
+        import torch
+        from transformers import WavLMFeatureExtractor, WavLMModel  # type: ignore
+
+        name = model_path or "microsoft/wavlm-base-plus"
+        extractor = WavLMFeatureExtractor.from_pretrained(name)
+        mdl = WavLMModel.from_pretrained(name)
+        mdl.eval()
+
+        def embed(window: np.ndarray) -> np.ndarray:
+            inputs = extractor(window, sampling_rate=sampling_rate, return_tensors="pt")
+            with torch.no_grad():
+                hidden = mdl(**inputs).last_hidden_state.mean(dim=1).squeeze(0)
+            return hidden.cpu().numpy().astype(np.float32)
+
+        return embed
+
+    if model == "clap":
+        import torch
+        from transformers import ClapModel, ClapProcessor  # type: ignore
+
+        name = model_path or "laion/clap-htsat-unfused"
+        processor = ClapProcessor.from_pretrained(name)
+        mdl = ClapModel.from_pretrained(name)
+        mdl.eval()
+
+        def embed(window: np.ndarray) -> np.ndarray:
+            inputs = processor(audios=window, sampling_rate=sampling_rate, return_tensors="pt")
+            with torch.no_grad():
+                hidden = mdl.get_audio_features(**inputs).squeeze(0)
+            return hidden.cpu().numpy().astype(np.float32)
+
+        return embed
+
+    raise ValueError(f"Unsupported model: {model}")
+
+
 def extract_windowed_features(
     audio_path: str | Path,
     window_size: float = 0.02,
     step_size: float = 0.01,
     cache_dir: str | Path | None = None,
+    *,
+    model: str = "wavlm",
+    model_path: str | None = None,
 ) -> Tuple[np.memmap, np.ndarray]:
-    """Return RMS features and per-window timestamps for ``audio_path``.
+    """Return embedding features and per-window timestamps for ``audio_path``.
 
     Parameters
     ----------
@@ -35,6 +94,10 @@ def extract_windowed_features(
     cache_dir:
         Optional directory in which to store the memmap file. Defaults to the
         parent directory of ``audio_path``.
+    model:
+        Name of the embedding model to use (``"wavlm"`` or ``"clap"``).
+    model_path:
+        Optional Hugging Face identifier or local path for the model.
     """
 
     audio_path = Path(audio_path)
@@ -46,6 +109,11 @@ def extract_windowed_features(
     sr, data = wavfile.read(audio_path)
     if data.ndim > 1:
         data = data.mean(axis=1)
+    if data.dtype.kind in "iu":
+        data = data.astype(np.float32) / np.iinfo(data.dtype).max
+    else:
+        data = data.astype(np.float32)
+
     win_samples = int(window_size * sr)
     step_samples = int(step_size * sr)
     if win_samples <= 0 or step_samples <= 0:
@@ -57,19 +125,27 @@ def extract_windowed_features(
     else:
         num_windows = 1 + (n_samples - win_samples) // step_samples
 
-    memmap_path = cache_dir / f"{audio_path.stem}_ws{window_size}_ss{step_size}.dat"
-    shape = (num_windows, 1)
+    memmap_path = cache_dir / f"{audio_path.stem}_{model}_ws{window_size}_ss{step_size}.dat"
 
     if memmap_path.exists():
-        features = np.memmap(memmap_path, dtype=np.float32, mode="r", shape=shape)
+        file_size = memmap_path.stat().st_size
+        emb_dim = 0 if num_windows == 0 else int(file_size // (4 * num_windows))
+        features = np.memmap(memmap_path, dtype=np.float32, mode="r", shape=(num_windows, emb_dim))
     else:
-        features = np.memmap(memmap_path, dtype=np.float32, mode="w+", shape=shape)
-        for i in range(num_windows):
-            start = i * step_samples
-            end = start + win_samples
-            window = data[start:end]
-            features[i, 0] = np.sqrt(np.mean(window.astype(np.float32) ** 2))
-        features.flush()
+        embed = _select_embedding_fn(model, model_path, sr)
+        if num_windows == 0:
+            features = np.memmap(memmap_path, dtype=np.float32, mode="w+", shape=(0, 0))
+        else:
+            first = embed(data[:win_samples])
+            emb_dim = int(first.shape[0])
+            features = np.memmap(memmap_path, dtype=np.float32, mode="w+", shape=(num_windows, emb_dim))
+            features[0] = first
+            for i in range(1, num_windows):
+                start = i * step_samples
+                end = start + win_samples
+                window = data[start:end]
+                features[i] = embed(window)
+            features.flush()
 
     starts = np.arange(num_windows) * step_size
     ends = starts + window_size

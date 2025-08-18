@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Audio perception worker producing windowed RMS features."""
+"""Audio perception worker producing windowed audio embeddings."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,10 +10,12 @@ import numpy as np
 
 from deepthought.perception.worker_audio import extract_windowed_features
 
+from .config import PerceptionConfig
+
 
 @dataclass
 class AudioPerceptionWorker:
-    """Extract windowed RMS features from an audio file.
+    """Extract windowed embeddings from an audio file.
 
     Parameters
     ----------
@@ -21,26 +23,30 @@ class AudioPerceptionWorker:
         Size of each analysis window in seconds.
     step_size:
         Step between windows in seconds.
+    model:
+        Embedding model to use (``"wavlm"`` or ``"clap"``).
+    model_path:
+        Optional path or identifier for the embedding model.
+    cache_dir:
+        Default directory in which to store memmap files.
     """
 
-    window_size: float = 0.02
-    step_size: float = 0.01
+    _cfg = PerceptionConfig()
+
+    window_size: float = _cfg.audio_window_size
+    step_size: float = _cfg.audio_step_size
+    model: str = _cfg.audio_model
+    model_path: str | None = _cfg.audio_model_path
+    cache_dir: str | Path | None = _cfg.audio_cache_dir
 
     def __call__(self, audio_path: str | Path, cache_dir: str | Path | None = None) -> Tuple[np.memmap, np.ndarray]:
-        """Return features and per-window timestamps for ``audio_path``.
-
-        Parameters
-        ----------
-        audio_path:
-            Path to a ``.wav`` file.
-        cache_dir:
-            Optional directory in which to store the memmap file. Defaults to the
-            parent directory of ``audio_path``.
-        """
+        """Return features and per-window timestamps for ``audio_path``."""
 
         return extract_windowed_features(
             audio_path,
             window_size=self.window_size,
             step_size=self.step_size,
-            cache_dir=cache_dir,
+            cache_dir=cache_dir or self.cache_dir,
+            model=self.model,
+            model_path=self.model_path,
         )

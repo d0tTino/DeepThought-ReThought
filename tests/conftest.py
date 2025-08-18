@@ -83,7 +83,6 @@ if "torch" not in sys.modules:
     except Exception:
         torch_stub = types.ModuleType("torch")
 
-
         class _NoGrad:
             def __enter__(self):
                 return None
@@ -148,6 +147,21 @@ if "transformers" not in sys.modules:
     transformers_stub.AutoModelForSequenceClassification = _DummyModel
     transformers_stub.AutoTokenizer = _DummyModel
     sys.modules["transformers"] = transformers_stub
+
+import numpy as np
+
+import deepthought.perception.worker_audio as _wa
+
+
+def _dummy_select(model: str, model_path: str | None, sr: int):
+    def _embed(window: np.ndarray) -> np.ndarray:
+        m = float(np.mean(window))
+        return np.array([m, m + 1, m + 2, m + 3], dtype=np.float32)
+
+    return _embed
+
+
+_wa._select_embedding_fn = _dummy_select
 
 import pytest
 
