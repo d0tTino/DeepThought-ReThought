@@ -14,7 +14,7 @@ def test_worker_audio_memmap(tmp_path):
     worker = AudioPerceptionWorker(window_size=0.1, step_size=0.05)
     features, timestamps = worker(audio_file, cache_dir=tmp_path)
 
-    assert features.shape == (19, 1)
+    assert features.shape == (19, 4)
     assert timestamps.shape == (19, 2)
     assert np.allclose(timestamps[0], [0.0, 0.1])
     assert np.allclose(timestamps[1], [0.05, 0.15])
@@ -22,5 +22,5 @@ def test_worker_audio_memmap(tmp_path):
     features2, timestamps2 = worker(audio_file, cache_dir=tmp_path)
     assert np.allclose(features, features2)
     assert np.allclose(timestamps, timestamps2)
-    memmap_path = tmp_path / "test_ws0.1_ss0.05.dat"
+    memmap_path = tmp_path / "test_wavlm_ws0.1_ss0.05.dat"
     assert memmap_path.exists()
