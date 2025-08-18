@@ -52,23 +52,48 @@ class PerceptionService:
             except Exception:  # pragma: no cover - wandb may be missing
                 wandb_run = None
 
-        if embeddings is None and self.fuser is not None:
+        if embeddings is None:
+            embeddings = []
+            spans = list(spans or [])
+            encoders = list(encoders or [])
+            provenance = dict(provenance or {})
             modalities: Dict[str, torch.Tensor] = {}
+            idx = 0
+
             if self.text_worker is not None and text_tokens:
                 with NamedTemporaryFile(suffix=".mm", delete=False) as tmp:
                     mem = self.text_worker(text_tokens, tmp.name)
+                arr = np.asarray(mem)
                 try:
-                    modalities["text"] = torch.from_numpy(np.asarray(mem)).mean(0, keepdim=True)
+                    embeddings.extend(arr.tolist())
+                    spans.extend([[i + idx, i + idx + 1] for i in range(arr.shape[0])])
+                    encoders.extend(
+                        [{"name": self.text_worker.__class__.__name__}] * arr.shape[0]
+                    )
+                    modalities["text"] = torch.from_numpy(arr)
+                    idx += arr.shape[0]
                 finally:
                     Path(tmp.name).unlink(missing_ok=True)
+
             if self.audio_worker is not None and audio_path is not None:
                 feats, _ = self.audio_worker(audio_path)
-                modalities["audio"] = torch.from_numpy(np.asarray(feats)).mean(0, keepdim=True)
-            if not modalities:
-                raise ValueError("No modalities available for fusion")
-            fused = self.fuser(modalities)
-            embeddings = [fused.squeeze(0).tolist()]
-            encoders = encoders or [{"name": self.fuser.__class__.__name__}]
+                arr = np.asarray(feats)
+                embeddings.extend(arr.tolist())
+                spans.extend([[i + idx, i + idx + 1] for i in range(arr.shape[0])])
+                encoders.extend(
+                    [{"name": self.audio_worker.__class__.__name__}] * arr.shape[0]
+                )
+                modalities["audio"] = torch.from_numpy(arr)
+                idx += arr.shape[0]
+
+            if not embeddings:
+                raise ValueError("No modalities available for publication")
+
+            provenance.setdefault("modalities", list(modalities.keys()))
+
+            if self.fuser is not None:
+                fused = self.fuser({k: v.mean(0, keepdim=True) for k, v in modalities.items()})
+                _ = fused  # pragma: no cover - fused embedding currently unused
 
         modality_payload = {}
         if embeddings is not None:

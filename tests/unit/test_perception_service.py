@@ -1,8 +1,6 @@
 from __future__ import annotations
-
 import asyncio
 from typing import Dict, Sequence, Tuple
-
 import numpy as np
 
 from deepthought.services.perception.service import PerceptionService
@@ -25,23 +23,26 @@ class DummyTextWorker:
         return mm
 
 
-def dummy_fuser(modalities):  # pragma: no cover - used only in tests
-    return next(iter(modalities.values()))
-
-
-def test_service_fuses_and_publishes():
+def test_service_publishes_raw_embeddings_and_metadata():
     publisher = DummyPublisher()
-    service = PerceptionService(publisher, text_worker=DummyTextWorker(), fuser=dummy_fuser)
+    service = PerceptionService(publisher, text_worker=DummyTextWorker())
 
     asyncio.run(
         service.run(
             message_id="m1",
             user_id="u1",
             text_tokens=[("hi", 0.0, 0.1)],
+            provenance={"test": True},
         )
     )
 
     assert publisher.kwargs is not None
     assert publisher.kwargs["message_id"] == "m1"
     assert publisher.kwargs["user_id"] == "u1"
-    assert publisher.kwargs["embeddings"] == [[2.0, 3.0]]
+    assert publisher.kwargs["embeddings"] == [[1.0, 2.0], [3.0, 4.0]]
+    assert publisher.kwargs["spans"] == [[0, 1], [1, 2]]
+    assert publisher.kwargs["encoders"] == [
+        {"name": "DummyTextWorker"},
+        {"name": "DummyTextWorker"},
+    ]
+    assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["text"]}
