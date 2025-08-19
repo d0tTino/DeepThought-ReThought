@@ -6,17 +6,19 @@ from deepthought.eda.events import EventSubjects, PerceptionEmbeddingsEvent
 from deepthought.services.perception.publisher import PerceptionPublisher
 
 
+
 class DummyPublisher:
     def __init__(self, *args, **kwargs):
         self.publish = AsyncMock(return_value={"seq": 1})
 
 
 @pytest.mark.asyncio
-async def test_service_end_to_end(monkeypatch):
+async def test_service_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "deepthought.services.perception.publisher.Publisher",
         DummyPublisher,
     )
+
     pub = PerceptionPublisher(nats_client=object(), js_context=object())
     await pub.publish(
         "m1",

@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
+from pathlib import Path
 
 from deepthought.config import get_settings
 
@@ -76,6 +77,7 @@ def embed_frames(
     frames: Iterable[FrameT],
     model_type: str = "siglip",
     device: torch.device | None = None,
+    cache_path: str | Path | None = None,
 ) -> np.ndarray:
     """Embed ``frames`` using ``model_type``.
 
@@ -87,11 +89,21 @@ def embed_frames(
         Either ``"siglip"`` or ``"openclip"``.
     device:
         Torch device for model inference.
+    cache_path:
+        Optional path to a ``.npy`` file used to cache embeddings. When the
+        file exists, it is loaded via :func:`numpy.load` with ``mmap_mode='r'``
+        and returned directly. Otherwise, embeddings are computed and saved to
+        this location using :func:`numpy.lib.format.open_memmap`.
     """
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     frames_list = list(frames)
     if not frames_list:
         return np.empty((0, 0))
+
+    if cache_path is not None:
+        cache_path = Path(cache_path)
+        if cache_path.exists():
+            return np.load(cache_path, mmap_mode="r")
 
     if model_type.lower() == "siglip":
         processor, model = _siglip(device)
@@ -105,7 +117,17 @@ def embed_frames(
             feats = model.encode_image(tensor)
     else:  # pragma: no cover - defensive programming
         raise ValueError(f"unknown model_type: {model_type}")
-    return feats.cpu().numpy()
+
+    feats_np = feats.cpu().numpy()
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        mm = np.lib.format.open_memmap(
+            cache_path, mode="w+", dtype=feats_np.dtype, shape=feats_np.shape
+        )
+        mm[:] = feats_np
+        mm.flush()
+        return mm
+    return feats_np
 
 
 def interpolate_features(
@@ -132,10 +154,25 @@ def video_to_feature_grid(
     decode_fps: int = 1,
     model_type: str = "siglip",
     grid_fps: int | None = None,
+    embed_cache: str | Path | None = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Decode ``path`` and return features on a uniform time grid."""
+    """Decode ``path`` and return features on a uniform time grid.
+
+    Parameters
+    ----------
+    path:
+        Video file to process.
+    decode_fps:
+        Frame sampling rate used during decoding.
+    model_type:
+        Embedding model to use.
+    grid_fps:
+        Optional output grid sampling rate.
+    embed_cache:
+        Optional path to a ``.npy`` file for caching frame embeddings.
+    """
     frames, timestamps = decode_video(path, decode_fps)
-    feats = embed_frames(frames, model_type=model_type)
+    feats = embed_frames(frames, model_type=model_type, cache_path=embed_cache)
     if grid_fps is None:
         grid_fps = decode_fps
     if len(timestamps) == 0:
