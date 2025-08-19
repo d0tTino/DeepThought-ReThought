@@ -5,8 +5,6 @@ import numpy as np
 import pytest
 import torch
 import torch.nn.parameter as torch_parameter
-from scipy.io import wavfile
-
 
 
 @pytest.fixture(autouse=True)
@@ -16,8 +14,10 @@ def _ensure_real_torch():
         importlib.reload(torch.nn.modules.linear)
 
 from deepthought.eda.events import EventSubjects, PerceptionEmbeddingsPayload
+from deepthought.modules.fuser import ModalityFuser
 from deepthought.services.perception.publisher import PerceptionPublisher
 from deepthought.services.perception.service import PerceptionService
+from deepthought.services.perception.user_embeddings import UserEmbeddings
 
 
 class DummyTextWorker:
@@ -31,7 +31,7 @@ class DummyTextWorker:
 
 class DummyAudioWorker:
     def __call__(self, audio_path):
-        feats = np.array([[0.5, 1.5]], dtype="float32")
+        feats = np.array([[0.5]], dtype="float32")
         times = np.array([0.0], dtype="float32")
         return feats, times
 
@@ -42,19 +42,24 @@ class DummyPublisher:
 
 
 @pytest.mark.asyncio
-async def test_service_end_to_end(monkeypatch):
+async def test_service_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "deepthought.services.perception.publisher.Publisher",
         DummyPublisher,
     )
 
     publisher = PerceptionPublisher(nats_client=object(), js_context=object())
-    service = PerceptionService(
+    text_worker = DummyTextWorker()
+    audio_worker = DummyAudioWorker()
+    PerceptionService(
         publisher,
-        text_worker=DummyTextWorker(),
-        audio_worker=DummyAudioWorker(),
+        text_worker=text_worker,
+        audio_worker=audio_worker,
     )
 
+    text_feats = text_worker([], tmp_path / "t.dat")
+    audio_feats, _ = audio_worker("a.wav")
+    video_feats = np.array([[0.2, 0.8]], dtype="float32")
     store = UserEmbeddings(tmp_path / "emb.json")
     try:
         fuser = ModalityFuser({"audio": 1, "text": 2, "video": 2}, fused_dim=3, user_dim=2)
@@ -87,13 +92,8 @@ async def test_service_end_to_end(monkeypatch):
     subject, payload = args
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
     assert isinstance(payload, PerceptionEmbeddingsPayload)
-    assert payload.embeddings == [[1.0, 2.0], [0.5, 1.5]]
-    assert payload.spans == [[0, 1], [1, 2]]
-    assert payload.encoders == [
-        {"name": "DummyTextWorker"},
-        {"name": "DummyAudioWorker"},
-    ]
-    assert payload.provenance == {
-        "source": "integration",
-        "modalities": ["text", "audio"],
-    }
+    assert payload.fused == fused.squeeze(0).detach().numpy().tolist()
+    text_payload = payload.by_modality["text"]
+    assert text_payload.spans == [(0, 1)]
+    assert text_payload.embeddings == fused.squeeze(0).detach().numpy().reshape(1, -1).tolist()
+    assert text_payload.encoders == []
