@@ -98,5 +98,6 @@ async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_pa
     subject, data = js.publish.call_args[0]
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
     payload = json.loads(data.decode())
-    assert payload["message_id"] == "m1"
-    assert payload["user_id"] == "u1"
+    assert payload["event"] == EventSubjects.PERCEPTION_EMBEDDINGS
+    assert payload["payload"]["message_id"] == "m1"
+    assert payload["payload"]["user_id"] == "u1"
