@@ -34,7 +34,7 @@ class AudioPerceptionWorker:
     _cfg = PerceptionConfig()
 
     window_size: float = _cfg.audio_window_size
-    step_size: float = _cfg.audio_step_size
+    step_size: float = _cfg.audio_hop_size
     model: str = _cfg.audio_model
     model_path: str | None = _cfg.audio_model_path
     cache_dir: str | Path | None = _cfg.audio_cache_dir
