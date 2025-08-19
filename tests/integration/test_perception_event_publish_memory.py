@@ -16,6 +16,7 @@ def _ensure_real_torch():
         importlib.reload(torch_parameter)
         importlib.reload(torch.nn.modules.linear)
 
+
 from deepthought.eda.events import EventSubjects
 from deepthought.modules.fuser import ModalityFuser
 from deepthought.services.perception.publisher import PerceptionPublisher
@@ -61,7 +62,7 @@ async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_pa
     audio_worker = AudioPerceptionWorker()
     audio_feats, _ = audio_worker(audio_path)
     text_worker = TextPerceptionWorker(hop_seconds=0.05)
-    text_feats = text_worker([("hi", 0.0, 0.05)], tmp_path / "t.dat")
+    text_feats, _ = text_worker([("hi", 0.0, 0.05)], tmp_path / "t.dat")
     video_worker = VideoPerceptionWorker()
     video_feats, _ = video_worker("v.mp4")
 
@@ -83,7 +84,7 @@ async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_pa
     await pub.publish(
         "m1",
         "u1",
-        fused=fused.squeeze(0).detach().numpy().tolist(),
+        fused=fused.detach().numpy().tolist(),
         by_modality={
             "text": {
                 "spans": [[0, 1]],

@@ -22,7 +22,7 @@ async def test_perception_publisher(monkeypatch):
     result = await pub.publish(
         "msg1",
         "user1",
-        fused=[0.1, 0.2],
+        fused=[[0.1, 0.2]],
         by_modality={
             "text": {
                 "spans": [[0, 1]],
@@ -39,7 +39,7 @@ async def test_perception_publisher(monkeypatch):
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
     assert isinstance(payload, PerceptionEmbeddingsPayload)
     assert payload.message_id == "msg1"
-    assert payload.fused == [0.1, 0.2]
+    assert payload.fused == [[0.1, 0.2]]
     assert "text" in payload.by_modality
     text_mod = payload.by_modality["text"]
     assert text_mod.spans == [(0, 1)]

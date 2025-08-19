@@ -207,7 +207,7 @@ class CognitiveCoreService(BaseService):
         try:
             payload = PerceptionEmbeddingsPayload.from_json(msg.data.decode())
             if payload.fused:
-                vector = [float(x) for x in payload.fused]
+                vector = [float(sum(col) / len(payload.fused)) for col in zip(*payload.fused)]
                 message_id = str(payload.message_id)
                 store = getattr(self._memory, "_store", None)
                 if store and hasattr(store, "upsert_vectors"):

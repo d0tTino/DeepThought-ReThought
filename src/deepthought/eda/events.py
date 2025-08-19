@@ -185,7 +185,7 @@ class PerceptionEmbeddingsPayload(EventPayload):
 
     message_id: str
     user_id: str
-    fused: Optional[list[float]] = None
+    fused: Optional[list[list[float]]] = None
     by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
     provenance: Dict[str, Any] = field(default_factory=dict)
 
@@ -203,7 +203,7 @@ class PerceptionEmbeddingsPayload(EventPayload):
         return cls(
             message_id=data["message_id"],
             user_id=data["user_id"],
-            fused=[float(x) for x in fused] if fused is not None else None,
+            fused=[[float(x) for x in emb] for emb in fused] if fused is not None else None,
             by_modality=by_modality,
             provenance=data.get("provenance", {}),
         )
