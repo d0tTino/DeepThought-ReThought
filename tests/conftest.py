@@ -173,6 +173,7 @@ if "transformers" not in sys.modules:
     transformers_stub.AutoTokenizer = _DummyModel
     sys.modules["transformers"] = transformers_stub
 
+
 # Provide a lightweight stub of the social_graph_bot module. This allows tests
 # to run without installing optional heavy dependencies used by the full
 # example implementation.

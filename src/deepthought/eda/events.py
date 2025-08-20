@@ -187,7 +187,6 @@ class PerceptionEmbeddingsPayload(EventPayload):
     user_id: str
     fused: Optional[list[list[float]]] = None
     by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
-    provenance: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsPayload":
@@ -205,11 +204,43 @@ class PerceptionEmbeddingsPayload(EventPayload):
             user_id=data["user_id"],
             fused=[[float(x) for x in emb] for emb in fused] if fused is not None else None,
             by_modality=by_modality,
-            provenance=data.get("provenance", {}),
         )
 
     @classmethod
     def from_json(cls, json_str: str) -> "PerceptionEmbeddingsPayload":
+        return cls.from_dict(json.loads(json_str))
+
+
+@dataclass
+class PerceptionEmbeddingsEvent(EventPayload):
+    """Event wrapping perception embeddings with top-level metadata."""
+
+    event: str = EventSubjects.PERCEPTION_EMBEDDINGS
+    version: int = 1
+    encoders: list[EncoderMetadata] = field(default_factory=list)
+    provenance: Dict[str, Any] = field(default_factory=dict)
+    payload: PerceptionEmbeddingsPayload | None = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsEvent":
+        # Deduplicate encoders by (name, modality) to mirror publisher behaviour
+        enc_map: dict[tuple[str, str | None], EncoderMetadata] = {}
+        for enc in data.get("encoders", []):
+            key = (enc.get("name"), enc.get("modality"))
+            enc_map.setdefault(key, EncoderMetadata(**enc))
+        encoders = list(enc_map.values())
+        payload_data = data.get("payload", {})
+        payload = PerceptionEmbeddingsPayload.from_dict(payload_data) if payload_data else None
+        return cls(
+            event=data.get("event", EventSubjects.PERCEPTION_EMBEDDINGS),
+            version=data.get("version", 1),
+            encoders=encoders,
+            provenance=data.get("provenance", {}),
+            payload=payload,
+        )
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "PerceptionEmbeddingsEvent":
         return cls.from_dict(json.loads(json_str))
 
 

@@ -4,7 +4,7 @@ import pytest
 
 from deepthought.eda.events import (
     EventSubjects,
-    PerceptionEmbeddingsPayload,
+    PerceptionEmbeddingsEvent,
 )
 from deepthought.services.perception import publisher as perception_publisher
 
@@ -49,10 +49,51 @@ async def test_publish_embeddings(monkeypatch):
     assert captured["payload"].message_id == "msg1"
     assert captured["payload"].fused == [[0.0, 0.1]]
     text_mod = captured["payload"].by_modality["text"]
+
     assert text_mod.encoders[0].name == "test"
     assert captured["payload"].provenance == {"source": "unit"}
+    assert captured["payload"].encoders[0].name == "test"
     assert captured["use_jetstream"] is True
     assert captured["retries"] == 3
+
+
+@pytest.mark.asyncio
+async def test_publish_deduplicates_encoders(monkeypatch):
+    """Encoders should be unique at the event top level."""
+
+    captured: dict = {}
+
+    async def fake_publish(subject, payload, use_jetstream=True, retries=3):
+        captured["payload"] = payload
+        return {"seq": 1}
+
+    class FakePublisher:
+        def __init__(self, nats, js):
+            self.publish = AsyncMock(side_effect=fake_publish)
+
+    monkeypatch.setattr(perception_publisher, "Publisher", FakePublisher)
+
+    publisher = perception_publisher.PerceptionPublisher(object(), object())
+    await publisher.publish(
+        message_id="m1",
+        user_id="u1",
+        by_modality={
+            "a": {
+                "spans": [],
+                "embeddings": [],
+                "encoders": [{"name": "enc", "modality": "text"}],
+            },
+            "b": {
+                "spans": [],
+                "embeddings": [],
+                "encoders": [{"name": "enc", "modality": "text"}],
+            },
+        },
+    )
+
+    event = captured["payload"]
+    assert isinstance(event, PerceptionEmbeddingsEvent)
+    assert len(event.encoders) == 1
 
 
 @pytest.mark.asyncio

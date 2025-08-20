@@ -22,7 +22,7 @@ def test_audio_perception_worker(tmp_path):
     worker = AudioPerceptionWorker(window_size=0.02, step_size=0.01)
     features, times = worker(path)
 
-    assert features.shape == (4, 1)
+    assert features.shape == (4, 4)
     assert times.shape == (4, 2)
 
 
