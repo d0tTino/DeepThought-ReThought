@@ -251,13 +251,13 @@ async def test_handle_embeddings_upserts(monkeypatch):
     service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
-    payload = PerceptionEmbeddingsEvent(
-        payload=PerceptionEmbeddingsPayload(
-            message_id="m1",
-            user_id="u",
-            fused=[0.1, 0.2],
-            by_modality={},
-        ),
+    payload = PerceptionEmbeddingsPayload(
+        message_id="m1",
+        user_id="u",
+        fused=[[0.1, 0.2]],
+        by_modality={},
+        provenance={},
+
     )
     msg = DummyMsg(payload.to_json())
     await service._handle_embeddings(msg)

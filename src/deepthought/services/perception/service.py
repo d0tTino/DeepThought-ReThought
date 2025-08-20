@@ -13,6 +13,7 @@ import torch
 from ...config import get_settings
 from ...modules import ModalityFuser
 from .publisher import PerceptionPublisher
+from .user_embeddings import UserEmbeddings
 from .worker_audio import AudioPerceptionWorker
 from .worker_text import TextPerceptionWorker, Token
 
@@ -25,6 +26,7 @@ class PerceptionService:
     text_worker: TextPerceptionWorker | None = None
     audio_worker: AudioPerceptionWorker | None = None
     fuser: ModalityFuser | None = None
+    user_embeddings: UserEmbeddings | None = None
 
     async def run(
         self,
@@ -53,60 +55,74 @@ class PerceptionService:
                 wandb_run = None
 
         if embeddings is None:
-            embeddings = []
-            spans = list(spans or [])
-            encoders = list(encoders or [])
             provenance = dict(provenance or {})
-            modalities: Dict[str, torch.Tensor] = {}
-            idx = 0
+            modality_arrays: Dict[str, np.ndarray] = {}
+            modality_times: Dict[str, np.ndarray] = {}
+            encoder_meta: Dict[str, Dict[str, Any]] = {}
 
             if self.text_worker is not None and text_tokens:
                 with NamedTemporaryFile(suffix=".mm", delete=False) as tmp:
-                    mem = self.text_worker(text_tokens, tmp.name)
-                arr = np.asarray(mem)
-                try:
-                    embeddings.extend(arr.tolist())
-                    spans.extend([[i + idx, i + idx + 1] for i in range(arr.shape[0])])
-                    encoders.extend(
-                        [{"name": self.text_worker.__class__.__name__}] * arr.shape[0]
-                    )
-                    modalities["text"] = torch.from_numpy(arr)
-                    idx += arr.shape[0]
-                finally:
-                    Path(tmp.name).unlink(missing_ok=True)
+                    feats, times = self.text_worker(text_tokens, tmp.name)
+                modality_arrays["text"] = np.asarray(feats)
+                modality_times["text"] = np.asarray(times)
+                encoder_meta["text"] = {"name": self.text_worker.__class__.__name__}
+                Path(tmp.name).unlink(missing_ok=True)
 
             if self.audio_worker is not None and audio_path is not None:
-                feats, _ = self.audio_worker(audio_path)
-                arr = np.asarray(feats)
-                embeddings.extend(arr.tolist())
-                spans.extend([[i + idx, i + idx + 1] for i in range(arr.shape[0])])
-                encoders.extend(
-                    [{"name": self.audio_worker.__class__.__name__}] * arr.shape[0]
-                )
-                modalities["audio"] = torch.from_numpy(arr)
-                idx += arr.shape[0]
+                feats, times = self.audio_worker(audio_path)
+                modality_arrays["audio"] = np.asarray(feats)
+                modality_times["audio"] = np.asarray(times)
+                encoder_meta["audio"] = {"name": self.audio_worker.__class__.__name__}
 
-            if not embeddings:
+            if not modality_arrays:
                 raise ValueError("No modalities available for publication")
 
-            provenance.setdefault("modalities", list(modalities.keys()))
+            provenance.setdefault("modalities", list(modality_arrays.keys()))
 
+            hop = min(np.min(t[:, 1] - t[:, 0]) for t in modality_times.values())
+            start = min(t[0, 0] for t in modality_times.values())
+            end = max(t[-1, 1] for t in modality_times.values())
+            num_spans = int(np.ceil((end - start) / hop))
+            grid_starts = start + np.arange(num_spans) * hop
+            grid_ends = grid_starts + hop
+            spans = [[i, i + 1] for i in range(num_spans)]
+
+            aligned_modalities: Dict[str, torch.Tensor] = {}
+            modality_payload: Dict[str, Dict[str, Any]] = {}
+            for name, arr in modality_arrays.items():
+                times = modality_times[name]
+                dim = arr.shape[1]
+                aligned = np.zeros((num_spans, dim), dtype=np.float32)
+                for i, (gs, ge) in enumerate(zip(grid_starts, grid_ends)):
+                    mask = (gs < times[:, 1]) & (ge > times[:, 0])
+                    if mask.any():
+                        aligned[i] = arr[mask].mean(axis=0)
+                aligned_modalities[name] = torch.from_numpy(aligned)
+                modality_payload[name] = {
+                    "spans": spans,
+                    "embeddings": aligned.tolist(),
+                    "encoders": [encoder_meta[name]] * num_spans,
+                }
+
+            fused_list: Sequence[Sequence[float]] | None = None
             if self.fuser is not None:
-                fused = self.fuser({k: v.mean(0, keepdim=True) for k, v in modalities.items()})
-                _ = fused  # pragma: no cover - fused embedding currently unused
+                fused_tensor = self.fuser(
+                    aligned_modalities,
+                    user_id=user_id,
+                    embedding_store=self.user_embeddings,
+                )
+                fused_list = fused_tensor.tolist()
+                if self.user_embeddings is not None:
+                    self.user_embeddings.set(user_id, fused_tensor.mean(0))
 
-        modality_payload = {}
-        if embeddings is not None:
-            modality_payload["generic"] = {
-                "spans": list(spans or []),
-                "embeddings": [list(map(float, e)) for e in embeddings],
-                "encoders": [dict(meta) for meta in (encoders or [])],
-            }
+        else:
+            modality_payload = {}
+            fused_list = embeddings  # type: ignore[assignment]
 
         await self.publisher.publish(
             message_id=message_id,
             user_id=user_id,
-            fused=embeddings[0] if embeddings else None,
+            fused=fused_list,
             by_modality=modality_payload,
             provenance=provenance,
         )
@@ -115,10 +131,10 @@ class PerceptionService:
             try:  # pragma: no cover - optional dependency
                 import wandb
 
-                wandb.log({"embeddings_published": len(embeddings or [])})
-                if settings.wandb_upload_artifacts and embeddings is not None:
+                wandb.log({"embeddings_published": len(fused_list or [])})
+                if settings.wandb_upload_artifacts and fused_list is not None:
                     with NamedTemporaryFile(suffix=".npy", delete=False) as tmp:
-                        np.save(tmp.name, np.asarray(embeddings))
+                        np.save(tmp.name, np.asarray(fused_list))
                     art = wandb.Artifact(
                         name=f"embeddings_{message_id}",
                         type="checkpoint",

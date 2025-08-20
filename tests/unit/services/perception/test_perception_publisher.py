@@ -32,7 +32,7 @@ async def test_publish_embeddings(monkeypatch):
     ack = await publisher.publish(
         message_id="msg1",
         user_id="user1",
-        fused=[0.0, 0.1],
+        fused=[[0.0, 0.1]],
         by_modality={
             "text": {
                 "spans": [(0, 1)],
@@ -45,11 +45,11 @@ async def test_publish_embeddings(monkeypatch):
 
     assert ack == {"seq": 1}
     assert captured["subject"] == EventSubjects.PERCEPTION_EMBEDDINGS
-    assert isinstance(captured["payload"], PerceptionEmbeddingsEvent)
-    assert captured["payload"].payload is not None
-    assert captured["payload"].payload.message_id == "msg1"
-    assert captured["payload"].payload.fused == [0.0, 0.1]
-    text_mod = captured["payload"].payload.by_modality["text"]
+    assert isinstance(captured["payload"], PerceptionEmbeddingsPayload)
+    assert captured["payload"].message_id == "msg1"
+    assert captured["payload"].fused == [[0.0, 0.1]]
+    text_mod = captured["payload"].by_modality["text"]
+
     assert text_mod.encoders[0].name == "test"
     assert captured["payload"].provenance == {"source": "unit"}
     assert captured["payload"].encoders[0].name == "test"

@@ -29,7 +29,7 @@ class PerceptionPublisher:
         message_id: str,
         user_id: str,
         *,
-        fused: Sequence[float] | None = None,
+        fused: Sequence[Sequence[float]] | None = None,
         by_modality: Mapping[str, Mapping[str, Any]] | None = None,
         provenance: Dict[str, Any] | None = None,
         retries: int = 3,
@@ -43,7 +43,7 @@ class PerceptionPublisher:
         user_id:
             Identifier of the user who produced the message.
         fused:
-            Fused embedding vector representing all modalities.
+            Sequence of fused embedding vectors aligned to the common hop grid.
         by_modality:
             Mapping of modality name to its embeddings, spans and encoders.
         provenance:
@@ -64,7 +64,7 @@ class PerceptionPublisher:
         payload = PerceptionEmbeddingsPayload(
             message_id=message_id,
             user_id=user_id,
-            fused=[float(x) for x in fused] if fused is not None else None,
+            fused=[[float(x) for x in emb] for emb in fused] if fused is not None else None,
             by_modality=modality_payloads,
         )
 

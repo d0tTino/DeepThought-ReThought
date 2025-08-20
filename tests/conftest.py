@@ -4,6 +4,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 # Avoid importing heavy optional dependencies during test collection.
@@ -94,6 +96,29 @@ if "torch" not in sys.modules:
         torch_stub.softmax = lambda x, dim=None: x
         sys.modules["torch"] = torch_stub
 
+# Ensure ``torch.SymBool`` exists even on older PyTorch versions so that
+# optional dependencies importing it during test collection do not fail.
+torch_mod = sys.modules.get("torch")
+if torch_mod is not None and not hasattr(torch_mod, "SymBool"):
+
+    class SymBool:  # type: ignore
+        pass
+
+    torch_mod.SymBool = SymBool  # type: ignore[attr-defined]
+
+
+@pytest.fixture(autouse=True)
+def _ensure_symbool():
+    """Ensure ``torch.SymBool`` persists even if other tests stub out ``torch``."""
+    torch_mod = sys.modules.get("torch")
+    if torch_mod is not None and not hasattr(torch_mod, "SymBool"):
+
+        class SymBool:  # type: ignore
+            pass
+
+        torch_mod.SymBool = SymBool  # type: ignore[attr-defined]
+
+
 if "l2p" not in sys.modules:
     l2p_stub = types.ModuleType("l2p")
 
@@ -148,22 +173,6 @@ if "transformers" not in sys.modules:
     transformers_stub.AutoTokenizer = _DummyModel
     sys.modules["transformers"] = transformers_stub
 
-import numpy as np
-
-import deepthought.perception.worker_audio as _wa
-
-
-def _dummy_select(model: str, model_path: str | None, sr: int):
-    def _embed(window: np.ndarray) -> np.ndarray:
-        m = float(np.mean(window))
-        return np.array([m, m + 1, m + 2, m + 3], dtype=np.float32)
-
-    return _embed
-
-
-_wa._select_embedding_fn = _dummy_select
-
-import pytest
 
 # Provide a lightweight stub of the social_graph_bot module. This allows tests
 # to run without installing optional heavy dependencies used by the full

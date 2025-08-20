@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import asyncio
 from typing import Dict, Sequence, Tuple
+
 import numpy as np
 
 from deepthought.services.perception.service import PerceptionService
@@ -15,12 +17,13 @@ class DummyPublisher:
 
 
 class DummyTextWorker:
-    def __call__(self, tokens: Sequence[Tuple[str, float, float]], memmap_path: str) -> np.memmap:
+    def __call__(self, tokens: Sequence[Tuple[str, float, float]], memmap_path: str):
         data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype="float32")
         mm = np.memmap(memmap_path, dtype="float32", mode="w+", shape=data.shape)
         mm[:] = data
         mm.flush()
-        return mm
+        times = np.array([[0.0, 0.05], [0.05, 0.1]], dtype=np.float32)
+        return mm, times
 
 
 def test_service_publishes_raw_embeddings_and_metadata():
@@ -39,10 +42,10 @@ def test_service_publishes_raw_embeddings_and_metadata():
     assert publisher.kwargs is not None
     assert publisher.kwargs["message_id"] == "m1"
     assert publisher.kwargs["user_id"] == "u1"
-    assert publisher.kwargs["embeddings"] == [[1.0, 2.0], [3.0, 4.0]]
-    assert publisher.kwargs["spans"] == [[0, 1], [1, 2]]
-    assert publisher.kwargs["encoders"] == [
-        {"name": "DummyTextWorker"},
-        {"name": "DummyTextWorker"},
-    ]
+    assert publisher.kwargs["fused"] == [[1.0, 2.0], [3.0, 4.0]]
+    assert "text" in publisher.kwargs["by_modality"]
+    text_meta = publisher.kwargs["by_modality"]["text"]
+    assert text_meta["spans"] == [[0, 1], [1, 2]]
+    assert text_meta["embeddings"] == [[1.0, 2.0], [3.0, 4.0]]
+    assert text_meta["encoders"] == [{"name": "DummyTextWorker"}] * 2
     assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["text"]}

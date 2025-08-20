@@ -19,8 +19,9 @@ def test_text_perception_worker(monkeypatch, tmp_path):
     memmap_path = tmp_path / "tokens.dat"
 
     worker = TextPerceptionWorker(model_name="dummy", hop_seconds=0.05)
-    feats = worker(tokens, memmap_path)
+    feats, times = worker(tokens, memmap_path)
 
     assert feats.shape == (2, 2)
+    assert times.shape == (2, 2)
     assert np.allclose(feats[0], [2, 3])
     assert np.allclose(feats[1], [5, 6])

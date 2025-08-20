@@ -42,11 +42,12 @@ class TextPerceptionWorker:
             raise ValueError("hop_seconds must be between 0.025 and 0.05 seconds")
         self._model = SentenceTransformer(self.model_name)
 
-    def __call__(self, tokens: Sequence[Token], memmap_path: str | Path) -> np.memmap:
-        """Process ``tokens`` and write embeddings to ``memmap_path``.
+    def __call__(self, tokens: Sequence[Token], memmap_path: str | Path) -> Tuple[np.memmap, np.ndarray]:
+        """Process ``tokens`` and write embeddings and timestamps to ``memmap_path``.
 
         Each hop is filled with the embedding of the token active during that
-        time frame. Gaps remain zero-filled.
+        time frame. Gaps remain zero-filled. The returned timestamps array has
+        shape ``(num_steps, 2)`` with ``[start, end]`` times in seconds.
         """
 
         if not tokens:
@@ -70,6 +71,10 @@ class TextPerceptionWorker:
 
         features.flush()
 
+        starts = np.arange(num_steps, dtype=np.float32) * self.hop_seconds
+        ends = starts + self.hop_seconds
+        timestamps = np.column_stack((starts, ends))
+
         settings = get_settings()
         if settings.wandb_enabled:
             try:  # pragma: no cover - optional dependency
@@ -86,4 +91,4 @@ class TextPerceptionWorker:
             except Exception:  # pragma: no cover - wandb may be missing
                 pass
 
-        return features
+        return features, timestamps
