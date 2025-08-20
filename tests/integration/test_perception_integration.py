@@ -1,11 +1,6 @@
-import importlib
 from unittest.mock import AsyncMock
 
-import numpy as np
 import pytest
-import torch
-import torch.nn.parameter as torch_parameter
-from scipy.io import wavfile
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +25,7 @@ class DummySentenceModel:
         return np.asarray([length, length + 1], dtype=np.float32)
 
 
+
 class DummyPublisher:
     def __init__(self, *args, **kwargs):
         self.publish = AsyncMock(return_value={"seq": 1})
@@ -47,6 +43,7 @@ async def test_perception_pipeline_end_to_end(monkeypatch, tmp_path):
         "deepthought.services.perception.worker_video.video_to_feature_grid",
         lambda path, decode_fps, model_type, grid_fps: (dummy_feats, dummy_times),
     )
+
     monkeypatch.setattr(
         "deepthought.services.perception.publisher.Publisher",
         DummyPublisher,
@@ -81,19 +78,17 @@ async def test_perception_pipeline_end_to_end(monkeypatch, tmp_path):
     await pub.publish(
         "m1",
         "u1",
-        fused=fused.squeeze(0).detach().numpy().tolist(),
         by_modality={
             "text": {
                 "spans": [[0, 1]],
-                "embeddings": fused.squeeze(0).detach().numpy().reshape(1, -1).tolist(),
+                "embeddings": [[0.1, 0.2]],
                 "encoders": [],
             }
         },
     )
     pub._publisher.publish.assert_awaited_once()
-    args, kwargs = pub._publisher.publish.call_args
-
-    subject, payload = args
+    subject, payload = pub._publisher.publish.call_args[0]
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
     assert isinstance(payload, PerceptionEmbeddingsPayload)
+
 

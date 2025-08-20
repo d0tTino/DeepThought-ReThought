@@ -105,6 +105,7 @@ from deepthought.config import Settings
 from deepthought.eda.events import (
     EventSubjects,
     InputReceivedPayload,
+    PerceptionEmbeddingsEvent,
     PerceptionEmbeddingsPayload,
 )
 from deepthought.services.cognitive_core_service import CognitiveCoreService
@@ -250,12 +251,13 @@ async def test_handle_embeddings_upserts(monkeypatch):
     service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
-    payload = PerceptionEmbeddingsPayload(
-        message_id="m1",
-        user_id="u",
-        fused=[0.1, 0.2],
-        by_modality={},
-        provenance={},
+    payload = PerceptionEmbeddingsEvent(
+        payload=PerceptionEmbeddingsPayload(
+            message_id="m1",
+            user_id="u",
+            fused=[0.1, 0.2],
+            by_modality={},
+        ),
     )
     msg = DummyMsg(payload.to_json())
     await service._handle_embeddings(msg)

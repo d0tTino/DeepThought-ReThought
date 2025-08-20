@@ -586,7 +586,7 @@ if await svc.is_trusted("u1", 0.5):
     print("trusted user")
 ```
 
-Manipulation attempts are flagged by the social perception classifier. The bot
+Manipulation attempts are flagged by the Perception Service, which fuses cues from text, image, and audio inputs. The bot
 records its internal assessments in a private channel when
 `THOUGHT_CHANNEL` is set. Messages are scored with
 `manipulation_score`, and any positive value decreases the user's trust
@@ -685,15 +685,16 @@ A minimal notebook demonstrating retrieval-augmented generation is available at 
 ## Social Perception
 
 The classifier produces probabilities for five cues—flirtation, avoidance,
-manipulation, sarcasm, and supportiveness. A lightweight keyword model is bundled
-with the repository and used automatically when `SOCIAL_PERCEPTION_MODEL` is not
-set. To use a custom transformer model instead, download the weights and point
-the environment variable to the local directory:
+manipulation, sarcasm, and supportiveness—across text, image, and audio inputs.
+A lightweight keyword model is bundled for text and used automatically when
+`SOCIAL_PERCEPTION_MODEL` is not set. To use a custom transformer model instead,
+download the weights and point the environment variable to the local directory:
 
 ```bash
 pip install huggingface_hub
 huggingface-cli download myorg/social-cue-classifier --local-dir ./models/social_perception
-export SOCIAL_PERCEPTION_MODEL=$(pwd)/models/social_perception
+export SOCIAL_PERCEPTION_MODEL=$(pwd)/models/social_perception  # text component
+# optional image/audio models: PERCEPTION_IMAGE_MODEL and PERCEPTION_AUDIO_MODEL
 ```
 
 ### Manipulation Detection
@@ -730,7 +731,7 @@ print(scores["Happy"])
 Set `PERCEPTION_REQUIRE_CONSENT=1` to require incoming messages include a
 `"consent": true` flag before they are scored. Configure JetStream retention with
 `PERCEPTION_RETENTION_POLICY`, choosing `limits`, `interest`, or `workqueue` to
-control how long perception events are stored.
+control how long multimodal perception events are stored.
 
 See [docs/perception_service.md](docs/perception_service.md#privacy-controls) for
 details.
@@ -806,7 +807,7 @@ DeepThought-ReThought offers switches to manage user data handling:
   consent flag on incoming messages. Events without consent are ignored.
 - **Retention policy:** the JetStream setup uses `limits` retention by default.
   Override `PERCEPTION_RETENTION_POLICY` with `limits`, `interest`, or
-  `workqueue` when provisioning streams to control how long perception events
+  `workqueue` when provisioning streams to control how long multimodal perception events
   persist.
 
 ## Testing

@@ -10,6 +10,7 @@ from ...eda.events import (
     EncoderMetadata,
     EventSubjects,
     ModalityEmbeddings,
+    PerceptionEmbeddingsEvent,
     PerceptionEmbeddingsPayload,
 )
 from ...eda.publisher import Publisher
@@ -33,7 +34,7 @@ class PerceptionPublisher:
         provenance: Dict[str, Any] | None = None,
         retries: int = 3,
     ) -> Dict | None:
-        """Publish a :class:`PerceptionEmbeddingsPayload` with retries.
+        """Publish a :class:`PerceptionEmbeddingsEvent` with retries.
 
         Parameters
         ----------
@@ -65,12 +66,25 @@ class PerceptionPublisher:
             user_id=user_id,
             fused=[float(x) for x in fused] if fused is not None else None,
             by_modality=modality_payloads,
+        )
+
+        # Deduplicate encoders across modalities to avoid redundant metadata
+        top_encoders_map: dict[tuple[str, str | None], EncoderMetadata] = {}
+        for mod in modality_payloads.values():
+            for enc in mod.encoders:
+                key = (enc.name, enc.modality)
+                top_encoders_map.setdefault(key, enc)
+        top_encoders = list(top_encoders_map.values())
+
+        event = PerceptionEmbeddingsEvent(
+            encoders=top_encoders,
             provenance=dict(provenance or {}),
+            payload=payload,
         )
 
         return await self._publisher.publish(
             EventSubjects.PERCEPTION_EMBEDDINGS,
-            payload,
+            event,
             use_jetstream=True,
             retries=retries,
         )
