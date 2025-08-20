@@ -51,3 +51,20 @@ def test_modality_fuser_missing_modalities():
     text = torch.ones((1, 2))
     with pytest.raises(RuntimeError):
         fuser({"text": text})
+
+
+def test_modality_fuser_fit_checkpoint_and_conditioner(tmp_path):
+    try:
+        fuser = ModalityFuser({"text": 2}, fused_dim=2, user_dim=1)
+    except AttributeError as exc:  # pragma: no cover - environment-specific
+        pytest.skip(str(exc))
+
+    batch = {"modalities": {"text": torch.zeros((1, 2))}, "target": torch.zeros((1, 2))}
+
+    def conditioner(b, u):
+        conditioner.called = True
+        return torch.zeros((1, 1))
+
+    fuser.fit([batch], user_conditioner=conditioner, checkpoint_dir=tmp_path)
+    assert getattr(conditioner, "called", False)
+    assert (tmp_path / "fuser_epoch1.pt").exists()
