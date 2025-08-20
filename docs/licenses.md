@@ -41,3 +41,9 @@ upstream projects for the most current license information.
 | torchvision | BSD-3-Clause | Computer vision models |
 | opencv-python-headless | Apache-2.0 | Computer vision toolkit |
 | Default social perception model | MIT | Bundled classifier weights |
+| WavLM | MIT | Speech representation model |
+| WavLM checkpoints | MIT | Pretrained weights |
+| CLAP | CC0 | Contrastive language-audio model |
+| CLAP checkpoints | CC0 | Pretrained weights |
+| SigLIP | Apache-2.0 | Vision-language model |
+| SigLIP checkpoints | Apache-2.0 | Pretrained weights |
