@@ -16,7 +16,7 @@ from ..eda.events import (
     BDIIntentionPayload,
     EventSubjects,
     MemoryRetrievedPayload,
-    PerceptionEmbeddingsPayload,
+    PerceptionEmbeddingsEvent,
 )
 from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
@@ -205,8 +205,9 @@ class CognitiveCoreService(BaseService):
     async def _handle_embeddings(self, msg: Msg) -> None:
         """Store fused perception embeddings in the vector store and KG."""
         try:
-            payload = PerceptionEmbeddingsPayload.from_json(msg.data.decode())
-            if payload.fused:
+            event = PerceptionEmbeddingsEvent.from_json(msg.data.decode())
+            payload = event.payload
+            if payload and payload.fused:
                 vector = [float(x) for x in payload.fused]
                 message_id = str(payload.message_id)
                 store = getattr(self._memory, "_store", None)

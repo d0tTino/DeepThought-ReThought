@@ -229,3 +229,4 @@ async def test_user_embedding_update(monkeypatch, tmp_path):
     assert js.publish.await_count == 2
     subject, data = js.publish.call_args[0]
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
+
