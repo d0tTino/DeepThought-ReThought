@@ -79,12 +79,9 @@ class PerceptionService:
 
             if self.video_worker is not None and video_path is not None:
                 feats, times = self.video_worker(video_path)
-                times_arr = np.asarray(times)
-                if times_arr.ndim == 1:
-                    hop = float(np.min(np.diff(times_arr))) if times_arr.size > 1 else 0.0
-                    times_arr = np.column_stack((times_arr, times_arr + hop))
                 modality_arrays["video"] = np.asarray(feats)
-                modality_times["video"] = times_arr
+                modality_times["video"] = np.asarray(times)
+
                 encoder_meta["video"] = {"name": self.video_worker.__class__.__name__}
 
             if not modality_arrays:
@@ -124,11 +121,13 @@ class PerceptionService:
                     user_id=user_id,
                     embedding_store=self.user_embeddings,
                 )
+                fused_list = fused_tensor.tolist()
+                if self.user_embeddings is not None:
+                    self.user_embeddings.set(user_id, fused_tensor.mean(0))
             else:
-                fused_tensor = torch.stack(list(aligned_modalities.values())).mean(0)
-            fused_list = fused_tensor.tolist()
-            if self.user_embeddings is not None:
-                self.user_embeddings.set(user_id, fused_tensor.mean(0))
+                first = next(iter(aligned_modalities.values()))
+                fused_list = first.tolist()
+
 
         else:
             modality_payload = {}
