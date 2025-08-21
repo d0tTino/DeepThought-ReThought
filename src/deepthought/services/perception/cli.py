@@ -7,7 +7,10 @@ import asyncio
 import os
 
 from nats.aio.client import Client as NATS
+from nats.aio.msg import Msg
+from nats.js.api import DeliverPolicy
 
+from ...eda.events import EventSubjects, InputReceivedPayload
 from .config import PerceptionConfig
 from .publisher import PerceptionPublisher
 from .service import PerceptionService
@@ -19,8 +22,11 @@ async def _main() -> None:
     parser = argparse.ArgumentParser(description="Run the perception service")
     defaults = PerceptionConfig()
     parser.add_argument("--nats-url", default=defaults.nats_url)
-    parser.add_argument("--message-id", required=True)
-    parser.add_argument("--user-id", required=True)
+    parser.add_argument("--listen", action="store_true", help="Listen for INPUT_RECEIVED events")
+    parser.add_argument("--durable", default="perception_service", help="Durable consumer name for listen mode")
+    parser.add_argument("--replay", action="store_true", help="Replay existing stream messages from start")
+    parser.add_argument("--message-id")
+    parser.add_argument("--user-id", default="user")
     parser.add_argument("--text-model", default=defaults.text_model)
     parser.add_argument("--text-hop-size", type=float, default=defaults.text_hop_size)
     parser.add_argument("--text-cache-dir", default=defaults.text_cache_dir)
@@ -34,6 +40,9 @@ async def _main() -> None:
     parser.add_argument("--wandb-project", default=defaults.wandb_project)
     parser.add_argument("--wandb-sweep-id", default=defaults.wandb_sweep_id)
     args = parser.parse_args()
+
+    if not args.listen and (not args.message_id or not args.user_id):
+        parser.error("--message-id and --user-id are required unless --listen is specified")
 
     cfg_kwargs = {
         key: getattr(args, key)
@@ -76,6 +85,35 @@ async def _main() -> None:
         )
 
     service = PerceptionService(publisher, video_worker=video_worker)
+
+    if args.listen:
+
+        async def _handle_input(msg: Msg) -> None:
+            try:
+                payload = InputReceivedPayload.from_json(msg.data.decode())
+                message_id = payload.input_id or "unknown"
+            except Exception:
+                payload = None
+                message_id = "unknown"
+            user_id = (msg.headers.get("user_id") if msg.headers else None) or args.user_id
+            await service.run(message_id=message_id, user_id=user_id, embeddings=[[0.0]])
+            if hasattr(msg, "ack") and callable(msg.ack):
+                await msg.ack()
+
+        deliver_policy = DeliverPolicy.ALL if args.replay else DeliverPolicy.NEW
+        await js.subscribe(
+            EventSubjects.INPUT_RECEIVED,
+            durable=args.durable,
+            deliver_policy=deliver_policy,
+            cb=_handle_input,
+            manual_ack=True,
+        )
+        try:
+            await asyncio.Future()
+        finally:
+            await nc.drain()
+        return
+
     await run_service(
         message_id=args.message_id,
         user_id=args.user_id,
