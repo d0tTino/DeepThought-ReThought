@@ -42,10 +42,10 @@ def test_service_publishes_raw_embeddings_and_metadata():
     assert publisher.kwargs is not None
     assert publisher.kwargs["message_id"] == "m1"
     assert publisher.kwargs["user_id"] == "u1"
-    assert publisher.kwargs["fused"] is None
+    assert publisher.kwargs["fused"] == [[1.0, 2.0], [3.0, 4.0]]
     assert "text" in publisher.kwargs["by_modality"]
     text_meta = publisher.kwargs["by_modality"]["text"]
-    assert text_meta["spans"] == [[0, 1], [1, 2]]
+    assert text_meta["spans"] == [[0, 50], [50, 100]]
     assert text_meta["embeddings"] == [[1.0, 2.0], [3.0, 4.0]]
     assert text_meta["encoders"] == [{"name": "DummyTextWorker"}] * 2
     assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["text"]}
@@ -72,9 +72,9 @@ def test_service_handles_video_modality():
     )
 
     assert publisher.kwargs is not None
-    assert publisher.kwargs["fused"] is None
+    assert publisher.kwargs["fused"] == [[1.0, 1.0], [2.0, 2.0]]
     assert "video" in publisher.kwargs["by_modality"]
     video_meta = publisher.kwargs["by_modality"]["video"]
-    assert video_meta["spans"] == [[0, 1], [1, 2]]
+    assert video_meta["spans"] == [[0, 1000], [1000, 2000]]
     assert video_meta["encoders"] == [{"name": "DummyVideoWorker"}] * 2
     assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["video"]}

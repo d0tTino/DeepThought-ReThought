@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -11,6 +12,7 @@ import numpy as np
 import torch
 
 from ...config import get_settings
+from ...metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ...modules import ModalityFuser
 from .publisher import PerceptionPublisher
 from .user_embeddings import UserEmbeddings
@@ -45,6 +47,7 @@ class PerceptionService:
     ) -> None:
         """Fuse worker outputs and publish via the ``publisher``."""
         settings = get_settings()
+        start_time = time.perf_counter()
         wandb_run = None
         if settings.wandb_enabled:
             try:  # pragma: no cover - optional dependency
@@ -103,7 +106,7 @@ class PerceptionService:
             num_spans = int(np.ceil((end - start) / hop))
             grid_starts = start + np.arange(num_spans) * hop
             grid_ends = grid_starts + hop
-            spans = [[i, i + 1] for i in range(num_spans)]
+            spans = [[int(gs * 1000), int(ge * 1000)] for gs, ge in zip(grid_starts, grid_ends)]
 
             aligned_modalities: Dict[str, torch.Tensor] = {}
             modality_payload: Dict[str, Dict[str, Any]] = {}
@@ -136,7 +139,6 @@ class PerceptionService:
                 first = next(iter(aligned_modalities.values()))
                 fused_list = first.tolist()
 
-
         else:
             modality_payload = {}
             fused_list = embeddings  # type: ignore[assignment]
@@ -166,6 +168,10 @@ class PerceptionService:
                     Path(tmp.name).unlink(missing_ok=True)
             finally:  # pragma: no cover - wandb may be missing
                 wandb_run.finish()
+
+        duration = time.perf_counter() - start_time
+        INPUTS_TOTAL.labels(service="perception_service").inc()
+        INPUT_LATENCY_SECONDS.labels(service="perception_service").observe(duration)
 
 
 async def run(*args: Any, **kwargs: Any) -> None:
