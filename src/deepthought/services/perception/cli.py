@@ -12,6 +12,7 @@ from .config import PerceptionConfig
 from .publisher import PerceptionPublisher
 from .service import PerceptionService
 from .service import run as run_service
+from .worker_video import VideoPerceptionWorker
 
 
 async def _main() -> None:
@@ -29,6 +30,7 @@ async def _main() -> None:
     parser.add_argument("--video-model", default=defaults.video_model)
     parser.add_argument("--video-hop-size", type=float, default=defaults.video_hop_size)
     parser.add_argument("--video-cache-dir", default=defaults.video_cache_dir)
+    parser.add_argument("--video-path")
     parser.add_argument("--wandb-project", default=defaults.wandb_project)
     parser.add_argument("--wandb-sweep-id", default=defaults.wandb_sweep_id)
     args = parser.parse_args()
@@ -62,10 +64,22 @@ async def _main() -> None:
     js = nc.jetstream()
 
     publisher = PerceptionPublisher(nc, js)
-    service = PerceptionService(publisher)
+
+    video_worker = None
+    if args.video_path:
+        fps = max(1, min(3, int(round(1 / cfg.video_hop_size))))
+        video_worker = VideoPerceptionWorker(
+            decode_fps=fps,
+            model_type=cfg.video_model,
+            grid_fps=fps,
+            cache_dir=cfg.video_cache_dir,
+        )
+
+    service = PerceptionService(publisher, video_worker=video_worker)
     await run_service(
         message_id=args.message_id,
         user_id=args.user_id,
+        video_path=args.video_path,
         service=service,
     )
     await nc.drain()
