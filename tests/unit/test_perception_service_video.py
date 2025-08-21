@@ -42,7 +42,7 @@ def test_service_publishes_video_embeddings_and_metadata():
     assert publisher.kwargs["fused"] == [[5.0, 6.0], [7.0, 8.0]]
     assert "video" in publisher.kwargs["by_modality"]
     video_meta = publisher.kwargs["by_modality"]["video"]
-    assert video_meta["spans"] == [[0, 1], [1, 2]]
+    assert video_meta["spans"] == [[0, 50], [50, 100]]
     assert video_meta["embeddings"] == [[5.0, 6.0], [7.0, 8.0]]
     assert video_meta["encoders"] == [{"name": "DummyVideoWorker"}] * 2
     assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["video"]}
