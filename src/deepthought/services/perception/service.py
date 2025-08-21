@@ -127,14 +127,16 @@ class PerceptionService:
 
             fused_list: Sequence[Sequence[float]] | None = None
             if self.fuser is not None:
+                existing_user_embedding = (
+                    self.user_embeddings.get(user_id) if self.user_embeddings is not None else None
+                )
                 fused_tensor = self.fuser(
                     aligned_modalities,
+                    user_embedding=existing_user_embedding,
                     user_id=user_id,
                     embedding_store=self.user_embeddings,
                 )
                 fused_list = fused_tensor.tolist()
-                if self.user_embeddings is not None:
-                    self.user_embeddings.set(user_id, fused_tensor.mean(0))
             else:
                 first = next(iter(aligned_modalities.values()))
                 fused_list = first.tolist()
