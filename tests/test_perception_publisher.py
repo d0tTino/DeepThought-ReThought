@@ -38,18 +38,19 @@ async def test_perception_publisher(monkeypatch):
     assert result == {"seq": 1}
     pub._publisher.publish.assert_awaited_once()
     args, kwargs = pub._publisher.publish.call_args
-    subject, payload = args
+    subject, event = args
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
-    assert isinstance(payload, PerceptionEmbeddingsPayload)
-    assert payload.message_id == "msg1"
-    assert payload.fused == [[0.1, 0.2]]
-    assert "text" in payload.by_modality
-    text_mod = payload.by_modality["text"]
+    assert isinstance(event, PerceptionEmbeddingsEvent)
+    assert event.payload is not None
+    assert event.payload.message_id == "msg1"
+    assert event.payload.fused == [[0.1, 0.2]]
+    assert "text" in event.payload.by_modality
+    text_mod = event.payload.by_modality["text"]
 
-    assert text_mod.spans == [(0, 1)]
+    assert text_mod.spans == [[0, 1]]
     assert text_mod.encoders[0].name == "enc"
-    assert payload.encoders[0].name == "enc"
-    assert payload.provenance == {"p": 1}
+    assert event.encoders[0].name == "enc"
+    assert event.provenance == {"p": 1}
 
 
 @pytest.mark.asyncio
