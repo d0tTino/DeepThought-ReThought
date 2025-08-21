@@ -16,6 +16,7 @@ from .publisher import PerceptionPublisher
 from .user_embeddings import UserEmbeddings
 from .worker_audio import AudioPerceptionWorker
 from .worker_text import TextPerceptionWorker, Token
+from .worker_video import VideoPerceptionWorker
 
 
 @dataclass
@@ -25,6 +26,7 @@ class PerceptionService:
     publisher: PerceptionPublisher
     text_worker: TextPerceptionWorker | None = None
     audio_worker: AudioPerceptionWorker | None = None
+    video_worker: VideoPerceptionWorker | None = None
     fuser: ModalityFuser | None = None
     user_embeddings: UserEmbeddings | None = None
 
@@ -39,6 +41,7 @@ class PerceptionService:
         provenance: Dict[str, Any] | None = None,
         text_tokens: Sequence[Token] | None = None,
         audio_path: str | Path | None = None,
+        video_path: str | Path | None = None,
     ) -> None:
         """Fuse worker outputs and publish via the ``publisher``."""
         settings = get_settings()
@@ -73,6 +76,12 @@ class PerceptionService:
                 modality_arrays["audio"] = np.asarray(feats)
                 modality_times["audio"] = np.asarray(times)
                 encoder_meta["audio"] = {"name": self.audio_worker.__class__.__name__}
+
+            if self.video_worker is not None and video_path is not None:
+                feats, times = self.video_worker(video_path)
+                modality_arrays["video"] = np.asarray(feats)
+                modality_times["video"] = np.asarray(times)
+                encoder_meta["video"] = {"name": self.video_worker.__class__.__name__}
 
             if not modality_arrays:
                 raise ValueError("No modalities available for publication")
@@ -114,6 +123,9 @@ class PerceptionService:
                 fused_list = fused_tensor.tolist()
                 if self.user_embeddings is not None:
                     self.user_embeddings.set(user_id, fused_tensor.mean(0))
+            else:
+                first = next(iter(aligned_modalities.values()))
+                fused_list = first.tolist()
 
         else:
             modality_payload = {}
