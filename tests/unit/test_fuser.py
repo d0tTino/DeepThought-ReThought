@@ -56,3 +56,22 @@ def test_fuser_missing_modalities_raises():
     fuser = ModalityFuser({"text": 2, "audio": 1}, fused_dim=3)
     with pytest.raises(RuntimeError):
         fuser({"text": torch.randn(1, 2)})
+
+
+def test_fuser_raises_on_mismatched_stored_vector(tmp_path):
+    store = UserEmbeddings(tmp_path / "store.json")
+    store.set("u1", torch.ones(4))
+
+    fuser = ModalityFuser({"text": 2}, fused_dim=4, user_dim=3)
+    mods = {"text": torch.randn(1, 2)}
+    with pytest.raises(ValueError, match="dimension"):
+        fuser(mods, user_id="u1", embedding_store=store)
+
+
+def test_fuser_raises_on_mismatched_provided_vector(tmp_path):
+    store = UserEmbeddings(tmp_path / "store.json")
+    fuser = ModalityFuser({"text": 2}, fused_dim=4, user_dim=3)
+    mods = {"text": torch.randn(1, 2)}
+    bad_embed = torch.randn(1, 4)
+    with pytest.raises(ValueError, match="dimension"):
+        fuser(mods, bad_embed, user_id="u1", embedding_store=store)
