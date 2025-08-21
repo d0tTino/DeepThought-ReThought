@@ -35,7 +35,7 @@ async def test_publish_embeddings(monkeypatch):
         fused=[[0.0, 0.1]],
         by_modality={
             "text": {
-                "spans": [(0, 1)],
+                "spans": [[0, 1]],
                 "embeddings": [[0.0, 0.1]],
                 "encoders": [{"name": "test", "dim": 2, "modality": "text"}],
             }
@@ -45,14 +45,16 @@ async def test_publish_embeddings(monkeypatch):
 
     assert ack == {"seq": 1}
     assert captured["subject"] == EventSubjects.PERCEPTION_EMBEDDINGS
-    assert isinstance(captured["payload"], PerceptionEmbeddingsPayload)
-    assert captured["payload"].message_id == "msg1"
-    assert captured["payload"].fused == [[0.0, 0.1]]
-    text_mod = captured["payload"].by_modality["text"]
+    event = captured["payload"]
+    assert isinstance(event, PerceptionEmbeddingsEvent)
+    assert event.payload is not None
+    assert event.payload.message_id == "msg1"
+    assert event.payload.fused == [[0.0, 0.1]]
+    text_mod = event.payload.by_modality["text"]
 
     assert text_mod.encoders[0].name == "test"
-    assert captured["payload"].provenance == {"source": "unit"}
-    assert captured["payload"].encoders[0].name == "test"
+    assert event.provenance == {"source": "unit"}
+    assert event.encoders[0].name == "test"
     assert captured["use_jetstream"] is True
     assert captured["retries"] == 3
 

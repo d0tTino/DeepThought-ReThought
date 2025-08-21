@@ -54,7 +54,7 @@ class PerceptionPublisher:
 
         modality_payloads = {
             name: ModalityEmbeddings(
-                spans=[tuple(span) for span in meta.get("spans", [])],
+                spans=[[int(span[0]), int(span[1])] for span in meta.get("spans", [])],
                 embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
                 encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
             )

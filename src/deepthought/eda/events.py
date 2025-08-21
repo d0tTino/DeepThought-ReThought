@@ -174,7 +174,8 @@ class EncoderMetadata(EventPayload):
 class ModalityEmbeddings(EventPayload):
     """Embeddings and spans associated with a single modality."""
 
-    spans: list[tuple[int, int]] = field(default_factory=list)
+    # Each span is represented as [start_ms, end_ms]
+    spans: list[list[int]] = field(default_factory=list)
     embeddings: list[list[float]] = field(default_factory=list)
     encoders: list[EncoderMetadata] = field(default_factory=list)
 
@@ -192,7 +193,7 @@ class PerceptionEmbeddingsPayload(EventPayload):
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsPayload":
         by_modality = {
             name: ModalityEmbeddings(
-                spans=[tuple(span) for span in meta.get("spans", [])],
+                spans=[[int(span[0]), int(span[1])] for span in meta.get("spans", [])],
                 embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
                 encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
             )
