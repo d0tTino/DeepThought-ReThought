@@ -79,8 +79,16 @@ class PerceptionService:
 
             if self.video_worker is not None and video_path is not None:
                 feats, times = self.video_worker(video_path)
+                times_arr = np.asarray(times)
+                if times_arr.ndim == 1:
+                    if len(times_arr) > 1:
+                        step = float(np.min(np.diff(times_arr)))
+                    else:
+                        fps = self.video_worker.grid_fps or self.video_worker.decode_fps
+                        step = 1.0 / float(fps)
+                    times_arr = np.column_stack((times_arr, times_arr + step))
                 modality_arrays["video"] = np.asarray(feats)
-                modality_times["video"] = np.asarray(times)
+                modality_times["video"] = times_arr
 
                 encoder_meta["video"] = {"name": self.video_worker.__class__.__name__}
 
