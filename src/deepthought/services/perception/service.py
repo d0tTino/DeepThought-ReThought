@@ -81,6 +81,7 @@ class PerceptionService:
                 feats, times = self.video_worker(video_path)
                 modality_arrays["video"] = np.asarray(feats)
                 modality_times["video"] = np.asarray(times)
+
                 encoder_meta["video"] = {"name": self.video_worker.__class__.__name__}
 
             if not modality_arrays:
@@ -126,6 +127,7 @@ class PerceptionService:
             else:
                 first = next(iter(aligned_modalities.values()))
                 fused_list = first.tolist()
+
 
         else:
             modality_payload = {}
