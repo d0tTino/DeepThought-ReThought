@@ -36,40 +36,61 @@ def _select_embedding_fn(
 
     model = model.lower()
     if model == "wavlm":
-        import torch
-        from transformers import WavLMFeatureExtractor, WavLMModel  # type: ignore
+        try:
+            import torch
+            from transformers import WavLMFeatureExtractor, WavLMModel  # type: ignore
 
-        name = model_path or "microsoft/wavlm-base-plus"
-        extractor = WavLMFeatureExtractor.from_pretrained(name)
-        mdl = WavLMModel.from_pretrained(name)
-        mdl.eval()
+            name = model_path or "microsoft/wavlm-base-plus"
+            extractor = WavLMFeatureExtractor.from_pretrained(name)
+            mdl = WavLMModel.from_pretrained(name)
+            mdl.eval()
 
-        def embed(window: np.ndarray) -> np.ndarray:
-            inputs = extractor(window, sampling_rate=sampling_rate, return_tensors="pt")
-            with torch.no_grad():
-                hidden = mdl(**inputs).last_hidden_state.mean(dim=1).squeeze(0)
-            return hidden.cpu().numpy().astype(np.float32)
+            def embed(window: np.ndarray) -> np.ndarray:
+                inputs = extractor(window, sampling_rate=sampling_rate, return_tensors="pt")
+                with torch.no_grad():
+                    hidden = mdl(**inputs).last_hidden_state.mean(dim=1).squeeze(0)
+                return hidden.cpu().numpy().astype(np.float32)
 
-        return embed
+            return embed
+        except Exception:  # pragma: no cover - optional dependency
+            pass
 
-    if model == "clap":
-        import torch
-        from transformers import ClapModel, ClapProcessor  # type: ignore
+    elif model == "clap":
+        try:
+            import torch
+            from transformers import ClapModel, ClapProcessor  # type: ignore
 
-        name = model_path or "laion/clap-htsat-unfused"
-        processor = ClapProcessor.from_pretrained(name)
-        mdl = ClapModel.from_pretrained(name)
-        mdl.eval()
+            name = model_path or "laion/clap-htsat-unfused"
+            processor = ClapProcessor.from_pretrained(name)
+            mdl = ClapModel.from_pretrained(name)
+            mdl.eval()
 
-        def embed(window: np.ndarray) -> np.ndarray:
-            inputs = processor(audios=window, sampling_rate=sampling_rate, return_tensors="pt")
-            with torch.no_grad():
-                hidden = mdl.get_audio_features(**inputs).squeeze(0)
-            return hidden.cpu().numpy().astype(np.float32)
+            def embed(window: np.ndarray) -> np.ndarray:
+                inputs = processor(audios=window, sampling_rate=sampling_rate, return_tensors="pt")
+                with torch.no_grad():
+                    hidden = mdl.get_audio_features(**inputs).squeeze(0)
+                return hidden.cpu().numpy().astype(np.float32)
 
-        return embed
+            return embed
+        except Exception:  # pragma: no cover - optional dependency
+            pass
+    else:
+        raise ValueError(f"Unsupported model: {model}")
 
-    raise ValueError(f"Unsupported model: {model}")
+    def embed(window: np.ndarray) -> np.ndarray:
+        """Fallback embedding using simple statistics."""
+
+        return np.asarray(
+            [
+                float(window.mean()),
+                float(window.std()),
+                float(window.min()),
+                float(window.max()),
+            ],
+            dtype=np.float32,
+        )
+
+    return embed
 
 
 def extract_windowed_features(

@@ -11,6 +11,11 @@ import aiosqlite
 from ..config import get_settings
 
 SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
+try:  # Optional dependency
+    from textblob import TextBlob  # type: ignore
+except Exception:  # pragma: no cover - dependency missing
+    TextBlob = None  # type: ignore
+
 if SENTIMENT_BACKEND == "vader":
     try:
         from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -21,15 +26,16 @@ if SENTIMENT_BACKEND == "vader":
             return _sentiment.polarity_scores(text)["compound"]
 
     except Exception:  # pragma: no cover - dependency missing
-        from textblob import TextBlob
 
         def analyze_sentiment(text: str) -> float:
+            if TextBlob is None:
+                return 0.0
             return TextBlob(text).sentiment.polarity
-
 else:
-    from textblob import TextBlob
 
     def analyze_sentiment(text: str) -> float:
+        if TextBlob is None:
+            return 0.0
         return TextBlob(text).sentiment.polarity
 
 
