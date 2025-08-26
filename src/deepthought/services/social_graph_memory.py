@@ -7,7 +7,10 @@ from typing import Optional
 
 from .prism_adapter import PrismEvent
 
-from textblob import TextBlob
+try:  # Optional dependency
+    from textblob import TextBlob  # type: ignore
+except Exception:  # pragma: no cover - dependency missing
+    TextBlob = None  # type: ignore
 
 from .db_manager import DBManager
 
@@ -31,7 +34,7 @@ class SocialGraphMemory:
     async def record_message(self, source: str, text: str, target: Optional[str] = None) -> None:
         """Analyze sentiment of ``text`` and store the interaction."""
         try:
-            score = float(TextBlob(text).sentiment.polarity)
+            score = float(TextBlob(text).sentiment.polarity) if TextBlob else 0.0
         except Exception:  # pragma: no cover - TextBlob failure
             logger.exception("Sentiment analysis failed")
             score = 0.0

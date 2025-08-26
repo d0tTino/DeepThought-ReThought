@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +16,7 @@ import torch
 from ...config import get_settings
 from ...metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ...modules import ModalityFuser
+from .config import PerceptionConfig
 from .publisher import PerceptionPublisher
 from .user_embeddings import UserEmbeddings
 from .worker_audio import AudioPerceptionWorker
@@ -65,35 +68,112 @@ class PerceptionService:
             modality_arrays: Dict[str, np.ndarray] = {}
             modality_times: Dict[str, np.ndarray] = {}
             encoder_meta: Dict[str, Dict[str, Any]] = {}
+            cfg = PerceptionConfig()
 
             if self.text_worker is not None and text_tokens:
-                with NamedTemporaryFile(suffix=".mm", delete=False) as tmp:
-                    feats, times = self.text_worker(text_tokens, tmp.name)
+                feats = times = None
+                cache_dir = Path(cfg.text_cache_dir) if cfg.text_cache_dir else None
+                if cache_dir is not None:
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    token_bytes = json.dumps(list(text_tokens), sort_keys=True).encode()
+                    key = hashlib.sha1(token_bytes).hexdigest()
+                    feats_file = cache_dir / f"{key}_feats.dat"
+                    meta_file = cache_dir / f"{key}_meta.json"
+                    if feats_file.exists() and meta_file.exists():
+                        meta = json.loads(meta_file.read_text())
+                        feats = np.memmap(feats_file, dtype="float32", mode="r", shape=tuple(meta["shape"]))
+                        times = np.asarray(meta["timestamps"], dtype=np.float32)
+                        encoder_meta["text"] = meta["encoder"]
+                    else:
+                        feats, times = self.text_worker(text_tokens, str(feats_file))
+                        meta = {
+                            "shape": list(feats.shape),
+                            "timestamps": times.tolist(),
+                            "encoder": {"name": self.text_worker.__class__.__name__},
+                            "created": time.time(),
+                        }
+                        meta_file.write_text(json.dumps(meta))
+                        encoder_meta["text"] = meta["encoder"]
+                else:
+                    with NamedTemporaryFile(suffix=".mm", delete=False) as tmp:
+                        feats, times = self.text_worker(text_tokens, tmp.name)
+                    encoder_meta["text"] = {"name": self.text_worker.__class__.__name__}
+                    Path(tmp.name).unlink(missing_ok=True)
                 modality_arrays["text"] = np.asarray(feats)
                 modality_times["text"] = np.asarray(times)
-                encoder_meta["text"] = {"name": self.text_worker.__class__.__name__}
-                Path(tmp.name).unlink(missing_ok=True)
 
             if self.audio_worker is not None and audio_path is not None:
-                feats, times = self.audio_worker(audio_path)
+                audio_path = Path(audio_path)
+                cache_dir = Path(
+                    self.audio_worker.cache_dir or cfg.audio_cache_dir or audio_path.parent
+                )
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                base = (
+                    f"{audio_path.stem}_{self.audio_worker.model}_ws{self.audio_worker.window_size}"
+                    f"_ss{self.audio_worker.step_size}"
+                )
+                feats_file = cache_dir / f"{base}.dat"
+                meta_file = cache_dir / f"{base}_meta.json"
+                if feats_file.exists() and meta_file.exists():
+                    meta = json.loads(meta_file.read_text())
+                    feats = np.memmap(feats_file, dtype="float32", mode="r", shape=tuple(meta["shape"]))
+                    times = np.asarray(meta["timestamps"], dtype=np.float32)
+                    encoder_meta["audio"] = meta["encoder"]
+                else:
+                    feats, times = self.audio_worker(audio_path, cache_dir=cache_dir)
+                    meta = {
+                        "shape": list(feats.shape),
+                        "timestamps": times.tolist(),
+                        "encoder": {"name": self.audio_worker.__class__.__name__},
+                        "created": time.time(),
+                    }
+                    meta_file.write_text(json.dumps(meta))
+                    encoder_meta["audio"] = meta["encoder"]
                 modality_arrays["audio"] = np.asarray(feats)
                 modality_times["audio"] = np.asarray(times)
-                encoder_meta["audio"] = {"name": self.audio_worker.__class__.__name__}
 
             if self.video_worker is not None and video_path is not None:
-                feats, times = self.video_worker(video_path)
-                times_arr = np.asarray(times)
-                if times_arr.ndim == 1:
-                    if len(times_arr) > 1:
-                        step = float(np.min(np.diff(times_arr)))
+                video_path = Path(video_path)
+                cache_dir = Path(
+                    getattr(self.video_worker, "cache_dir", None)
+                    or cfg.video_cache_dir
+                    or video_path.parent
+                )
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                decode_fps = getattr(self.video_worker, "decode_fps", 1)
+                model_type = getattr(self.video_worker, "model_type", "model")
+                grid_fps = getattr(self.video_worker, "grid_fps", None)
+                suffix = f"{decode_fps}_{model_type}_{grid_fps or decode_fps}"
+                base = f"{video_path.stem}_{suffix}"
+                feats_file = cache_dir / f"{base}_feats.npy"
+                meta_file = cache_dir / f"{base}_meta.json"
+                if feats_file.exists() and meta_file.exists():
+                    feats = np.load(feats_file, mmap_mode="r")
+                    meta = json.loads(meta_file.read_text())
+                    times_arr = np.asarray(meta["timestamps"], dtype=np.float32)
+                    encoder_meta["video"] = meta["encoder"]
+                else:
+                    feats, times_arr = self.video_worker(video_path)
+                    if not feats_file.exists():
+                        np.save(feats_file, np.asarray(feats))
+                    meta = {
+                        "shape": list(feats.shape),
+                        "timestamps": times_arr.tolist(),
+                        "encoder": {"name": self.video_worker.__class__.__name__},
+                        "created": time.time(),
+                    }
+                    meta_file.write_text(json.dumps(meta))
+                    encoder_meta["video"] = meta["encoder"]
+                times = np.asarray(meta["timestamps"], dtype=np.float32)
+                if times.ndim == 1:
+                    if len(times) > 1:
+                        step = float(np.min(np.diff(times)))
                     else:
-                        fps = self.video_worker.grid_fps or self.video_worker.decode_fps
+                        fps = grid_fps or decode_fps
                         step = 1.0 / float(fps)
-                    times_arr = np.column_stack((times_arr, times_arr + step))
+                    times = np.column_stack((times, times + step))
                 modality_arrays["video"] = np.asarray(feats)
-                modality_times["video"] = times_arr
-
-                encoder_meta["video"] = {"name": self.video_worker.__class__.__name__}
+                modality_times["video"] = times
 
             if not modality_arrays:
                 raise ValueError("No modalities available for publication")
