@@ -7,6 +7,7 @@ fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
 fake_pyd.Field = lambda default=None, **kwargs: default
+fake_pyd.__spec__ = importlib.machinery.ModuleSpec("pydantic", loader=None)
 sys.modules.setdefault("pydantic", fake_pyd)
 fake_ps = types.ModuleType("pydantic_settings")
 
@@ -121,18 +122,34 @@ fake_ps.BaseSettings = DummyBase
 fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
 
+import importlib.util
 import json
+import pathlib
 
 import pytest
 
-import deepthought.services.cognitive_core_service as cognitive_core_service
+SRC = pathlib.Path(__file__).resolve().parents[3] / "src"
+deep_pkg = types.ModuleType("deepthought")
+deep_pkg.__path__ = [str(SRC / "deepthought")]
+deep_pkg.__spec__ = importlib.machinery.ModuleSpec("deepthought", loader=None, is_package=True)
+services_pkg = types.ModuleType("deepthought.services")
+services_pkg.__path__ = [str(SRC / "deepthought" / "services")]
+services_pkg.__spec__ = importlib.machinery.ModuleSpec("deepthought.services", loader=None, is_package=True)
+sys.modules.setdefault("deepthought", deep_pkg)
+sys.modules.setdefault("deepthought.services", services_pkg)
+spec = importlib.util.spec_from_file_location(
+    "deepthought.services.cognitive_core_service", SRC / "deepthought/services/cognitive_core_service.py"
+)
+cognitive_core_service = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cognitive_core_service)
+sys.modules.setdefault("deepthought.services.cognitive_core_service", cognitive_core_service)
 from deepthought.config import Settings
 from deepthought.eda.events import (
     EventSubjects,
     InputReceivedPayload,
+    ModalityEmbeddings,
     PerceptionEmbeddingsEvent,
     PerceptionEmbeddingsPayload,
-    ModalityEmbeddings,
 )
 from deepthought.services.cognitive_core_service import CognitiveCoreService
 
@@ -304,3 +321,36 @@ async def test_handle_embeddings_upserts(monkeypatch):
     assert params["start"] == 0
     assert params["end"] == 1
     assert "timestamp" in params
+
+
+@pytest.mark.asyncio
+async def test_handle_embeddings_uses_modality_when_fused_absent():
+    memory = DummyMem2()
+    db = DummyDB()
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+    payload = PerceptionEmbeddingsPayload(
+        message_id="m2",
+        user_id="u",
+        by_modality={
+            "audio": ModalityEmbeddings(
+                spans=[[0, 1], [1, 2]],
+                embeddings=[[0.5, 0.6], [0.7, 0.8]],
+                encoders=[],
+            )
+        },
+        fused=None,
+    )
+    msg = DummyMsg(payload.to_json())
+    await service._handle_embeddings(msg)
+    assert msg.acked
+    assert memory._store.upserts == [
+        ([[0.5, 0.6]], ["m2:0"]),
+        ([[0.7, 0.8]], ["m2:1"]),
+    ]
+    assert len(memory.graph_backend.queries) == 2
+    params0 = memory.graph_backend.queries[0][1]
+    params1 = memory.graph_backend.queries[1][1]
+    assert params0["sid"] == "m2:0"
+    assert params1["sid"] == "m2:1"
