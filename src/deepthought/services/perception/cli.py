@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 
 from nats.aio.client import Client as NATS
@@ -15,6 +16,8 @@ from .config import PerceptionConfig
 from .publisher import PerceptionPublisher
 from .service import PerceptionService
 from .service import run as run_service
+from .worker_audio import AudioPerceptionWorker
+from .worker_text import TextPerceptionWorker
 from .worker_video import VideoPerceptionWorker
 
 
@@ -33,10 +36,13 @@ async def _main() -> None:
     parser.add_argument("--audio-model", default=defaults.audio_model)
     parser.add_argument("--audio-hop-size", type=float, default=defaults.audio_hop_size)
     parser.add_argument("--audio-cache-dir", default=defaults.audio_cache_dir)
+    parser.add_argument("--audio-path")
     parser.add_argument("--video-model", default=defaults.video_model)
     parser.add_argument("--video-hop-size", type=float, default=defaults.video_hop_size)
     parser.add_argument("--video-cache-dir", default=defaults.video_cache_dir)
     parser.add_argument("--video-path")
+    parser.add_argument("--text-path")
+    parser.add_argument("--tokens-json")
     parser.add_argument("--wandb-project", default=defaults.wandb_project)
     parser.add_argument("--wandb-sweep-id", default=defaults.wandb_sweep_id)
     args = parser.parse_args()
@@ -74,6 +80,33 @@ async def _main() -> None:
 
     publisher = PerceptionPublisher(nc, js)
 
+    text_worker = None
+    text_tokens = None
+    if args.text_path or args.tokens_json:
+        text_worker = TextPerceptionWorker(
+            model_name=cfg.text_model,
+            hop_seconds=cfg.text_hop_size,
+        )
+        if args.tokens_json:
+            with open(args.tokens_json, "r", encoding="utf8") as f:
+                raw_tokens = json.load(f)
+            text_tokens = [(t[0], float(t[1]), float(t[2])) for t in raw_tokens]
+        elif args.text_path:
+            with open(args.text_path, "r", encoding="utf8") as f:
+                words = f.read().strip().split()
+            hop = cfg.text_hop_size
+            text_tokens = [(w, i * hop, (i + 1) * hop) for i, w in enumerate(words)]
+
+    audio_worker = None
+    if args.audio_path:
+        audio_worker = AudioPerceptionWorker(
+            window_size=cfg.audio_window_size,
+            step_size=cfg.audio_hop_size,
+            model=cfg.audio_model,
+            model_path=cfg.audio_model_path,
+            cache_dir=cfg.audio_cache_dir,
+        )
+
     video_worker = None
     if args.video_path:
         fps = max(1, min(3, int(round(1 / cfg.video_hop_size))))
@@ -84,7 +117,12 @@ async def _main() -> None:
             cache_dir=cfg.video_cache_dir,
         )
 
-    service = PerceptionService(publisher, video_worker=video_worker)
+    service = PerceptionService(
+        publisher,
+        text_worker=text_worker,
+        audio_worker=audio_worker,
+        video_worker=video_worker,
+    )
 
     if args.listen:
 
@@ -117,6 +155,8 @@ async def _main() -> None:
     await run_service(
         message_id=args.message_id,
         user_id=args.user_id,
+        text_tokens=text_tokens,
+        audio_path=args.audio_path,
         video_path=args.video_path,
         service=service,
     )

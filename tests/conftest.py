@@ -25,6 +25,46 @@ try:  # pragma: no cover - optional dependency may be missing
 except Exception:
     pass
 
+# Provide lightweight stubs for pydantic, pydantic_settings, and textblob when
+# these optional dependencies are not installed. These stubs include a minimal
+# ``__spec__`` so that ``importlib.util.find_spec`` treats them as real modules
+# during test collection.
+import importlib.machinery
+
+if "pydantic" not in sys.modules:
+    pydantic_stub = types.ModuleType("pydantic")
+    pydantic_stub.BaseModel = object
+    pydantic_stub.AnyUrl = str
+    pydantic_stub.Field = lambda default=None, **kwargs: default
+    pydantic_stub.ValidationError = Exception
+    pydantic_stub.__spec__ = importlib.machinery.ModuleSpec("pydantic", loader=None)
+    sys.modules["pydantic"] = pydantic_stub
+
+if "pydantic_settings" not in sys.modules:
+    ps_stub = types.ModuleType("pydantic_settings")
+    ps_stub.BaseSettings = object
+    ps_stub.SettingsConfigDict = dict
+    ps_stub.__spec__ = importlib.machinery.ModuleSpec("pydantic_settings", loader=None)
+    sys.modules["pydantic_settings"] = ps_stub
+
+if "textblob" not in sys.modules:
+    tb_stub = types.ModuleType("textblob")
+
+    def _dummy_textblob(text: str):
+        text = text.lower()
+        if "love" in text:
+            polarity = 0.5
+        elif "hate" in text:
+            polarity = -0.5
+        else:
+            polarity = 0.0
+        return types.SimpleNamespace(sentiment=types.SimpleNamespace(polarity=polarity))
+
+    tb_stub.TextBlob = _dummy_textblob
+    tb_stub.__spec__ = importlib.machinery.ModuleSpec("textblob", loader=None)
+    tb_stub.__path__ = []  # type: ignore[attr-defined]
+    sys.modules["textblob"] = tb_stub
+
 # Provide a stub for the ``nats`` package when it is unavailable so modules
 # importing it (e.g. the event publisher) can be loaded during tests.
 try:  # pragma: no cover - optional dependency may be missing
@@ -187,15 +227,8 @@ async def _noop(*args, **kwargs):
 
 sg_stub.send_to_prism = _noop
 sg_stub.publish_input_received = _noop
-
-try:  # Attempt to load the real example module
-    import importlib
-
-    sg = importlib.import_module("examples.social_graph_bot")
-    sg.send_to_prism = _noop
-except Exception:  # pragma: no cover - fallback when dependencies are missing
-    sg = sg_stub
-sys.modules["examples.social_graph_bot"] = sg
+sys.modules["examples.social_graph_bot"] = sg_stub
+sg = sg_stub
 
 
 # Provide a lightweight stub for sentence_transformers if the package is
