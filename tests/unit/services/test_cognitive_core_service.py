@@ -85,6 +85,31 @@ sys.modules.setdefault("nats.js", fake_nats.js)
 sys.modules.setdefault("nats.js.client", js_client_mod)
 sys.modules.setdefault("nats.errors", err_mod)
 
+pp_mod = types.ModuleType("pyperplan")
+pp_pddl = types.ModuleType("pddl")
+pp_parser = types.ModuleType("parser")
+setattr(pp_parser, "Parser", object)
+pp_pddl.parser = pp_parser
+pp_mod.pddl = pp_pddl
+pp_planner = types.ModuleType("planner")
+setattr(pp_planner, "_ground", lambda *a, **k: None)
+pp_mod.planner = pp_planner
+pp_search = types.ModuleType("search")
+setattr(pp_search, "breadth_first_search", lambda *a, **k: None)
+pp_mod.search = pp_search
+sys.modules.setdefault("pyperplan", pp_mod)
+sys.modules.setdefault("pyperplan.pddl", pp_pddl)
+sys.modules.setdefault("pyperplan.pddl.parser", pp_parser)
+sys.modules.setdefault("pyperplan.planner", pp_planner)
+sys.modules.setdefault("pyperplan.search", pp_search)
+
+planning_stub = types.ModuleType("planning_service")
+setattr(planning_stub, "PlanningService", object)
+reasoning_stub = types.ModuleType("reasoning_service")
+setattr(reasoning_stub, "ReasoningService", object)
+sys.modules.setdefault("deepthought.services.planning_service", planning_stub)
+sys.modules.setdefault("deepthought.services.reasoning_service", reasoning_stub)
+
 
 class DummyBase:
     def __init__(self, **kwargs):
@@ -107,6 +132,7 @@ from deepthought.eda.events import (
     InputReceivedPayload,
     PerceptionEmbeddingsEvent,
     PerceptionEmbeddingsPayload,
+    ModalityEmbeddings,
 )
 from deepthought.services.cognitive_core_service import CognitiveCoreService
 
@@ -254,13 +280,27 @@ async def test_handle_embeddings_upserts(monkeypatch):
     payload = PerceptionEmbeddingsPayload(
         message_id="m1",
         user_id="u",
-        fused=[[0.1, 0.2]],
-        by_modality={},
-        provenance={},
-
+        fused=[[0.1, 0.2], [0.3, 0.4]],
+        by_modality={
+            "audio": ModalityEmbeddings(
+                spans=[[0, 1], [1, 2]],
+                embeddings=[[0.1, 0.2], [0.3, 0.4]],
+                encoders=[],
+            )
+        },
     )
     msg = DummyMsg(payload.to_json())
     await service._handle_embeddings(msg)
     assert msg.acked
-    assert memory._store.upserts == [([[0.1, 0.2]], ["m1"])]
-    assert memory.graph_backend.queries[0][1]["id"] == "m1"
+    assert memory._store.upserts == [
+        ([[0.1, 0.2]], ["m1:0"]),
+        ([[0.3, 0.4]], ["m1:1"]),
+    ]
+    assert len(memory.graph_backend.queries) == 2
+    params = memory.graph_backend.queries[0][1]
+    assert params["mid"] == "m1"
+    assert params["sid"] == "m1:0"
+    assert params["modality"] == "audio"
+    assert params["start"] == 0
+    assert params["end"] == 1
+    assert "timestamp" in params
