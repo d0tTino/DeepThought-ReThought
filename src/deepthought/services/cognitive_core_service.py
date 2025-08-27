@@ -17,6 +17,7 @@ from ..eda.events import (
     EventSubjects,
     MemoryRetrievedPayload,
     PerceptionEmbeddingsEvent,
+    PerceptionEmbeddingsPayload,
 )
 from ..memory import create_memory_backend
 from ..memory.tiered import TieredMemory
@@ -203,22 +204,52 @@ class CognitiveCoreService(BaseService):
             INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(duration)
 
     async def _handle_embeddings(self, msg: Msg) -> None:
-        """Store fused perception embeddings in the vector store and KG."""
+        """Store perception embeddings in the vector store and knowledge graph."""
         try:
             payload = PerceptionEmbeddingsPayload.from_json(msg.data.decode())
-            if payload.fused:
-                vector = [float(sum(col) / len(payload.fused)) for col in zip(*payload.fused)]
+            message_id = str(payload.message_id)
+            store = getattr(self._memory, "_store", None)
+            graph = getattr(self._memory, "graph_backend", None)
 
-                message_id = str(payload.message_id)
-                store = getattr(self._memory, "_store", None)
-                if store and hasattr(store, "upsert_vectors"):
-                    store.upsert_vectors([vector], [message_id])
-                graph = getattr(self._memory, "graph_backend", None)
-                if graph:
-                    graph.query_subgraph(
-                        "MERGE (m:Message {id: $id}) SET m.embedding = $embedding",
-                        {"id": message_id, "embedding": vector},
-                    )
+            # Upsert vectors for each span keyed by (message_id, span_index)
+            if store and hasattr(store, "upsert_vectors"):
+                vectors = payload.fused
+                # Fall back to the first modality if fused embeddings are unavailable
+                if vectors is None and payload.by_modality:
+                    first_mod = next(iter(payload.by_modality.values()))
+                    vectors = first_mod.embeddings
+                if vectors:
+                    for idx, vector in enumerate(vectors):
+                        store.upsert_vectors([vector], [f"{message_id}:{idx}"])
+
+            # Insert nodes/edges in the KG with modality and timestamp metadata
+            if graph:
+                timestamp = datetime.now(timezone.utc).isoformat()
+                for modality, mod in payload.by_modality.items():
+                    for idx, span in enumerate(mod.spans):
+                        span_id = f"{message_id}:{idx}"
+                        vector = None
+                        if payload.fused and idx < len(payload.fused):
+                            vector = payload.fused[idx]
+                        elif idx < len(mod.embeddings):
+                            vector = mod.embeddings[idx]
+                        graph.query_subgraph(
+                            "MERGE (m:Message {id: $mid}) "
+                            "MERGE (s:Span {id: $sid}) "
+                            "SET s.embedding = $embedding, s.start = $start, s.end = $end, "
+                            "s.modality = $modality, s.timestamp = $timestamp "
+                            "MERGE (m)-[:HAS_SPAN {modality: $modality, timestamp: $timestamp}]->(s)",
+                            {
+                                "mid": message_id,
+                                "sid": span_id,
+                                "embedding": vector,
+                                "start": span[0],
+                                "end": span[1],
+                                "modality": modality,
+                                "timestamp": timestamp,
+                            },
+                        )
+
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except Exception:
