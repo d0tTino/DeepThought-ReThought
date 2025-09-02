@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Utilities for fusing multi-modal embeddings."""
 
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Dict, Optional, Sequence, TYPE_CHECKING
 
 import torch
 from torch import nn
@@ -102,6 +102,82 @@ class ModalityFuser(nn.Module):
         combined = torch.cat(pieces, dim=-1)
         return self.project(combined)
 
-    def fit(self, *args, **kwargs) -> None:  # pragma: no cover - stubbed method
-        """Placeholder for training logic."""
-        raise NotImplementedError("Training is not implemented for ModalityFuser")
+    def fit(
+        self,
+        batches: "Sequence[tuple[Dict[str, torch.Tensor], torch.Tensor, str | None]]",
+        *,
+        embedding_store: "UserEmbeddings" | None = None,
+        epochs: int = 1,
+        lr: float = 1e-3,
+        criterion: nn.Module | None = None,
+    ) -> None:
+        """Train the projection layer using provided data.
+
+        Parameters
+        ----------
+        batches:
+            Iterable yielding ``(modalities, target, user_id)`` tuples. Each
+            ``modalities`` dict maps modality name to a tensor of shape
+            ``(batch, dim)``. ``target`` is the supervision signal matching the
+            output of the fuser. ``user_id`` identifies the user for the entire
+            batch and is optional.
+        embedding_store:
+            Optional :class:`~deepthought.services.perception.user_embeddings.UserEmbeddings`
+            instance used to retrieve and update per-user embeddings.
+        epochs:
+            Number of epochs to iterate over ``batches``.
+        lr:
+            Learning rate for both fusion weights and user embedding updates.
+        criterion:
+            Loss function used for training. Defaults to ``nn.MSELoss``.
+
+        Notes
+        -----
+        Modality dropout is handled in :meth:`forward`. When ``embedding_store``
+        is provided user embeddings are updated from the gradient of the loss
+        and persisted via ``update_from_gradient``.
+        """
+
+        if criterion is None:
+            criterion = nn.MSELoss()
+
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        device = next(self.parameters()).device
+
+        for _ in range(epochs):
+            for modalities, target, user_id in batches:
+                modalities = {k: v.to(device) for k, v in modalities.items()}
+                target = target.to(device)
+
+                user_embedding = None
+                if (
+                    embedding_store is not None
+                    and user_id is not None
+                    and self.user_dim > 0
+                ):
+                    emb = embedding_store.get(user_id)
+                    if emb is None:
+                        emb = torch.zeros(self.user_dim, device=device)
+                        embedding_store.set(user_id, emb)
+                    if emb.ndim == 1:
+                        emb = emb.unsqueeze(0)
+                    base = next(iter(modalities.values()))
+                    emb = emb.to(device).expand(base.size(0), -1).clone().detach()
+                    emb.requires_grad_(True)
+                    user_embedding = emb
+
+                optimizer.zero_grad()
+                output = self.forward(modalities, user_embedding=user_embedding)
+                loss = criterion(output, target)
+                loss.backward()
+
+                if (
+                    user_embedding is not None
+                    and embedding_store is not None
+                    and user_id is not None
+                    and user_embedding.grad is not None
+                ):
+                    grad = user_embedding.grad.mean(dim=0)
+                    embedding_store.update_from_gradient(user_id, grad, lr=lr)
+
+                optimizer.step()

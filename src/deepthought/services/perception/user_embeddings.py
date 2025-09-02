@@ -59,6 +59,61 @@ class UserEmbeddings:
         self._store[user_id] = tensor
         self.save()
 
+    def update_from_gradient(
+        self,
+        user_id: str,
+        gradient: Sequence[float] | "torch.Tensor",
+        *,
+        lr: float = 1e-3,
+    ) -> "torch.Tensor":
+        """Apply gradient descent update to ``user_id``'s embedding.
+
+        A new zero-initialized embedding is created if ``user_id`` has not been
+        seen before. The updated embedding is saved to disk and returned.
+        """
+
+        import torch  # Lazy import to avoid eager torch initialization
+
+        if isinstance(gradient, torch.Tensor):
+            grad = gradient.detach().cpu().float()
+        else:
+            grad = torch.tensor(list(gradient), dtype=torch.float32)
+
+        if user_id not in self._store:
+            self._store[user_id] = torch.zeros_like(grad)
+
+        self._store[user_id] = self._store[user_id] - lr * grad
+        self.save()
+        return self._store[user_id]
+
+    def update_from_bandit(
+        self,
+        user_id: str,
+        reward: float,
+        context: Sequence[float] | "torch.Tensor",
+        *,
+        lr: float = 1e-2,
+    ) -> "torch.Tensor":
+        """Update ``user_id``'s embedding using bandit feedback.
+
+        ``context`` defines the direction of the update which is scaled by the
+        observed ``reward``. The updated embedding is persisted and returned.
+        """
+
+        import torch  # Lazy import to avoid eager torch initialization
+
+        if isinstance(context, torch.Tensor):
+            ctx = context.detach().cpu().float()
+        else:
+            ctx = torch.tensor(list(context), dtype=torch.float32)
+
+        if user_id not in self._store:
+            self._store[user_id] = torch.zeros_like(ctx)
+
+        self._store[user_id] = self._store[user_id] + lr * reward * ctx
+        self.save()
+        return self._store[user_id]
+
     def save(self) -> None:
         """Persist the current embeddings to the configured path."""
 
