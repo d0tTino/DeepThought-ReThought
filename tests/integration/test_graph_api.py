@@ -30,7 +30,6 @@ fake_nx.__spec__ = importlib.machinery.ModuleSpec("networkx", loader=None)
 sys.modules.setdefault("networkx", fake_nx)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
-sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 fake_prom = types.ModuleType("prometheus_client")
 
 
@@ -52,6 +51,7 @@ sys.modules.setdefault("prometheus_client", fake_prom)
 
 import pytest
 
+pytest.importorskip("aiosqlite")
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 

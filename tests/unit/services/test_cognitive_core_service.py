@@ -3,6 +3,10 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
+
+pytest.importorskip("aiosqlite")
+
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
@@ -31,7 +35,6 @@ fake_prom.REGISTRY = SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
-sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 torch_mod = types.ModuleType("torch")
 
 
@@ -257,7 +260,6 @@ async def test_handle_embeddings_upserts(monkeypatch):
         fused=[[0.1, 0.2]],
         by_modality={},
         provenance={},
-
     )
     msg = DummyMsg(payload.to_json())
     await service._handle_embeddings(msg)

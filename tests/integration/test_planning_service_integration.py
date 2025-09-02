@@ -6,6 +6,8 @@ import types
 
 import pytest
 
+pytest.importorskip("aiosqlite")
+
 # Stub minimal pydantic classes before importing deepthought modules
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
@@ -17,16 +19,6 @@ fake_ps = types.ModuleType("pydantic_settings")
 fake_ps.BaseSettings = object
 fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
-
-# Stub aiosqlite used by DBManager to avoid optional dependency
-fake_aiosqlite = types.ModuleType("aiosqlite")
-fake_aiosqlite.Connection = object
-fake_aiosqlite.connect = lambda *a, **k: types.SimpleNamespace(
-    execute=lambda *a, **k: None,
-    commit=lambda: None,
-    close=lambda: None,
-)
-sys.modules.setdefault("aiosqlite", fake_aiosqlite)
 
 # Stub textblob used by DBManager sentiment analysis
 fake_textblob = types.ModuleType("textblob")

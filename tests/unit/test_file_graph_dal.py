@@ -3,8 +3,9 @@ import sys
 import types
 
 import networkx as nx
+import pytest
 
-sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
+pytest.importorskip("aiosqlite")
 nats = types.ModuleType("nats")
 import importlib.machinery
 

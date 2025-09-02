@@ -9,6 +9,7 @@ processing.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence, Tuple
@@ -20,6 +21,19 @@ from deepthought.config import get_settings
 
 # A token is represented as ``(text, start_time, end_time)`` where times are in seconds.
 Token = Tuple[str, float, float]
+
+
+PII_PATTERNS = [
+    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
+    re.compile(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"),
+    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+]
+
+
+def _scrub(text: str) -> str:
+    for pattern in PII_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
 
 
 @dataclass
@@ -55,16 +69,18 @@ class TextPerceptionWorker:
 
         memmap_path = Path(memmap_path)
 
+        scrubbed_tokens = [(_scrub(text), start, end) for text, start, end in tokens]
+
         # Pre-compute embeddings to determine dimensionality
-        embeddings = [np.asarray(self._model.encode(text)) for text, _, _ in tokens]
+        embeddings = [np.asarray(self._model.encode(text)) for text, _, _ in scrubbed_tokens]
         emb_dim = embeddings[0].shape[0]
 
-        duration = max(end for _, _, end in tokens)
+        duration = max(end for _, _, end in scrubbed_tokens)
         num_steps = int(np.ceil(duration / self.hop_seconds))
         features = np.memmap(memmap_path, dtype="float32", mode="w+", shape=(num_steps, emb_dim))
         features[:] = 0.0
 
-        for emb, (_, start, end) in zip(embeddings, tokens):
+        for emb, (_, start, end) in zip(embeddings, scrubbed_tokens):
             start_idx = int(start / self.hop_seconds)
             end_idx = int(np.ceil(end / self.hop_seconds))
             features[start_idx:end_idx] = emb

@@ -3,6 +3,10 @@ import json
 import sys
 import types
 
+import pytest
+
+pytest.importorskip("aiosqlite")
+
 pyperplan_mod = types.ModuleType("pyperplan")
 pyperplan_mod.pddl = types.ModuleType("pyperplan.pddl")
 pyperplan_parser = types.ModuleType("pyperplan.pddl.parser")
@@ -63,7 +67,6 @@ fake_prom.REGISTRY = types.SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
-sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 torch_mod = types.ModuleType("torch")
 torch_mod.no_grad = lambda: types.SimpleNamespace(
     __enter__=lambda self: None, __exit__=lambda self, exc_type, exc, tb: None
