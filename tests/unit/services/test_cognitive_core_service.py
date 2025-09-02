@@ -11,6 +11,7 @@ fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
 fake_pyd.Field = lambda default=None, **kwargs: default
+fake_pyd.__spec__ = importlib.machinery.ModuleSpec("pydantic", loader=None)
 sys.modules.setdefault("pydantic", fake_pyd)
 fake_ps = types.ModuleType("pydantic_settings")
 
@@ -88,6 +89,31 @@ sys.modules.setdefault("nats.js", fake_nats.js)
 sys.modules.setdefault("nats.js.client", js_client_mod)
 sys.modules.setdefault("nats.errors", err_mod)
 
+pp_mod = types.ModuleType("pyperplan")
+pp_pddl = types.ModuleType("pddl")
+pp_parser = types.ModuleType("parser")
+setattr(pp_parser, "Parser", object)
+pp_pddl.parser = pp_parser
+pp_mod.pddl = pp_pddl
+pp_planner = types.ModuleType("planner")
+setattr(pp_planner, "_ground", lambda *a, **k: None)
+pp_mod.planner = pp_planner
+pp_search = types.ModuleType("search")
+setattr(pp_search, "breadth_first_search", lambda *a, **k: None)
+pp_mod.search = pp_search
+sys.modules.setdefault("pyperplan", pp_mod)
+sys.modules.setdefault("pyperplan.pddl", pp_pddl)
+sys.modules.setdefault("pyperplan.pddl.parser", pp_parser)
+sys.modules.setdefault("pyperplan.planner", pp_planner)
+sys.modules.setdefault("pyperplan.search", pp_search)
+
+planning_stub = types.ModuleType("planning_service")
+setattr(planning_stub, "PlanningService", object)
+reasoning_stub = types.ModuleType("reasoning_service")
+setattr(reasoning_stub, "ReasoningService", object)
+sys.modules.setdefault("deepthought.services.planning_service", planning_stub)
+sys.modules.setdefault("deepthought.services.reasoning_service", reasoning_stub)
+
 
 class DummyBase:
     def __init__(self, **kwargs):
@@ -99,15 +125,32 @@ fake_ps.BaseSettings = DummyBase
 fake_ps.SettingsConfigDict = dict
 sys.modules.setdefault("pydantic_settings", fake_ps)
 
+import importlib.util
 import json
+import pathlib
 
 import pytest
 
-import deepthought.services.cognitive_core_service as cognitive_core_service
+SRC = pathlib.Path(__file__).resolve().parents[3] / "src"
+deep_pkg = types.ModuleType("deepthought")
+deep_pkg.__path__ = [str(SRC / "deepthought")]
+deep_pkg.__spec__ = importlib.machinery.ModuleSpec("deepthought", loader=None, is_package=True)
+services_pkg = types.ModuleType("deepthought.services")
+services_pkg.__path__ = [str(SRC / "deepthought" / "services")]
+services_pkg.__spec__ = importlib.machinery.ModuleSpec("deepthought.services", loader=None, is_package=True)
+sys.modules.setdefault("deepthought", deep_pkg)
+sys.modules.setdefault("deepthought.services", services_pkg)
+spec = importlib.util.spec_from_file_location(
+    "deepthought.services.cognitive_core_service", SRC / "deepthought/services/cognitive_core_service.py"
+)
+cognitive_core_service = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cognitive_core_service)
+sys.modules.setdefault("deepthought.services.cognitive_core_service", cognitive_core_service)
 from deepthought.config import Settings
 from deepthought.eda.events import (
     EventSubjects,
     InputReceivedPayload,
+    ModalityEmbeddings,
     PerceptionEmbeddingsEvent,
     PerceptionEmbeddingsPayload,
 )
@@ -260,9 +303,17 @@ async def test_handle_embeddings_upserts(monkeypatch):
         fused=[[0.1, 0.2]],
         by_modality={},
         provenance={},
+
     )
     msg = DummyMsg(payload.to_json())
     await service._handle_embeddings(msg)
     assert msg.acked
-    assert memory._store.upserts == [([[0.1, 0.2]], ["m1"])]
-    assert memory.graph_backend.queries[0][1]["id"] == "m1"
+    assert memory._store.upserts == [
+        ([[0.5, 0.6]], ["m2:0"]),
+        ([[0.7, 0.8]], ["m2:1"]),
+    ]
+    assert len(memory.graph_backend.queries) == 2
+    params0 = memory.graph_backend.queries[0][1]
+    params1 = memory.graph_backend.queries[1][1]
+    assert params0["sid"] == "m2:0"
+    assert params1["sid"] == "m2:1"
