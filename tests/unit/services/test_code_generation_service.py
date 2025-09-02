@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("aiosqlite")
 pytest.importorskip("nats")
-sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 import importlib.machinery
 
 fake_nx = types.ModuleType("networkx")
@@ -138,6 +138,7 @@ async def test_execution_timeout(monkeypatch):
 
     def slow_eval(self, node, variables):
         import time
+
         time.sleep(0.2)
         return 1
 

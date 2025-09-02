@@ -3,7 +3,9 @@ import pytest
 pytest.importorskip("aiosqlite")
 import aiosqlite
 
-import examples.social_graph_bot as sg
+sg = pytest.importorskip("examples.social_graph_bot")
+if not hasattr(sg, "TrustService"):
+    pytest.skip("social_graph_bot optional dependencies not installed", allow_module_level=True)
 
 pytest.importorskip("nats")
 from deepthought.services import DBManager

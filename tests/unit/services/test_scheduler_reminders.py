@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+pytest.importorskip("aiosqlite")
+
 # stub nats and related dependencies
 fake_nats = types.ModuleType("nats")
 fake_nats.aio = types.ModuleType("aio")
@@ -29,7 +31,6 @@ sys.modules.setdefault("nats.aio.msg", fake_msg_mod)
 sys.modules.setdefault("nats.js", fake_nats.js)
 sys.modules.setdefault("nats.js.client", fake_js_client_mod)
 sys.modules.setdefault("nats.errors", fake_errors_mod)
-sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
@@ -50,6 +51,7 @@ sys.modules.setdefault("pydantic_settings", fake_ps)
 fake_nx = types.ModuleType("networkx")
 setattr(fake_nx, "DiGraph", object)
 import importlib.machinery
+
 fake_nx.__spec__ = importlib.machinery.ModuleSpec("networkx", loader=None)
 fake_prom = types.ModuleType("prometheus_client")
 

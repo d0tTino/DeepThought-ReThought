@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,16 @@ from .user_embeddings import UserEmbeddings
 from .worker_audio import AudioPerceptionWorker
 from .worker_text import TextPerceptionWorker, Token
 from .worker_video import VideoPerceptionWorker
+
+
+def _consent_granted(kind: str) -> bool:
+    """Return ``True`` if consent for ``kind`` processing is granted."""
+
+    required = os.getenv(f"DT_REQUIRE_{kind.upper()}_CONSENT", "false").lower()
+    if required in {"1", "true", "yes"}:
+        consent = os.getenv(f"DT_{kind.upper()}_CONSENT", "false").lower()
+        return consent in {"1", "true", "yes"}
+    return True
 
 
 @dataclass
@@ -47,6 +58,7 @@ class PerceptionService:
         text_tokens: Sequence[Token] | None = None,
         audio_path: str | Path | None = None,
         video_path: str | Path | None = None,
+        retain_media: bool = False,
     ) -> None:
         """Fuse worker outputs and publish via the ``publisher``."""
         settings = get_settings()
@@ -103,10 +115,10 @@ class PerceptionService:
                 modality_times["text"] = np.asarray(times)
 
             if self.audio_worker is not None and audio_path is not None:
+                if not _consent_granted("audio"):
+                    raise PermissionError("Audio consent not granted")
                 audio_path = Path(audio_path)
-                cache_dir = Path(
-                    self.audio_worker.cache_dir or cfg.audio_cache_dir or audio_path.parent
-                )
+                cache_dir = Path(self.audio_worker.cache_dir or cfg.audio_cache_dir or audio_path.parent)
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 base = (
                     f"{audio_path.stem}_{self.audio_worker.model}_ws{self.audio_worker.window_size}"
@@ -131,13 +143,15 @@ class PerceptionService:
                     encoder_meta["audio"] = meta["encoder"]
                 modality_arrays["audio"] = np.asarray(feats)
                 modality_times["audio"] = np.asarray(times)
+                if not retain_media:
+                    audio_path.unlink(missing_ok=True)
 
             if self.video_worker is not None and video_path is not None:
+                if not _consent_granted("video"):
+                    raise PermissionError("Video consent not granted")
                 video_path = Path(video_path)
                 cache_dir = Path(
-                    getattr(self.video_worker, "cache_dir", None)
-                    or cfg.video_cache_dir
-                    or video_path.parent
+                    getattr(self.video_worker, "cache_dir", None) or cfg.video_cache_dir or video_path.parent
                 )
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 decode_fps = getattr(self.video_worker, "decode_fps", 1)
@@ -174,6 +188,8 @@ class PerceptionService:
                     times = np.column_stack((times, times + step))
                 modality_arrays["video"] = np.asarray(feats)
                 modality_times["video"] = times
+                if not retain_media:
+                    video_path.unlink(missing_ok=True)
 
             if not modality_arrays:
                 raise ValueError("No modalities available for publication")

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("aiosqlite")
+
 
 @pytest.fixture(autouse=True)
 def _stub_dependencies(monkeypatch):
@@ -58,8 +60,6 @@ def _stub_dependencies(monkeypatch):
     fake_ps.SettingsConfigDict = dict
     sys.modules.setdefault("pydantic_settings", fake_ps)
 
-    sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
-
     tb_mod = types.ModuleType("textblob")
     tb_mod.TextBlob = lambda text: types.SimpleNamespace(sentiment=types.SimpleNamespace(polarity=0.0))
     sys.modules.setdefault("textblob", tb_mod)
@@ -95,16 +95,8 @@ def _stub_dependencies(monkeypatch):
 
     # Provide lightweight deepthought.services module exposing only CognitiveCoreService
     services = types.ModuleType("deepthought.services")
-    cc_path = (
-        Path(__file__).resolve().parents[2]
-        / "src"
-        / "deepthought"
-        / "services"
-        / "cognitive_core_service.py"
-    )
-    cc_spec = importlib.util.spec_from_file_location(
-        "deepthought.services.cognitive_core_service", cc_path.resolve()
-    )
+    cc_path = Path(__file__).resolve().parents[2] / "src" / "deepthought" / "services" / "cognitive_core_service.py"
+    cc_spec = importlib.util.spec_from_file_location("deepthought.services.cognitive_core_service", cc_path.resolve())
     cc_mod = importlib.util.module_from_spec(cc_spec)
     assert cc_spec.loader is not None
     cc_spec.loader.exec_module(cc_mod)

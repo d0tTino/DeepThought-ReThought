@@ -4,6 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("aiosqlite")
+
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
@@ -22,11 +24,8 @@ sys.modules.setdefault("pyperplan", types.ModuleType("pyperplan"))
 planning_stub = types.ModuleType("planning_service")
 planning_stub.PlanningService = object
 sys.modules.setdefault("deepthought.services.planning_service", planning_stub)
-sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 tb_mod = types.ModuleType("textblob")
-tb_mod.TextBlob = lambda text: types.SimpleNamespace(
-    sentiment=types.SimpleNamespace(polarity=0.0)
-)
+tb_mod.TextBlob = lambda text: types.SimpleNamespace(sentiment=types.SimpleNamespace(polarity=0.0))
 sys.modules.setdefault("textblob", tb_mod)
 rdf_mod = types.ModuleType("rdflib")
 ns_mod = types.ModuleType("rdflib.namespace")
@@ -191,7 +190,5 @@ async def test_warning_on_contradiction(monkeypatch):
     subjects = [s for s, _ in svc._publisher.published]
     assert EventSubjects.WARNING in subjects
     assert EventSubjects.INPUT_RECEIVED in subjects
-    inp = next(
-        p for s, p in svc._publisher.published if s == EventSubjects.INPUT_RECEIVED
-    )
+    inp = next(p for s, p in svc._publisher.published if s == EventSubjects.INPUT_RECEIVED)
     assert inp.user_input == "A B C"

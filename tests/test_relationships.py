@@ -3,7 +3,9 @@ import pytest
 pytest.importorskip("aiosqlite")
 import aiosqlite
 
-import examples.social_graph_bot as sg
+sg = pytest.importorskip("examples.social_graph_bot")
+if not hasattr(sg, "TrustService"):
+    pytest.skip("social_graph_bot optional dependencies not installed", allow_module_level=True)
 
 pytest.importorskip("nats")
 from deepthought.services import DBManager
@@ -95,9 +97,7 @@ async def test_relationship_type_computation(tmp_path):
     assert status == "rival"
 
     async with aiosqlite.connect(str(db_path)) as db:
-        async with db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='relationship_types'"
-        ) as cur:
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='relationship_types'") as cur:
             assert await cur.fetchone() is not None
 
     await mem.close()

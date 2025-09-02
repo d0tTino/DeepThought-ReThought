@@ -1,11 +1,12 @@
 import importlib
-import importlib.util
 import sys
 import types
 
 import pytest
 
-import examples.social_graph_bot as sg
+sg = pytest.importorskip("examples.social_graph_bot")
+if not hasattr(sg, "TrustService"):
+    pytest.skip("social_graph_bot optional dependencies not installed", allow_module_level=True)
 
 textblob_available = importlib.util.find_spec("textblob") is not None
 vader_available = importlib.util.find_spec("vaderSentiment") is not None

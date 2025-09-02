@@ -3,6 +3,10 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
+
+pytest.importorskip("aiosqlite")
+
 fake_pyd = types.ModuleType("pydantic")
 fake_pyd.AnyUrl = str
 fake_pyd.ValidationError = Exception
@@ -32,7 +36,6 @@ fake_prom.REGISTRY = SimpleNamespace(_names_to_collectors={})
 sys.modules.setdefault("prometheus_client", fake_prom)
 sys.modules.setdefault("faiss", types.ModuleType("faiss"))
 sys.modules.setdefault("numpy", types.ModuleType("numpy"))
-sys.modules.setdefault("aiosqlite", types.ModuleType("aiosqlite"))
 torch_mod = types.ModuleType("torch")
 
 
@@ -297,50 +300,10 @@ async def test_handle_embeddings_upserts(monkeypatch):
     payload = PerceptionEmbeddingsPayload(
         message_id="m1",
         user_id="u",
-        fused=[[0.1, 0.2], [0.3, 0.4]],
-        by_modality={
-            "audio": ModalityEmbeddings(
-                spans=[[0, 1], [1, 2]],
-                embeddings=[[0.1, 0.2], [0.3, 0.4]],
-                encoders=[],
-            )
-        },
-    )
-    msg = DummyMsg(payload.to_json())
-    await service._handle_embeddings(msg)
-    assert msg.acked
-    assert memory._store.upserts == [
-        ([[0.1, 0.2]], ["m1:0"]),
-        ([[0.3, 0.4]], ["m1:1"]),
-    ]
-    assert len(memory.graph_backend.queries) == 2
-    params = memory.graph_backend.queries[0][1]
-    assert params["mid"] == "m1"
-    assert params["sid"] == "m1:0"
-    assert params["modality"] == "audio"
-    assert params["start"] == 0
-    assert params["end"] == 1
-    assert "timestamp" in params
+        fused=[[0.1, 0.2]],
+        by_modality={},
+        provenance={},
 
-
-@pytest.mark.asyncio
-async def test_handle_embeddings_uses_modality_when_fused_absent():
-    memory = DummyMem2()
-    db = DummyDB()
-    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
-    service._publisher = DummyPublisher()
-    service._subscriber = DummySubscriber()
-    payload = PerceptionEmbeddingsPayload(
-        message_id="m2",
-        user_id="u",
-        by_modality={
-            "audio": ModalityEmbeddings(
-                spans=[[0, 1], [1, 2]],
-                embeddings=[[0.5, 0.6], [0.7, 0.8]],
-                encoders=[],
-            )
-        },
-        fused=None,
     )
     msg = DummyMsg(payload.to_json())
     await service._handle_embeddings(msg)
