@@ -4,6 +4,24 @@
 
 The **PerceptionService** scores text, image, and audio inputs for social cues such as flirtation, avoidance, manipulation, sarcasm and supportiveness. Each modality is processed separately and a simple fusion step averages the signals into a combined vector. Downstream modules can use the fused or per-modality scores to adjust trust levels, choose personas or trigger safeguards.
 
+## Architecture and Flow
+
+```mermaid
+flowchart LR
+    subgraph PerceptionService
+        T[Text Worker] --> TC[(Text Cache)]
+        A[Audio Worker] --> AC[(Audio Cache)]
+        V[Video Worker] --> VC[(Video Cache)]
+    end
+    TC --> F[Fuser]
+    AC --> F
+    VC --> F
+    F --> P[Publisher]
+    P --> JS[(JetStream PERCEPTION stream)]
+    P --> UE[(User Embeddings)]
+    UE --> HM[Hierarchical Memory]
+```
+
 ## JetStream Subjects
 
 The service listens for incoming messages on:
@@ -59,28 +77,56 @@ python -m deepthought.services.perception_service
 
 The module continuously publishes scored events to the subjects listed above.
 
-## Replaying Perception Events
+## Replay and Monitoring
 
-`setup_jetstream.py` provisions a `PERCEPTION` stream with durable consumers `memory-perception-consumer` and `analytics-perception-consumer`. Use the NATS CLI to inspect past events. For example, replay the next ten fused events:
+### Replaying Events
 
-```bash
-nats consumer next PERCEPTION memory-perception-consumer --filter dtr.perception.fused --count=10 --json
-```
+1. Provision the JetStream resources:
+   ```bash
+   python setup_jetstream.py
+   ```
+2. View the available consumers:
+   ```bash
+   nats stream info PERCEPTION
+   ```
+3. Replay the next ten fused events:
+   ```bash
+   nats consumer next PERCEPTION memory-perception-consumer --filter dtr.perception.fused --count=10 --json
+   ```
+   Replace the `--filter` subject with `dtr.perception.text`, `dtr.perception.image`, or `dtr.perception.audio` to inspect individual modalities.
 
-Swap the `--filter` value for `dtr.perception.text`, `dtr.perception.image`, or `dtr.perception.audio` to retrieve scores for individual modalities.
+### Monitoring with Weights & Biases
 
-## Privacy Controls
+1. Install and log in to W&B:
+   ```bash
+   pip install wandb
+   wandb login
+   ```
+2. Enable W&B in the perception service:
+   ```bash
+   export DT_WANDB_ENABLED=1
+   export DT_WANDB_PROJECT=deepthought
+   python -m deepthought.services.perception_service
+   ```
+3. Visit https://wandb.ai/ to view live metrics and uploaded artifacts.
 
-The perception service provides basic controls over user consent and data retention:
+## Privacy and Consent
 
-- **Consent toggle:** set `PERCEPTION_REQUIRE_CONSENT=1` to require incoming messages to include a `"consent": true` flag. Events without consent are ignored.
-- **Retention policy:** the `PERCEPTION` stream defaults to the JetStream `limits` retention policy. Override `PERCEPTION_RETENTION_POLICY` with `limits`, `interest`, or `workqueue` when provisioning streams to control how long scored events are stored.
+Perception inputs may contain personally identifiable information. Deployments **must** obtain user consent and disclose how media and derived embeddings are stored or shared.
+
+- **Consent toggles:** set `PERCEPTION_REQUIRE_CONSENT=1` to ignore messages without an explicit `"consent": true` flag. Per-modality variables such as `DT_REQUIRE_AUDIO_CONSENT` and `DT_AUDIO_CONSENT` can enforce and grant consent for specific media types.
+- **Data retention:** the `PERCEPTION` stream defaults to JetStream's `limits` policy. Override `PERCEPTION_RETENTION_POLICY` with `limits`, `interest`, or `workqueue` to control storage duration.
+- **External monitoring:** enabling W&B (`DT_WANDB_ENABLED=1`) sends metrics to a third-party service. Ensure this complies with your privacy policy.
 
 Example configuration:
 
 ```bash
 export PERCEPTION_REQUIRE_CONSENT=1
+export DT_REQUIRE_AUDIO_CONSENT=1
+export DT_AUDIO_CONSENT=1
 export PERCEPTION_RETENTION_POLICY=workqueue
+export DT_WANDB_ENABLED=1
+export DT_WANDB_PROJECT=deepthought
 ```
 
 These options allow deployments to honor user preferences and organizational data policies.
