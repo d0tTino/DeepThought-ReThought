@@ -11,6 +11,11 @@ try:  # Ensure prometheus_client is loaded before tests patch it
 except Exception:  # pragma: no cover - optional dependency may be missing
     pass
 
+try:  # Ensure aiosqlite is loaded before tests patch it
+    import aiosqlite  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency may be missing
+    pass
+
 __version__ = "0.1.0"
 
 # Re-export modules subpackage for convenient access
