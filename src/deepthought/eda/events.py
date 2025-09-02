@@ -85,6 +85,7 @@ class InputReceivedPayload(EventPayload):
     user_input: str
     input_id: Optional[str] = None
     timestamp: Optional[str] = None
+    consent: Optional[bool] = None
 
 
 @dataclass
