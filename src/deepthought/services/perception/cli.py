@@ -128,7 +128,16 @@ async def _main() -> None:
 
         async def _handle_input(msg: Msg) -> None:
             try:
-                payload = InputReceivedPayload.from_json(msg.data.decode())
+                raw = json.loads(msg.data.decode())
+            except Exception:
+                raw = {}
+            if os.getenv("PERCEPTION_REQUIRE_CONSENT", "").lower() in {"1", "true", "yes"}:
+                if not raw.get("consent"):
+                    if hasattr(msg, "ack") and callable(msg.ack):
+                        await msg.ack()
+                    return
+            try:
+                payload = InputReceivedPayload.from_dict(raw)
                 message_id = payload.input_id or "unknown"
             except Exception:
                 payload = None
