@@ -222,6 +222,13 @@ def _cmd_perception_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_perception_delete_user(args: argparse.Namespace) -> int:
+    from ..services.perception.delete_user_data import delete_user_data
+
+    delete_user_data(args.user_id, nats_url=args.nats_url)
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     from ..services.perception.config import PerceptionConfig
 
@@ -314,6 +321,11 @@ def _build_parser() -> argparse.ArgumentParser:
     perception_run.add_argument("--message-id", required=True)
     perception_run.add_argument("--user-id", required=True)
     perception_run.set_defaults(func=_cmd_perception_run)
+
+    perception_delete = perception_sub.add_parser("delete-user", description="Delete cached perception data for a user")
+    perception_delete.add_argument("--user-id", required=True)
+    perception_delete.add_argument("--nats-url", default=PerceptionConfig().nats_url)
+    perception_delete.set_defaults(func=_cmd_perception_delete_user)
 
     init_p = sub.add_parser("init")
     init_sub = init_p.add_subparsers(dest="target")
