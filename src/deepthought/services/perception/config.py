@@ -10,6 +10,8 @@ class PerceptionConfig(BaseSettings):
     """Settings controlling the perception service."""
 
     nats_url: str = Field("nats://localhost:4222", env="DT_NATS_URL")
+    # Default text embedding model (E5). Alternative: BGE.
+    # See docs/licenses.md for license details.
     text_model: str = "intfloat/e5-small-v2@9d1db5bedc62f5d6c594bb4a7f14c04b1e5e6a0c"
     text_hop_size: float = 0.03
     text_cache_dir: str | None = None
