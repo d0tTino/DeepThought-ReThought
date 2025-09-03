@@ -20,14 +20,19 @@ __version__ = "0.1.0"
 
 # Re-export modules subpackage for convenient access
 from . import affinity  # noqa: F401
+
+# Importing heavy submodules like ``goal_scheduler`` at module import time can
+# trigger circular import errors during test collection.  Avoid eager imports and
+# instead load them lazily when accessed.
 if not os.environ.get("DEEPTHOUGHT_LIGHT_IMPORT"):
-    from . import goal_scheduler  # noqa: F401
-    from . import harness  # noqa: F401
-    from . import learn  # noqa: F401
-else:  # pragma: no cover - skip heavy optional imports
-    goal_scheduler = None  # type: ignore
-    harness = None  # type: ignore
-    learn = None  # type: ignore
+    import importlib
+
+    def __getattr__(name: str):  # pragma: no cover - tiny wrapper
+        if name in {"goal_scheduler", "harness", "learn"}:
+            module = importlib.import_module(f".{name}", __name__)
+            globals()[name] = module
+            return module
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # modules depends on optional external packages (e.g. nats). Import it lazily

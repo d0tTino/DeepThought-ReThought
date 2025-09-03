@@ -15,7 +15,11 @@ import numpy as np
 import torch
 
 from ...config import get_settings
-from ...metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
+from ...metrics.prometheus import (
+    INPUT_LATENCY_SECONDS,
+    INPUTS_TOTAL,
+    MODALITY_INFERENCE_LATENCY_SECONDS,
+)
 from ...modules import ModalityFuser
 from .config import PerceptionConfig
 from .publisher import PerceptionPublisher
@@ -97,7 +101,11 @@ class PerceptionService:
                         times = np.asarray(meta["timestamps"], dtype=np.float32)
                         encoder_meta["text"] = meta["encoder"]
                     else:
+                        start = time.perf_counter()
                         feats, times = self.text_worker(text_tokens, str(feats_file))
+                        MODALITY_INFERENCE_LATENCY_SECONDS.labels(
+                            service="perception_service", modality="text"
+                        ).observe(time.perf_counter() - start)
                         meta = {
                             "shape": list(feats.shape),
                             "timestamps": times.tolist(),
@@ -108,7 +116,11 @@ class PerceptionService:
                         encoder_meta["text"] = meta["encoder"]
                 else:
                     with NamedTemporaryFile(suffix=".mm", delete=False) as tmp:
+                        start = time.perf_counter()
                         feats, times = self.text_worker(text_tokens, tmp.name)
+                        MODALITY_INFERENCE_LATENCY_SECONDS.labels(
+                            service="perception_service", modality="text"
+                        ).observe(time.perf_counter() - start)
                     encoder_meta["text"] = {"name": self.text_worker.__class__.__name__}
                     Path(tmp.name).unlink(missing_ok=True)
                 modality_arrays["text"] = np.asarray(feats)
@@ -132,7 +144,11 @@ class PerceptionService:
                     times = np.asarray(meta["timestamps"], dtype=np.float32)
                     encoder_meta["audio"] = meta["encoder"]
                 else:
+                    start = time.perf_counter()
                     feats, times = self.audio_worker(audio_path, cache_dir=cache_dir)
+                    MODALITY_INFERENCE_LATENCY_SECONDS.labels(service="perception_service", modality="audio").observe(
+                        time.perf_counter() - start
+                    )
                     meta = {
                         "shape": list(feats.shape),
                         "timestamps": times.tolist(),
@@ -167,7 +183,11 @@ class PerceptionService:
                     times_arr = np.asarray(meta["timestamps"], dtype=np.float32)
                     encoder_meta["video"] = meta["encoder"]
                 else:
+                    start = time.perf_counter()
                     feats, times_arr = self.video_worker(video_path)
+                    MODALITY_INFERENCE_LATENCY_SECONDS.labels(service="perception_service", modality="video").observe(
+                        time.perf_counter() - start
+                    )
                     if not feats_file.exists():
                         np.save(feats_file, np.asarray(feats))
                     meta = {
