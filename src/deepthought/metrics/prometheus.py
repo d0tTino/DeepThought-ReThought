@@ -36,9 +36,19 @@ if "rule_evaluation_errors_total" not in REGISTRY._names_to_collectors:
 else:  # pragma: no cover - already registered
     RULE_EVALUATION_ERRORS_TOTAL = REGISTRY._names_to_collectors["rule_evaluation_errors_total"]  # type: ignore
 
+if "missing_modality_total" not in REGISTRY._names_to_collectors:
+    MISSING_MODALITY_TOTAL = Counter(
+        "missing_modality_total",
+        "Total number of times a modality was absent",
+        labelnames=["modality"],
+    )
+else:  # pragma: no cover - already registered
+    MISSING_MODALITY_TOTAL = REGISTRY._names_to_collectors["missing_modality_total"]  # type: ignore
+
 __all__ = [
     "INPUTS_TOTAL",
     "INPUT_LATENCY_SECONDS",
     "RULE_EVALUATIONS_TOTAL",
     "RULE_EVALUATION_ERRORS_TOTAL",
+    "MISSING_MODALITY_TOTAL",
 ]
