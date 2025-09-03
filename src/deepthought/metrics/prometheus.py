@@ -18,6 +18,17 @@ if "input_latency_seconds" not in REGISTRY._names_to_collectors:
 else:  # pragma: no cover - already registered
     INPUT_LATENCY_SECONDS = REGISTRY._names_to_collectors["input_latency_seconds"]  # type: ignore
 
+if "modality_inference_latency_seconds" not in REGISTRY._names_to_collectors:
+    MODALITY_INFERENCE_LATENCY_SECONDS = Histogram(
+        "modality_inference_latency_seconds",
+        "Latency for processing individual modality inputs",
+        labelnames=["service", "modality"],
+    )
+else:  # pragma: no cover - already registered
+    MODALITY_INFERENCE_LATENCY_SECONDS = REGISTRY._names_to_collectors[
+        "modality_inference_latency_seconds"
+    ]  # type: ignore
+
 if "rule_evaluations_total" not in REGISTRY._names_to_collectors:
     RULE_EVALUATIONS_TOTAL = Counter(
         "rule_evaluations_total",
@@ -48,6 +59,7 @@ else:  # pragma: no cover - already registered
 __all__ = [
     "INPUTS_TOTAL",
     "INPUT_LATENCY_SECONDS",
+    "MODALITY_INFERENCE_LATENCY_SECONDS",
     "RULE_EVALUATIONS_TOTAL",
     "RULE_EVALUATION_ERRORS_TOTAL",
     "MISSING_MODALITY_TOTAL",

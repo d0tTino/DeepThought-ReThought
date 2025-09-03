@@ -71,7 +71,12 @@ def actions_per_second(trace: Iterable[TraceEvent]) -> float:
     return len(latencies) / total if total > 0 else 0.0
 
 
-from .prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL, MISSING_MODALITY_TOTAL
+from .prometheus import (
+    INPUT_LATENCY_SECONDS,
+    INPUTS_TOTAL,
+    MODALITY_INFERENCE_LATENCY_SECONDS,
+)
+
 
 __all__ = [
     "bleu",
@@ -80,5 +85,6 @@ __all__ = [
     "actions_per_second",
     "INPUTS_TOTAL",
     "INPUT_LATENCY_SECONDS",
-    "MISSING_MODALITY_TOTAL",
+    "MODALITY_INFERENCE_LATENCY_SECONDS",
+
 ]
