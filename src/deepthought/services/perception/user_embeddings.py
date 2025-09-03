@@ -47,6 +47,13 @@ class UserEmbeddings:
 
         return len(self._store)
 
+    def delete(self, user_id: str) -> None:
+        """Remove ``user_id`` from the store and persist changes."""
+
+        if user_id in self._store:
+            del self._store[user_id]
+            self.save()
+
     def set(self, user_id: str, embedding: Sequence[float] | "torch.Tensor") -> None:
         """Store ``embedding`` for ``user_id`` and persist to disk."""
 

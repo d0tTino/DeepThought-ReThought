@@ -193,14 +193,21 @@ def test_parse_bus_init_service():
 
 def test_parse_perception_run():
     parser = _build_parser()
-    args = parser.parse_args(
-        ["perception", "run", "--message-id", "m1", "--user-id", "u1"]
-    )
+    args = parser.parse_args(["perception", "run", "--message-id", "m1", "--user-id", "u1"])
     assert args.command == "perception"
     assert args.perception_cmd == "run"
     assert args.message_id == "m1"
     assert args.user_id == "u1"
     assert args.func.__name__ == "_cmd_perception_run"
+
+
+def test_parse_perception_delete_user():
+    parser = _build_parser()
+    args = parser.parse_args(["perception", "delete-user", "--user-id", "u1"])
+    assert args.command == "perception"
+    assert args.perception_cmd == "delete-user"
+    assert args.user_id == "u1"
+    assert args.func.__name__ == "_cmd_perception_delete_user"
 
 
 def test_finetune_estimate_vram(tmp_path: Path, monkeypatch) -> None:
