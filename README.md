@@ -726,6 +726,21 @@ scores = detect_emotions("I'm feeling thrilled today!")
 print(scores["Happy"])
 ```
 
+### Perception Embeddings and Durable Consumers
+
+The perception service emits `PERCEPTION.EMBEDDINGS` events on the
+`dtr.perception.embeddings` subject. Each message bundles fused and
+per-modality embedding vectors with encoder metadata and the originating
+`user_id`. Durable JetStream consumers (for example,
+`memory-perception-consumer`) can replay this stream to rebuild indexes or
+analytics pipelines after a restart.
+
+Storing embeddings per user enables lightweight personalization. Downstream
+modules can perform nearest-neighbour search on a user's history to tailor
+responses. See
+[docs/perception_service.md#embedding-events](docs/perception_service.md#embedding-events)
+for the full schema and examples.
+
 ### Privacy Controls
 
 Set `PERCEPTION_REQUIRE_CONSENT=1` to require incoming messages include a

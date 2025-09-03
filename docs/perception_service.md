@@ -28,6 +28,7 @@ The service consumes perception inputs from:
 
 After alignment and optional fusion, embeddings are published to:
 
+
 - `dtr.perception.embeddings`
 
 All messages are stored in the `PERCEPTION` stream created by `setup_jetstream.py`.
@@ -82,6 +83,43 @@ Embeddings are wrapped in a `PerceptionEmbeddingsEvent` containing encoder metad
 
 Each `spans` entry captures `[start_ms, end_ms]` for the aligned hop, and `encoders` describe the model that produced the embedding.
 
+## Embedding Events
+
+`PERCEPTION.EMBEDDINGS` events on the `dtr.perception.embeddings` subject carry the
+vector representations produced for each message. The payload includes the
+`message_id`, `user_id`, optional fused embeddings, and per-modality vectors with
+their spans and encoder metadata. A simplified example:
+
+```json
+{
+  "event": "dtr.perception.embeddings",
+  "version": 1,
+  "payload": {
+    "message_id": "42",
+    "user_id": "alice",
+    "fused": [[0.1, 0.2, 0.3]],
+    "by_modality": {
+      "text": {
+        "spans": [[0, 12]],
+        "embeddings": [[0.4, 0.5, 0.6]],
+        "encoders": [{"name": "gte-small"}]
+      }
+    }
+  }
+}
+```
+
+Durable consumers such as `memory-perception-consumer` can subscribe to the
+stream and resume from the last acknowledged message after restarts. This makes
+it easy for downstream modules to build analytics pipelines or persistent
+indexes.
+
+### Personalization
+
+Storing embeddings per `user_id` enables simple personalization. A consumer can
+aggregate a user's history and perform nearest-neighbour search to tailor model
+responses or retrieve context relevant to that individual.
+
 ## Running the Service
 
 Provide a NATS connection and optional model paths before launching:
@@ -110,6 +148,7 @@ The listener consumes `dtr.input.received` messages and publishes aligned embedd
    ```bash
    python scripts/replay_perception.py --nats-url nats://localhost:4222
    ```
+
 
 ### Monitoring with Weights & Biases
 
