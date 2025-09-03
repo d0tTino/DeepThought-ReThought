@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Sequence
 
+import logging
 import numpy as np
 import torch
 
@@ -19,6 +20,7 @@ from ...metrics.prometheus import (
     INPUT_LATENCY_SECONDS,
     INPUTS_TOTAL,
     MODALITY_INFERENCE_LATENCY_SECONDS,
+
 )
 from ...modules import ModalityFuser
 from .config import PerceptionConfig
@@ -27,6 +29,9 @@ from .user_embeddings import UserEmbeddings
 from .worker_audio import AudioPerceptionWorker
 from .worker_text import TextPerceptionWorker, Token
 from .worker_video import VideoPerceptionWorker
+
+
+logger = logging.getLogger(__name__)
 
 
 def _consent_granted(kind: str) -> bool:
@@ -211,6 +216,21 @@ class PerceptionService:
                 if not retain_media:
                     video_path.unlink(missing_ok=True)
 
+            expected_modalities = set()
+            if self.fuser is not None:
+                expected_modalities.update(self.fuser.modality_dims.keys())
+            for name, worker in (
+                ("text", self.text_worker),
+                ("audio", self.audio_worker),
+                ("video", self.video_worker),
+            ):
+                if worker is not None:
+                    expected_modalities.add(name)
+            missing_modalities = expected_modalities.difference(modality_arrays.keys())
+            for name in sorted(missing_modalities):
+                logger.warning("%s modality absent for message %s", name, message_id)
+                MISSING_MODALITY_TOTAL.labels(modality=name).inc()
+
             if not modality_arrays:
                 raise ValueError("No modalities available for publication")
 
@@ -224,22 +244,32 @@ class PerceptionService:
             grid_ends = grid_starts + hop
             spans = [[int(gs * 1000), int(ge * 1000)] for gs, ge in zip(grid_starts, grid_ends)]
 
+            if self.fuser is not None:
+                expected_order = list(self.fuser.modality_dims.keys())
+            else:
+                expected_order = list(modality_arrays.keys())
+
             aligned_modalities: Dict[str, torch.Tensor] = {}
             modality_payload: Dict[str, Dict[str, Any]] = {}
-            for name, arr in modality_arrays.items():
-                times = modality_times[name]
-                dim = arr.shape[1]
-                aligned = np.zeros((num_spans, dim), dtype=np.float32)
-                for i, (gs, ge) in enumerate(zip(grid_starts, grid_ends)):
-                    mask = (gs < times[:, 1]) & (ge > times[:, 0])
-                    if mask.any():
-                        aligned[i] = arr[mask].mean(axis=0)
-                aligned_modalities[name] = torch.from_numpy(aligned)
-                modality_payload[name] = {
-                    "spans": spans,
-                    "embeddings": aligned.tolist(),
-                    "encoders": [encoder_meta[name]] * num_spans,
-                }
+            for name in expected_order:
+                if name in modality_arrays:
+                    arr = modality_arrays[name]
+                    times = modality_times[name]
+                    dim = arr.shape[1]
+                    aligned = np.zeros((num_spans, dim), dtype=np.float32)
+                    for i, (gs, ge) in enumerate(zip(grid_starts, grid_ends)):
+                        mask = (gs < times[:, 1]) & (ge > times[:, 0])
+                        if mask.any():
+                            aligned[i] = arr[mask].mean(axis=0)
+                    aligned_modalities[name] = torch.from_numpy(aligned)
+                    modality_payload[name] = {
+                        "spans": spans,
+                        "embeddings": aligned.tolist(),
+                        "encoders": [encoder_meta[name]] * num_spans,
+                    }
+                elif self.fuser is not None and name in self.fuser.modality_dims:
+                    dim = self.fuser.modality_dims[name]
+                    aligned_modalities[name] = torch.zeros((num_spans, dim), dtype=torch.float32)
 
             fused_list: Sequence[Sequence[float]] | None = None
             if self.fuser is not None:
