@@ -36,6 +36,7 @@ After scoring, results are published to JetStream under:
 - `dtr.perception.image`
 - `dtr.perception.audio`
 - `dtr.perception.fused`
+- `dtr.perception.embeddings`
 
 All subjects are persisted in the `PERCEPTION` stream created by `setup_jetstream.py`.
 
@@ -61,6 +62,43 @@ A fused perception event bundles the modality scores and the averaged result:
 ```
 
 Per-modality events omit the other sections and include only the scores for that input type.
+
+## Embedding Events
+
+`PERCEPTION.EMBEDDINGS` events on the `dtr.perception.embeddings` subject carry the
+vector representations produced for each message. The payload includes the
+`message_id`, `user_id`, optional fused embeddings, and per-modality vectors with
+their spans and encoder metadata. A simplified example:
+
+```json
+{
+  "event": "dtr.perception.embeddings",
+  "version": 1,
+  "payload": {
+    "message_id": "42",
+    "user_id": "alice",
+    "fused": [[0.1, 0.2, 0.3]],
+    "by_modality": {
+      "text": {
+        "spans": [[0, 12]],
+        "embeddings": [[0.4, 0.5, 0.6]],
+        "encoders": [{"name": "gte-small"}]
+      }
+    }
+  }
+}
+```
+
+Durable consumers such as `memory-perception-consumer` can subscribe to the
+stream and resume from the last acknowledged message after restarts. This makes
+it easy for downstream modules to build analytics pipelines or persistent
+indexes.
+
+### Personalization
+
+Storing embeddings per `user_id` enables simple personalization. A consumer can
+aggregate a user's history and perform nearest-neighbour search to tailor model
+responses or retrieve context relevant to that individual.
 
 ## Running the Service
 
@@ -93,7 +131,7 @@ The module continuously publishes scored events to the subjects listed above.
    ```bash
    nats consumer next PERCEPTION memory-perception-consumer --filter dtr.perception.fused --count=10 --json
    ```
-   Replace the `--filter` subject with `dtr.perception.text`, `dtr.perception.image`, or `dtr.perception.audio` to inspect individual modalities.
+   Replace the `--filter` subject with `dtr.perception.text`, `dtr.perception.image`, `dtr.perception.audio`, or `dtr.perception.embeddings` to inspect individual modalities or the raw vectors.
 
 ### Monitoring with Weights & Biases
 
