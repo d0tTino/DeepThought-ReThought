@@ -2,20 +2,18 @@
 
 ## Overview
 
-The **PerceptionService** scores text, image, and audio inputs for social cues such as flirtation, avoidance, manipulation, sarcasm and supportiveness. Each modality is processed separately and a simple fusion step averages the signals into a combined vector. Downstream modules can use the fused or per-modality scores to adjust trust levels, choose personas or trigger safeguards.
+The **PerceptionService** generates time-aligned embeddings for text, audio and video inputs.  Each modality is processed by a dedicated worker that emits embedding vectors with timestamps.  The service aligns these modality-specific streams onto a common grid, optionally fuses them into a single representation, and publishes the result.  Downstream modules can consume either the fused embeddings or per-modality outputs.
 
 ## Architecture and Flow
 
 ```mermaid
 flowchart LR
-    subgraph PerceptionService
-        T[Text Worker] --> TC[(Text Cache)]
-        A[Audio Worker] --> AC[(Audio Cache)]
-        V[Video Worker] --> VC[(Video Cache)]
-    end
-    TC --> F[Fuser]
-    AC --> F
-    VC --> F
+    IR[dtr.input.received] --> T[Text Worker]
+    IR --> A[Audio Worker]
+    IR --> V[Video Worker]
+    T --> F[Modality Fuser]
+    A --> F
+    V --> F
     F --> P[Publisher]
     P --> JS[(JetStream PERCEPTION stream)]
     P --> UE[(User Embeddings)]
@@ -24,44 +22,66 @@ flowchart LR
 
 ## JetStream Subjects
 
-The service listens for incoming messages on:
+The service consumes perception inputs from:
 
-- `dtr.input.text`
-- `dtr.input.image`
-- `dtr.input.audio`
+- `dtr.input.received`
 
-After scoring, results are published to JetStream under:
+After alignment and optional fusion, embeddings are published to:
 
-- `dtr.perception.text`
-- `dtr.perception.image`
-- `dtr.perception.audio`
-- `dtr.perception.fused`
+
 - `dtr.perception.embeddings`
 
-All subjects are persisted in the `PERCEPTION` stream created by `setup_jetstream.py`.
+All messages are stored in the `PERCEPTION` stream created by `setup_jetstream.py`.
 
 ## Event Schema
 
-A fused perception event bundles the modality scores and the averaged result:
+Embeddings are wrapped in a `PerceptionEmbeddingsEvent` containing encoder metadata, provenance, and a payload:
 
 ```json
 {
-  "input_id": "42",
-  "text": {"manipulation": 0.1},
-  "image": {"manipulation": 0.0},
-  "audio": {"manipulation": 0.2},
-  "fused": {
-    "flirtation": 0.2,
-    "avoidance": 0.1,
-    "manipulation": 0.1,
-    "sarcasm": 0.3,
-    "supportiveness": 0.4
-  },
-  "timestamp": "2024-05-01T12:00:00Z"
+  "event": "dtr.perception.embeddings",
+  "version": 1,
+  "encoders": [
+    {"name": "TextPerceptionWorker"},
+    {"name": "AudioPerceptionWorker"},
+    {"name": "VideoPerceptionWorker"}
+  ],
+  "provenance": {"timestamp": 1713972000.0, "modalities": ["text", "audio", "video"]},
+  "payload": {
+    "message_id": "42",
+    "user_id": "user",
+    "fused": [[0.1, 0.2], [0.3, 0.4]],
+    "by_modality": {
+      "text": {
+        "spans": [[0, 500], [500, 1000]],
+        "embeddings": [[0.1, 0.2], [0.2, 0.3]],
+        "encoders": [
+          {"name": "TextPerceptionWorker"},
+          {"name": "TextPerceptionWorker"}
+        ]
+      },
+      "audio": {
+        "spans": [[0, 500], [500, 1000]],
+        "embeddings": [[0.3, 0.4], [0.4, 0.5]],
+        "encoders": [
+          {"name": "AudioPerceptionWorker"},
+          {"name": "AudioPerceptionWorker"}
+        ]
+      },
+      "video": {
+        "spans": [[0, 500], [500, 1000]],
+        "embeddings": [[0.5, 0.6], [0.6, 0.7]],
+        "encoders": [
+          {"name": "VideoPerceptionWorker"},
+          {"name": "VideoPerceptionWorker"}
+        ]
+      }
+    }
+  }
 }
 ```
 
-Per-modality events omit the other sections and include only the scores for that input type.
+Each `spans` entry captures `[start_ms, end_ms]` for the aligned hop, and `encoders` describe the model that produced the embedding.
 
 ## Embedding Events
 
@@ -106,14 +126,11 @@ Provide a NATS connection and optional model paths before launching:
 
 ```bash
 export NATS_URL=nats://localhost:4222
-# optional custom model paths
-export SOCIAL_PERCEPTION_MODEL=$(pwd)/models/social_perception      # text
-export PERCEPTION_IMAGE_MODEL=$(pwd)/models/image_perception        # image
-export PERCEPTION_AUDIO_MODEL=$(pwd)/models/audio_perception        # audio
-python -m deepthought.services.perception_service
+# optional overrides for model names or cache directories
+python -m deepthought.services.perception.cli --listen
 ```
 
-The module continuously publishes scored events to the subjects listed above.
+The listener consumes `dtr.input.received` messages and publishes aligned embeddings to `dtr.perception.embeddings`.
 
 ## Replay and Monitoring
 
@@ -123,15 +140,15 @@ The module continuously publishes scored events to the subjects listed above.
    ```bash
    python setup_jetstream.py
    ```
-2. View the available consumers:
+2. Inspect stored embeddings:
    ```bash
-   nats stream info PERCEPTION
+   nats consumer next PERCEPTION perception-replay --filter dtr.perception.embeddings --count=10 --json
    ```
-3. Replay the next ten fused events:
+3. To republish stored events with updated encoders or fusion settings:
    ```bash
-   nats consumer next PERCEPTION memory-perception-consumer --filter dtr.perception.fused --count=10 --json
+   python scripts/replay_perception.py --nats-url nats://localhost:4222
    ```
-   Replace the `--filter` subject with `dtr.perception.text`, `dtr.perception.image`, `dtr.perception.audio`, or `dtr.perception.embeddings` to inspect individual modalities or the raw vectors.
+
 
 ### Monitoring with Weights & Biases
 
@@ -144,7 +161,7 @@ The module continuously publishes scored events to the subjects listed above.
    ```bash
    export DT_WANDB_ENABLED=1
    export DT_WANDB_PROJECT=deepthought
-   python -m deepthought.services.perception_service
+   python -m deepthought.services.perception.cli --listen
    ```
 3. Visit https://wandb.ai/ to view live metrics and uploaded artifacts.
 
