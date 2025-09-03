@@ -40,6 +40,8 @@ upstream projects for the most current license information.
 | OpenCLIP (open-clip-torch) | MIT | CLIP implementation |
 | torchvision | BSD-3-Clause | Computer vision models |
 | opencv-python-headless | Apache-2.0 | Computer vision toolkit |
+| BGE | MIT | Optional `PerceptionConfig.text_model` |
+| E5 | MIT | Default `PerceptionConfig.text_model` |
 | Default social perception model | MIT | Bundled classifier weights |
 | WavLM | MIT | Speech representation model |
 | WavLM checkpoints | MIT | Pretrained weights |
