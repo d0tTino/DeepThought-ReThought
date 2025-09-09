@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any, Dict
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-from ...eda.events import EventSubjects
+from ...eda.events import EventSubjects, InputReceivedPayload
 from ...eda.subscriber import Subscriber
 from .service import PerceptionService
 
@@ -23,9 +24,12 @@ class PerceptionServiceListener:
         service: PerceptionService,
         nats_client: NATS,
         js_context: JetStreamContext,
+        *,
+        default_user_id: str = "user",
     ) -> None:
         self._service = service
         self._subscriber = Subscriber(nats_client, js_context)
+        self._default_user_id = default_user_id
 
     async def start(self, durable_name: str = "perception_listener") -> bool:
         """Begin listening for input events."""
@@ -39,20 +43,41 @@ class PerceptionServiceListener:
     async def _handle(self, msg: Msg) -> None:
         """Decode event payload and dispatch to the service."""
         try:
-            payload: Dict[str, Any] = json.loads(msg.data.decode())
-            keys = [
-                "message_id",
-                "user_id",
-                "spans",
-                "embeddings",
-                "encoders",
-                "provenance",
-                "text_tokens",
-                "audio_path",
-                "video_path",
-            ]
-            kwargs = {k: payload[k] for k in keys if k in payload}
-            await self._service.run(**kwargs)
+            try:
+                raw: Dict[str, Any] = json.loads(msg.data.decode())
+            except Exception:
+                raw = {}
+
+            if os.getenv("PERCEPTION_REQUIRE_CONSENT", "").lower() in {"1", "true", "yes"}:
+                if not raw.get("consent"):
+                    if hasattr(msg, "ack") and callable(msg.ack):
+                        await msg.ack()
+                    return
+
+            try:
+                payload = InputReceivedPayload.from_dict(raw)
+                message_id = payload.input_id or "unknown"
+            except Exception:
+                message_id = raw.get("message_id") or "unknown"
+
+            user_id = (
+                raw.get("user_id")
+                or (msg.headers.get("user_id") if msg.headers else None)
+                or self._default_user_id
+            )
+
+            kwargs = {
+                "message_id": message_id,
+                "user_id": user_id,
+                "spans": raw.get("spans"),
+                "embeddings": raw.get("embeddings"),
+                "encoders": raw.get("encoders"),
+                "provenance": raw.get("provenance"),
+                "text_tokens": raw.get("text_tokens"),
+                "audio_path": raw.get("audio_path"),
+                "video_path": raw.get("video_path"),
+            }
+            await self._service.run(**{k: v for k, v in kwargs.items() if v is not None})
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except Exception:  # pragma: no cover - defensive
