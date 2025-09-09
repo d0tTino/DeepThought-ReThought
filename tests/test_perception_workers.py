@@ -8,7 +8,11 @@ from deepthought.services.perception.worker_video import VideoPerceptionWorker
 
 
 class _DummySentenceModel:
+    def __init__(self) -> None:
+        self.last_text = None
+
     def encode(self, text: str) -> np.ndarray:
+        self.last_text = text
         length = len(text)
         return np.asarray([length, length + 1], dtype=np.float32)
 
@@ -57,3 +61,21 @@ def test_video_perception_worker(monkeypatch):
 
     assert np.array_equal(feats, dummy_feats)
     assert np.array_equal(times, dummy_times)
+
+
+def test_text_perception_worker_redacts_pii(monkeypatch, tmp_path):
+    model = _DummySentenceModel()
+    monkeypatch.setattr(
+        "deepthought.services.perception.worker_text.SentenceTransformer",
+        lambda name: model,
+    )
+    token = [("Email me at test@example.com or call 123-456-7890", 0.0, 0.05)]
+    memmap_path = tmp_path / "pii_tokens.dat"
+
+    worker = TextPerceptionWorker(model_name="dummy", hop_seconds=0.05)
+    feats, _ = worker(token, memmap_path)
+
+    expected = "Email me at [REDACTED] or call [REDACTED]"
+    assert model.last_text == expected
+    exp_len = len(expected)
+    assert np.allclose(feats[0], [exp_len, exp_len + 1])
