@@ -8,11 +8,11 @@ import json
 import os
 
 from nats.aio.client import Client as NATS
-from nats.aio.msg import Msg
 from nats.js.api import DeliverPolicy
 
-from ...eda.events import EventSubjects, InputReceivedPayload
+from ...eda.events import EventSubjects
 from .config import PerceptionConfig
+from .listener import PerceptionServiceListener
 from .publisher import PerceptionPublisher
 from .service import PerceptionService
 from .service import run as run_service
@@ -125,34 +125,13 @@ async def _main() -> None:
     )
 
     if args.listen:
-
-        async def _handle_input(msg: Msg) -> None:
-            try:
-                raw = json.loads(msg.data.decode())
-            except Exception:
-                raw = {}
-            if os.getenv("PERCEPTION_REQUIRE_CONSENT", "").lower() in {"1", "true", "yes"}:
-                if not raw.get("consent"):
-                    if hasattr(msg, "ack") and callable(msg.ack):
-                        await msg.ack()
-                    return
-            try:
-                payload = InputReceivedPayload.from_dict(raw)
-                message_id = payload.input_id or "unknown"
-            except Exception:
-                payload = None
-                message_id = "unknown"
-            user_id = (msg.headers.get("user_id") if msg.headers else None) or args.user_id
-            await service.run(message_id=message_id, user_id=user_id, embeddings=[[0.0]])
-            if hasattr(msg, "ack") and callable(msg.ack):
-                await msg.ack()
-
+        listener = PerceptionServiceListener(service, nc, js, default_user_id=args.user_id)
         deliver_policy = DeliverPolicy.ALL if args.replay else DeliverPolicy.NEW
         await js.subscribe(
             EventSubjects.INPUT_RECEIVED,
             durable=args.durable,
             deliver_policy=deliver_policy,
-            cb=_handle_input,
+            cb=listener._handle,
             manual_ack=True,
         )
         try:
