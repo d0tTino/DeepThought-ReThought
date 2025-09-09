@@ -49,3 +49,18 @@ upstream projects for the most current license information.
 | CLAP checkpoints | CC0 | Pretrained weights |
 | SigLIP | Apache-2.0 | Vision-language model |
 | SigLIP checkpoints | Apache-2.0 | Pretrained weights |
+
+## License verification workflow
+
+Encoder model defaults live in `src/deepthought/services/perception/config.py`.
+When these defaults change, update `scripts/model_version_whitelist.json` with
+the new versions and their corresponding license information. After updating the
+whitelist and this document, verify everything with:
+
+```
+python scripts/check_model_versions.py
+python scripts/verify_licenses.py
+```
+
+Both scripts will report an error if the versions or licenses diverge from the
+whitelist or if required entries are missing from this table.
