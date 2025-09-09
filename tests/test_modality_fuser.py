@@ -5,6 +5,7 @@ if not hasattr(torch, "SymBool"):
     pytest.skip("PyTorch lacks SymBool", allow_module_level=True)
 
 from deepthought.modules.fuser import ModalityFuser
+from deepthought.services.perception.user_embeddings import UserEmbeddings
 
 
 def _make_fuser(*args, **kwargs):
@@ -45,3 +46,23 @@ def test_modality_fuser_missing_modalities():
     text = torch.ones((1, 2))
     with pytest.raises(RuntimeError):
         fuser({"text": text})
+
+
+def test_bandit_step_positive_reward(tmp_path):
+    store = UserEmbeddings(tmp_path / "store.json")
+    fuser = _make_fuser({"text": 2}, fused_dim=2, user_dim=3)
+    modalities = {"text": torch.ones((1, 2))}
+    context = torch.tensor([0.5, -0.5, 1.0])
+    fuser.bandit_step(modalities, 1.0, context, "u1", store)
+    expected = 0.01 * context
+    assert torch.allclose(store.get("u1"), expected)
+
+
+def test_bandit_step_negative_reward(tmp_path):
+    store = UserEmbeddings(tmp_path / "store.json")
+    fuser = _make_fuser({"text": 2}, fused_dim=2, user_dim=3)
+    modalities = {"text": torch.ones((1, 2))}
+    context = torch.tensor([0.5, -0.5, 1.0])
+    fuser.bandit_step(modalities, -1.0, context, "u1", store)
+    expected = -0.01 * context
+    assert torch.allclose(store.get("u1"), expected)
