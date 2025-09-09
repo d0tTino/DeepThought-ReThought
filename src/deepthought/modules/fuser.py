@@ -181,3 +181,35 @@ class ModalityFuser(nn.Module):
                     embedding_store.update_from_gradient(user_id, grad, lr=lr)
 
                 optimizer.step()
+
+    def bandit_step(
+        self,
+        modalities: Dict[str, torch.Tensor],
+        reward: float,
+        context: Sequence[float] | torch.Tensor,
+        user_id: str,
+        embedding_store: "UserEmbeddings",
+    ) -> torch.Tensor:
+        """Fuse ``modalities`` and update ``user_id`` with bandit feedback.
+
+        Parameters
+        ----------
+        modalities:
+            Mapping from modality name to tensor inputs.
+        reward:
+            Scalar reward used to scale the update.
+        context:
+            Feature vector indicating the direction of the update.
+        user_id:
+            Identifier whose embedding should be updated.
+        embedding_store:
+            Store managing persistent user embeddings.
+
+        Returns
+        -------
+        torch.Tensor
+            The fused embedding produced from ``modalities``.
+        """
+
+        embedding_store.update_from_bandit(user_id, reward, context)
+        return self.forward(modalities, user_id=user_id, embedding_store=embedding_store)
