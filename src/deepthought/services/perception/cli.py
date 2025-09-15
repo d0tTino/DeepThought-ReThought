@@ -30,6 +30,12 @@ async def _main() -> None:
     parser.add_argument("--replay", action="store_true", help="Replay existing stream messages from start")
     parser.add_argument("--message-id")
     parser.add_argument("--user-id", default="user")
+    parser.add_argument(
+        "--grid-hop-size",
+        type=float,
+        default=defaults.grid_hop_size,
+        help="Override grid hop size in seconds",
+    )
     parser.add_argument("--text-model", default=defaults.text_model)
     parser.add_argument("--text-hop-size", type=float, default=defaults.text_hop_size)
     parser.add_argument("--text-cache-dir", default=defaults.text_cache_dir)
@@ -57,6 +63,7 @@ async def _main() -> None:
             "text_model",
             "text_hop_size",
             "text_cache_dir",
+            "grid_hop_size",
             "audio_model",
             "audio_hop_size",
             "audio_cache_dir",

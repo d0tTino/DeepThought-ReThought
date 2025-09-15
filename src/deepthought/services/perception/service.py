@@ -20,6 +20,7 @@ from ...metrics.prometheus import (
     INPUT_LATENCY_SECONDS,
     INPUTS_TOTAL,
     MODALITY_INFERENCE_LATENCY_SECONDS,
+    MISSING_MODALITY_TOTAL,
 
 )
 from ...modules import ModalityFuser
@@ -236,7 +237,11 @@ class PerceptionService:
 
             provenance.setdefault("modalities", list(modality_arrays.keys()))
 
-            hop = min(np.min(t[:, 1] - t[:, 0]) for t in modality_times.values())
+            hop = (
+                cfg.grid_hop_size
+                if cfg.grid_hop_size is not None
+                else min(np.min(t[:, 1] - t[:, 0]) for t in modality_times.values())
+            )
             start = min(t[0, 0] for t in modality_times.values())
             end = max(t[-1, 1] for t in modality_times.values())
             num_spans = int(np.ceil((end - start) / hop))
@@ -261,7 +266,10 @@ class PerceptionService:
                         mask = (gs < times[:, 1]) & (ge > times[:, 0])
                         if mask.any():
                             aligned[i] = arr[mask].mean(axis=0)
-                    aligned_modalities[name] = torch.from_numpy(aligned)
+                    try:
+                        aligned_modalities[name] = torch.from_numpy(aligned)
+                    except RuntimeError:  # pragma: no cover - torch built without numpy
+                        aligned_modalities[name] = torch.tensor(aligned.tolist(), dtype=torch.float32)
                     modality_payload[name] = {
                         "spans": spans,
                         "embeddings": aligned.tolist(),

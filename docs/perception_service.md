@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **PerceptionService** generates time-aligned embeddings for text, audio and video inputs.  Each modality is processed by a dedicated worker that emits embedding vectors with timestamps.  The service aligns these modality-specific streams onto a common grid, optionally fuses them into a single representation, and publishes the result.  Downstream modules can consume either the fused embeddings or per-modality outputs.
+The **PerceptionService** generates time-aligned embeddings for text, audio and video inputs.  Each modality is processed by a dedicated worker that emits embedding vectors with timestamps.  The service aligns these modality-specific streams onto a common grid, optionally fuses them into a single representation, and publishes the result.  The grid resolution defaults to the smallest hop across modalities but can be overridden with the `--grid-hop-size` CLI flag or the `DT_PERCEPTION_GRID_HOP_SIZE` environment variable.  Downstream modules can consume either the fused embeddings or per-modality outputs.
 
 ## Architecture and Flow
 
@@ -126,8 +126,8 @@ Provide a NATS connection and optional model paths before launching:
 
 ```bash
 export NATS_URL=nats://localhost:4222
-# optional overrides for model names or cache directories
-python -m deepthought.services.perception.cli --listen
+# optional overrides for model names, cache directories or grid hop size
+python -m deepthought.services.perception.cli --grid-hop-size 0.1 --listen
 ```
 
 The listener consumes `dtr.input.received` messages and publishes aligned embeddings to `dtr.perception.embeddings`.
