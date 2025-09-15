@@ -26,6 +26,8 @@ class PerceptionConfig(BaseSettings):
     video_hop_size: float = 1.0
     video_cache_dir: str | None = None
 
+    grid_hop_size: float | None = None
+
     wandb_project: str | None = Field(None, env="DT_WANDB_PROJECT")
     wandb_sweep_id: str | None = Field(None, env="DT_WANDB_SWEEP_ID")
 
