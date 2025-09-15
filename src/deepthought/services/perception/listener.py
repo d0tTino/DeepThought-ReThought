@@ -48,8 +48,12 @@ class PerceptionServiceListener:
             except Exception:
                 raw = {}
 
+            consent = raw.get("consent")
             if os.getenv("PERCEPTION_REQUIRE_CONSENT", "").lower() in {"1", "true", "yes"}:
-                if not raw.get("consent"):
+                granted = bool(consent)
+                if isinstance(consent, dict):
+                    granted = consent.get("general") is True
+                if not granted:
                     if hasattr(msg, "ack") and callable(msg.ack):
                         await msg.ack()
                     return
@@ -77,6 +81,9 @@ class PerceptionServiceListener:
                 "audio_path": raw.get("audio_path"),
                 "video_path": raw.get("video_path"),
             }
+            if isinstance(consent, dict):
+                kwargs["audio_opt_in"] = consent.get("audio")
+                kwargs["video_opt_in"] = consent.get("video")
             await self._service.run(**{k: v for k, v in kwargs.items() if v is not None})
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()

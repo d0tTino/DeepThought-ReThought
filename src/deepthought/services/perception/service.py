@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +19,7 @@ from ...metrics.prometheus import (
     INPUT_LATENCY_SECONDS,
     INPUTS_TOTAL,
     MODALITY_INFERENCE_LATENCY_SECONDS,
+    MISSING_MODALITY_TOTAL,
 
 )
 from ...modules import ModalityFuser
@@ -32,16 +32,6 @@ from .worker_video import VideoPerceptionWorker
 
 
 logger = logging.getLogger(__name__)
-
-
-def _consent_granted(kind: str) -> bool:
-    """Return ``True`` if consent for ``kind`` processing is granted."""
-
-    required = os.getenv(f"DT_REQUIRE_{kind.upper()}_CONSENT", "false").lower()
-    if required in {"1", "true", "yes"}:
-        consent = os.getenv(f"DT_{kind.upper()}_CONSENT", "false").lower()
-        return consent in {"1", "true", "yes"}
-    return True
 
 
 @dataclass
@@ -67,6 +57,8 @@ class PerceptionService:
         text_tokens: Sequence[Token] | None = None,
         audio_path: str | Path | None = None,
         video_path: str | Path | None = None,
+        audio_opt_in: bool | None = None,
+        video_opt_in: bool | None = None,
         retain_media: bool = False,
     ) -> None:
         """Fuse worker outputs and publish via the ``publisher``."""
@@ -132,7 +124,7 @@ class PerceptionService:
                 modality_times["text"] = np.asarray(times)
 
             if self.audio_worker is not None and audio_path is not None:
-                if not _consent_granted("audio"):
+                if audio_opt_in is not True:
                     raise PermissionError("Audio consent not granted")
                 audio_path = Path(audio_path)
                 cache_dir = Path(self.audio_worker.cache_dir or cfg.audio_cache_dir or audio_path.parent)
@@ -168,7 +160,7 @@ class PerceptionService:
                     audio_path.unlink(missing_ok=True)
 
             if self.video_worker is not None and video_path is not None:
-                if not _consent_granted("video"):
+                if video_opt_in is not True:
                     raise PermissionError("Video consent not granted")
                 video_path = Path(video_path)
                 cache_dir = Path(
