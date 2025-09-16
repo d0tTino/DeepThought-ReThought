@@ -6,6 +6,96 @@ import os
 import sys
 import types
 
+
+def _ensure_torch_numpy_compat() -> None:
+    """Provide a fallback ``torch.from_numpy`` when NumPy bindings are missing."""
+
+    try:  # pragma: no cover - optional dependency may be missing
+        import torch
+        import numpy as _np
+    except Exception:
+        return
+
+    if getattr(torch, "_deepthought_numpy_checked", False):  # pragma: no branch - simple guard
+        return
+
+    torch._deepthought_numpy_checked = True  # type: ignore[attr-defined]
+
+    try:
+        torch.from_numpy(_np.zeros(1, dtype=_np.float32))
+    except RuntimeError as exc:
+        if "Numpy is not available" not in str(exc):
+            return
+
+        dtype_map = {
+            _np.dtype(_np.float32): torch.float32,
+            _np.dtype(_np.float64): torch.float64,
+            _np.dtype(_np.float16): torch.float16,
+            _np.dtype(_np.int64): torch.int64,
+            _np.dtype(_np.int32): torch.int32,
+            _np.dtype(_np.int16): torch.int16,
+            _np.dtype(_np.int8): torch.int8,
+            _np.dtype(_np.uint8): torch.uint8,
+            _np.dtype(_np.uint16): torch.int32,
+            _np.dtype(_np.uint32): torch.int64,
+            _np.dtype(_np.uint64): torch.int64,
+            _np.dtype(_np.bool_): torch.bool,
+            _np.dtype(_np.complex64): torch.complex64,
+            _np.dtype(_np.complex128): torch.complex128,
+        }
+        if hasattr(_np, "float128"):
+            dtype_map[_np.dtype(_np.float128)] = torch.float64
+
+        def _from_numpy_fallback(array: object):  # pragma: no cover - exercised indirectly in tests
+            if isinstance(array, (list, tuple)) and len(array) == 1 and isinstance(
+                array[0], (_np.ndarray, _np.memmap)
+            ):
+                array = array[0]
+            arr = _np.asarray(array)
+            dtype = dtype_map.get(arr.dtype)
+            if arr.ndim == 0:
+                value = arr.item()
+                if dtype is None:
+                    return torch.tensor(value)
+                return torch.tensor(value, dtype=dtype)
+            data = _np.array(arr, copy=True)
+            if dtype is None:
+                tensor = torch.tensor(data)
+            else:
+                tensor = torch.tensor(data, dtype=dtype)
+            if tensor.shape != arr.shape:
+                tensor = tensor.reshape(arr.shape)
+            return tensor
+
+        torch.from_numpy = _from_numpy_fallback  # type: ignore[assignment]
+
+        tensor_dtype_map = {
+            torch.float32: _np.float32,
+            torch.float64: _np.float64,
+            torch.float16: _np.float16,
+            torch.int64: _np.int64,
+            torch.int32: _np.int32,
+            torch.int16: _np.int16,
+            torch.int8: _np.int8,
+            torch.uint8: _np.uint8,
+            torch.bool: _np.bool_,
+            torch.complex64: _np.complex64,
+            torch.complex128: _np.complex128,
+        }
+
+        def _tensor_numpy(self):  # pragma: no cover - exercised indirectly in tests
+            array = self.detach().cpu()
+            dtype = tensor_dtype_map.get(array.dtype)
+            data = array.tolist()
+            if dtype is None:
+                return _np.asarray(data)
+            return _np.asarray(data, dtype=dtype)
+
+        torch.Tensor.numpy = _tensor_numpy  # type: ignore[assignment]
+
+
+_ensure_torch_numpy_compat()
+
 try:  # Ensure prometheus_client is loaded before tests patch it
     import prometheus_client  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
@@ -19,7 +109,7 @@ except Exception:  # pragma: no cover - optional dependency may be missing
 __version__ = "0.1.0"
 
 # Re-export modules subpackage for convenient access
-from . import affinity  # noqa: F401
+from . import affinity  # noqa: F401,E402
 
 # Importing heavy submodules like ``goal_scheduler`` at module import time can
 # trigger circular import errors during test collection.  Avoid eager imports and
@@ -59,8 +149,8 @@ try:  # pragma: no cover - optional dependency may be missing
     from . import orchestrator  # type: ignore  # noqa: F401
 except Exception:  # pragma: no cover - optional dependency may be missing
     pass
-from . import persona  # noqa: F401
-from . import utils  # noqa: F401
+from . import persona  # noqa: F401,E402
+from . import utils  # noqa: F401,E402
 
 # neuromorphic uses optional nengo dependency
 try:  # pragma: no cover - optional dependency may be missing
@@ -69,4 +159,4 @@ except Exception:  # pragma: no cover - optional dependency may be missing
     neuromorphic = None  # type: ignore
 
 # risk scoring utilities rely only on builtin dependencies
-from . import risk  # noqa: F401
+from . import risk  # noqa: F401,E402

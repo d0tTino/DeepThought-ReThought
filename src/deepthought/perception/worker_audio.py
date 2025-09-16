@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Audio worker utilities.
 
 This module extracts windowed audio embeddings and caches results using
@@ -7,6 +5,8 @@ memory-mapped arrays. Each window emits a ``[start, end]`` timestamp that
 aligns with the text worker grid. Embeddings are produced from either
 ``WavLM`` or ``CLAP`` models.
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable, Tuple
@@ -17,9 +17,27 @@ from scipy.io import wavfile
 from deepthought.config import get_settings
 
 
+def _parse_model_spec(spec: str | Path | None) -> tuple[str | Path | None, str | None]:
+    """Return a normalized (identifier, revision) tuple for ``spec``."""
+
+    if spec is None:
+        return None, None
+    if isinstance(spec, Path):
+        return spec, None
+    name = spec.strip()
+    if not name:
+        return None, None
+    if "@" not in name:
+        return name, None
+    base, revision = name.split("@", 1)
+    base = base.strip() or None
+    revision = revision.strip() or None
+    return base, revision
+
+
 def _select_embedding_fn(
     model: str,
-    model_path: str | None,
+    model_path: str | Path | None,
     sampling_rate: int,
 ) -> Callable[[np.ndarray], np.ndarray]:
     """Return a function that maps a waveform to an embedding.
@@ -34,15 +52,24 @@ def _select_embedding_fn(
         Sampling rate of the audio in Hertz.
     """
 
-    model = model.lower()
-    if model == "wavlm":
+    model_name, model_revision = _parse_model_spec(model)
+    if not model_name:
+        raise ValueError(f"Unsupported model: {model}")
+    model_key = str(model_name).lower()
+
+    path_name, path_revision = _parse_model_spec(model_path)
+
+    if model_key == "wavlm":
         try:
             import torch
             from transformers import WavLMFeatureExtractor, WavLMModel  # type: ignore
 
-            name = model_path or "microsoft/wavlm-base-plus"
-            extractor = WavLMFeatureExtractor.from_pretrained(name)
-            mdl = WavLMModel.from_pretrained(name)
+            name = str(path_name) if path_name is not None else "microsoft/wavlm-base-plus"
+            revision = path_revision or (model_revision if path_name is None else None)
+            load_kwargs = {"revision": revision} if revision else {}
+
+            extractor = WavLMFeatureExtractor.from_pretrained(name, **load_kwargs)
+            mdl = WavLMModel.from_pretrained(name, **load_kwargs)
             mdl.eval()
 
             def embed(window: np.ndarray) -> np.ndarray:
@@ -55,14 +82,17 @@ def _select_embedding_fn(
         except Exception:  # pragma: no cover - optional dependency
             pass
 
-    elif model == "clap":
+    elif model_key == "clap":
         try:
             import torch
             from transformers import ClapModel, ClapProcessor  # type: ignore
 
-            name = model_path or "laion/clap-htsat-unfused"
-            processor = ClapProcessor.from_pretrained(name)
-            mdl = ClapModel.from_pretrained(name)
+            name = str(path_name) if path_name is not None else "laion/clap-htsat-unfused"
+            revision = path_revision or (model_revision if path_name is None else None)
+            load_kwargs = {"revision": revision} if revision else {}
+
+            processor = ClapProcessor.from_pretrained(name, **load_kwargs)
+            mdl = ClapModel.from_pretrained(name, **load_kwargs)
             mdl.eval()
 
             def embed(window: np.ndarray) -> np.ndarray:
@@ -100,7 +130,7 @@ def extract_windowed_features(
     cache_dir: str | Path | None = None,
     *,
     model: str = "wavlm",
-    model_path: str | None = None,
+    model_path: str | Path | None = None,
 ) -> Tuple[np.memmap, np.ndarray]:
     """Return embedding features and per-window timestamps for ``audio_path``.
 

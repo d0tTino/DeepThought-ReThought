@@ -16,7 +16,6 @@ from ..eda.events import (
     BDIIntentionPayload,
     EventSubjects,
     MemoryRetrievedPayload,
-    PerceptionEmbeddingsEvent,
     PerceptionEmbeddingsPayload,
 )
 from ..memory import create_memory_backend
@@ -219,8 +218,11 @@ class CognitiveCoreService(BaseService):
                     first_mod = next(iter(payload.by_modality.values()))
                     vectors = first_mod.embeddings
                 if vectors:
-                    for idx, vector in enumerate(vectors):
-                        store.upsert_vectors([vector], [f"{message_id}:{idx}"])
+                    ids = [f"{message_id}:{idx}" for idx in range(len(vectors))]
+                    missing = getattr(store, "missing_ids", lambda x: list(x))(ids)
+                    if missing:
+                        new_vectors = [v for v, _id in zip(vectors, ids) if _id in missing]
+                        store.upsert_vectors(new_vectors, missing)
 
             # Insert nodes/edges in the KG with modality and timestamp metadata
             if graph:
@@ -228,6 +230,15 @@ class CognitiveCoreService(BaseService):
                 for modality, mod in payload.by_modality.items():
                     for idx, span in enumerate(mod.spans):
                         span_id = f"{message_id}:{idx}"
+                        try:
+                            exists = graph.query_subgraph(
+                                "MATCH (:Message {id: $mid})-[:HAS_SPAN]->(:Span {id: $sid}) RETURN 1",
+                                {"mid": message_id, "sid": span_id},
+                            )
+                            if exists:
+                                continue
+                        except Exception:  # pragma: no cover - defensive
+                            pass
                         vector = None
                         if payload.fused and idx < len(payload.fused):
                             vector = payload.fused[idx]

@@ -33,6 +33,16 @@ except Exception:  # pragma: no cover - chromadb not installed
         def count(self) -> int:
             return len(self.docs)
 
+        def get(self, ids, include=None):  # type: ignore[override]
+            existing_ids: list[str] = []
+            docs: list[Any] = []
+            for _id in ids:
+                key = str(_id)
+                if key in self.docs:
+                    existing_ids.append(key)
+                    docs.append(self.docs[key])
+            return {"ids": existing_ids, "documents": docs}
+
     class _DummyClient:
         def get_or_create_collection(self, name, embedding_function=None):
             return _DummyCollection()
@@ -88,6 +98,15 @@ class VectorStore(ABC):
         metadatas: Optional[Sequence[dict]] = None,
     ) -> None:
         """Upsert pre-computed vectors keyed by ``ids``."""
+
+    def missing_ids(self, ids: Sequence[str]) -> list[str]:
+        """Return IDs from ``ids`` that are not already present in the store."""
+        try:
+            res = self.collection.get(ids=list(ids))
+            existing = set(res.get("ids", []))
+        except Exception:  # pragma: no cover - best effort
+            existing = set()
+        return [str(_id) for _id in ids if str(_id) not in existing]
 
 
 class ChromaVectorStore(VectorStore):
@@ -181,6 +200,9 @@ class FaissVectorStore(VectorStore):
                 self._outer._delete(ids)
 
         return _Coll(self)
+
+    def missing_ids(self, ids: Sequence[str]) -> list[str]:
+        return [str(_id) for _id in ids if str(_id) not in self._id_to_internal_id]
 
     def _delete(self, ids: Sequence[str]) -> None:
         import numpy as np

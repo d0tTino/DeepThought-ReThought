@@ -61,10 +61,18 @@ class PerceptionPublisher:
             for name, meta in (by_modality or {}).items()
         }
 
+        fused_vectors: list[list[float]] | None = None
+        if fused is not None:
+            fused_list = list(fused)
+            if fused_list and isinstance(fused_list[0], (int, float)):
+                fused_vectors = [[float(x) for x in fused_list]]
+            else:
+                fused_vectors = [[float(x) for x in emb] for emb in fused_list]
+
         payload = PerceptionEmbeddingsPayload(
             message_id=message_id,
             user_id=user_id,
-            fused=[[float(x) for x in emb] for emb in fused] if fused is not None else None,
+            fused=fused_vectors,
             by_modality=modality_payloads,
         )
 

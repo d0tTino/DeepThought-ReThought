@@ -223,6 +223,21 @@ class PerceptionEmbeddingsEvent(EventPayload):
     provenance: Dict[str, Any] = field(default_factory=dict)
     payload: PerceptionEmbeddingsPayload | None = None
 
+    def to_json(self) -> str:
+        """Return a JSON representation with flattened payload fields."""
+
+        payload_dict = asdict(self.payload) if self.payload else {}
+        base = {
+            "event": self.event,
+            "version": self.version,
+            "encoders": [asdict(enc) for enc in self.encoders],
+            "provenance": dict(self.provenance),
+        }
+        combined = {**base, **payload_dict}
+        if self.payload:
+            combined["payload"] = payload_dict
+        return json.dumps(combined)
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsEvent":
         # Deduplicate encoders by (name, modality) to mirror publisher behaviour
@@ -231,7 +246,10 @@ class PerceptionEmbeddingsEvent(EventPayload):
             key = (enc.get("name"), enc.get("modality"))
             enc_map.setdefault(key, EncoderMetadata(**enc))
         encoders = list(enc_map.values())
-        payload_data = data.get("payload", {})
+        payload_data = data.get("payload")
+        if not payload_data:
+            payload_keys = {"message_id", "user_id", "fused", "by_modality"}
+            payload_data = {k: data[k] for k in payload_keys if k in data}
         payload = PerceptionEmbeddingsPayload.from_dict(payload_data) if payload_data else None
         return cls(
             event=data.get("event", EventSubjects.PERCEPTION_EMBEDDINGS),
