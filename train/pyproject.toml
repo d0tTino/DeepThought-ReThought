@@ -12,6 +12,7 @@ dependencies = ["deepthought-rethought"]
 
 [project.scripts]
 dtrt-finetune = "deepthought.train:main"
+perception-fuser-train = "perception_fuser_train:main"
 
 [tool.setuptools_scm]
 version_scheme = "no-guess-dev"
