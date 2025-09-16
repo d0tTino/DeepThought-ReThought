@@ -36,7 +36,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PerceptionService:
-    """Orchestrate worker outputs and publish fused embeddings."""
+    """Orchestrate worker outputs and publish fused embeddings.
+
+    When multiple modalities are processed a :class:`~deepthought.modules.fuser.ModalityFuser`
+    must be provided. Configuring :class:`~.user_embeddings.UserEmbeddings` enables persistence of the
+    fused representation for the associated ``user_id`` after each run.
+    """
 
     publisher: PerceptionPublisher
     text_worker: TextPerceptionWorker | None = None
@@ -75,6 +80,8 @@ class PerceptionService:
                 )
             except Exception:  # pragma: no cover - wandb may be missing
                 wandb_run = None
+
+        store_embedding: torch.Tensor | None = None
 
         if embeddings is None:
             provenance = dict(provenance or {})
@@ -226,6 +233,9 @@ class PerceptionService:
             if not modality_arrays:
                 raise ValueError("No modalities available for publication")
 
+            if len(modality_arrays) > 1 and self.fuser is None:
+                raise ValueError("Multiple modalities available but no fuser configured")
+
             provenance.setdefault("modalities", list(modality_arrays.keys()))
 
             hop = (
@@ -272,23 +282,77 @@ class PerceptionService:
 
             fused_list: Sequence[Sequence[float]] | None = None
             if self.fuser is not None:
-                existing_user_embedding = (
-                    self.user_embeddings.get(user_id) if self.user_embeddings is not None else None
-                )
+                embedding_store = None
+                existing_user_embedding = None
+                if self.user_embeddings is not None and getattr(self.fuser, "user_dim", 0) > 0:
+                    embedding_store = self.user_embeddings
+                    stored_embedding = embedding_store.get(user_id)
+                    if stored_embedding is not None:
+                        if stored_embedding.shape[-1] == self.fuser.user_dim:
+                            expanded = stored_embedding.detach().clone()
+                            if expanded.ndim == 1:
+                                expanded = expanded.unsqueeze(0)
+                            if expanded.ndim == 2:
+                                span_count = len(spans)
+                                if span_count == 0:
+                                    logger.warning("No spans generated; skipping stored embedding for user %s", user_id)
+                                else:
+                                    if expanded.size(0) == 1 and span_count > 1:
+                                        expanded = expanded.expand(span_count, -1)
+                                    if expanded.size(0) == span_count:
+                                        existing_user_embedding = expanded
+                                    else:
+                                        logger.warning(
+                                            "Stored embedding for user %s has %s spans but %s expected; ignoring",
+                                            user_id,
+                                            expanded.size(0),
+                                            span_count,
+                                        )
+                            else:
+                                logger.warning(
+                                    "Stored embedding for user %s has %s dimensions; expected 1 or 2", user_id, expanded.ndim
+                                )
+                        else:
+                            logger.warning(
+                                "Stored embedding for user %s has dimension %s but expected %s; ignoring",
+                                user_id,
+                                stored_embedding.shape[-1],
+                                self.fuser.user_dim,
+                            )
                 fused_tensor = self.fuser(
                     aligned_modalities,
                     user_embedding=existing_user_embedding,
                     user_id=user_id,
-                    embedding_store=self.user_embeddings,
+                    embedding_store=embedding_store,
                 )
                 fused_list = fused_tensor.tolist()
+                if fused_tensor.numel() > 0:
+                    if fused_tensor.ndim > 1:
+                        store_embedding = fused_tensor.mean(dim=0).detach()
+                    else:
+                        store_embedding = fused_tensor.detach()
             else:
                 first = next(iter(aligned_modalities.values()))
                 fused_list = first.tolist()
+                if first.numel() > 0:
+                    if first.ndim > 1:
+                        store_embedding = first.mean(dim=0).detach()
+                    else:
+                        store_embedding = first.detach()
 
         else:
             modality_payload = {}
             fused_list = embeddings  # type: ignore[assignment]
+            if self.user_embeddings is not None:
+                fused_tensor = torch.tensor(embeddings, dtype=torch.float32)
+                if fused_tensor.numel() > 0:
+                    if fused_tensor.ndim > 1:
+                        store_embedding = fused_tensor.mean(dim=0)
+                    else:
+                        store_embedding = fused_tensor
+
+        if self.user_embeddings is not None and store_embedding is not None and store_embedding.numel() > 0:
+            self.user_embeddings.set(user_id, store_embedding)
 
         await self.publisher.publish(
             message_id=message_id,
