@@ -1,3 +1,4 @@
+"""
 # Perception Service
 
 ## Overview
@@ -165,6 +166,31 @@ The listener consumes `dtr.input.received` messages and publishes aligned embedd
    ```
 3. Visit https://wandb.ai/ to view live metrics and uploaded artifacts.
 
+### Training the Modality Fuser
+
+Cached modality embeddings can be used to train the projection layer that
+combines modalities. Save a `.npz` file containing a `target` array and one
+array per modality (`text`, `audio`, `video`, etc.). A one-dimensional target is
+automatically expanded to `(N, 1)`, and an optional `user_ids` array may be
+included to preserve provenance for each sample. Train the fuser with:
+
+```bash
+perception-fuser-train --features path/to/data.npz --output fused.pt --epochs 3 \
+  --batch-size 128 --dropout-prob 0.1 --device cuda:0 --seed 13 \
+  --wandb-project my-project --wandb-entity my-team --wandb-group perception \
+  --wandb-run-name fuser-v1
+```
+
+Key flags:
+
+- `--dropout-prob` controls modality dropout during training.
+- `--device` selects the torch device (`cpu`, `cuda:0`, etc.).
+- `--seed` seeds Python, NumPy, and torch for reproducibility (shuffling can be
+  disabled with `--no-shuffle`).
+- `--wandb-*` options enable detailed Weights & Biases logging when `wandb` is
+  installed. Per-epoch loss is emitted under the `train/loss` metric and the
+  saved model is written to `--output`.
+
 ## Privacy and Consent
 
 Perception inputs may contain personally identifiable information. Deployments **must** obtain user consent and disclose how media and derived embeddings are stored or shared.
@@ -185,3 +211,4 @@ export DT_WANDB_PROJECT=deepthought
 ```
 
 These options allow deployments to honor user preferences and organizational data policies.
+"""
