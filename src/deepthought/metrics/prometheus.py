@@ -1,4 +1,33 @@
-from prometheus_client import REGISTRY, Counter, Histogram
+"""Prometheus metric helpers with graceful degradation when unavailable."""
+
+from __future__ import annotations
+
+try:  # pragma: no cover - optional dependency may be missing in tests
+    from prometheus_client import REGISTRY, Counter, Histogram
+except ImportError:  # pragma: no cover - allow running without prometheus_client
+    class _NoopCollector:
+        """Lightweight stand-in matching the parts of the Prometheus API we use."""
+
+        def __init__(self, name: str, *args, **kwargs) -> None:  # noqa: D401 - simple proxy
+            self._name = name
+            REGISTRY._names_to_collectors[name] = self  # type: ignore[attr-defined]
+
+        def labels(self, *args, **kwargs):
+            return self
+
+        def inc(self, *args, **kwargs) -> None:
+            return None
+
+        def observe(self, *args, **kwargs) -> None:
+            return None
+
+    class _NoopRegistry:
+        def __init__(self) -> None:
+            self._names_to_collectors: dict[str, _NoopCollector] = {}
+
+    REGISTRY = _NoopRegistry()  # type: ignore[assignment]
+    Counter = _NoopCollector  # type: ignore[assignment]
+    Histogram = _NoopCollector  # type: ignore[assignment]
 
 if "inputs_total" not in REGISTRY._names_to_collectors:
     INPUTS_TOTAL = Counter(
