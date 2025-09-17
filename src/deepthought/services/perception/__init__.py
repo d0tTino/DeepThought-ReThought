@@ -1,5 +1,6 @@
 """Perception utilities for DeepThought services."""
 
+from .asr import transcribe_audio_tokens
 from .cli import main
 from .config import PerceptionConfig
 from .publisher import PerceptionPublisher
@@ -12,6 +13,7 @@ from .worker_video import VideoPerceptionWorker
 __all__ = [
     "TextPerceptionWorker",
     "AudioPerceptionWorker",
+    "transcribe_audio_tokens",
     "PerceptionService",
     "PerceptionPublisher",
     "UserEmbeddings",
