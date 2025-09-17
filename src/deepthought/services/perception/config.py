@@ -2,8 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+def _default_modality_dims() -> dict[str, int]:
+    """Return default embedding dimensions for supported modalities."""
+
+    return {"text": 384, "audio": 768, "video": 768}
+
+
+def _default_user_embeddings_path() -> str:
+    """Return the default location for persisted user embeddings."""
+
+    return str(Path.home() / ".cache" / "deepthought" / "user_embeddings.json")
 
 
 class PerceptionConfig(BaseSettings):
@@ -27,6 +41,11 @@ class PerceptionConfig(BaseSettings):
     video_cache_dir: str | None = None
 
     grid_hop_size: float | None = None
+
+    fused_dim: int = 512
+    modality_dims: dict[str, int] = Field(default_factory=_default_modality_dims)
+    dropout_prob: float = Field(0.0, ge=0.0, le=1.0)
+    user_embeddings_path: str = Field(default_factory=_default_user_embeddings_path)
 
     wandb_project: str | None = Field(None, env="DT_WANDB_PROJECT")
     wandb_sweep_id: str | None = Field(None, env="DT_WANDB_SWEEP_ID")
