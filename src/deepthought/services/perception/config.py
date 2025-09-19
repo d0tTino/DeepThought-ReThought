@@ -35,6 +35,7 @@ class PerceptionConfig(BaseSettings):
     audio_window_size: float = 0.02
     audio_hop_size: float = 0.01
     audio_cache_dir: str | None = None
+    enable_asr_transcription: bool = False
 
     video_model: str = "siglip@4a5b96c2d9b60f1a8327db6a36e5b92a9c3ad6fa"
     video_hop_size: float = 1.0
