@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Sequence
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -11,6 +12,7 @@ from nats.js.client import JetStreamContext
 
 from ...eda.events import EventSubjects, InputReceivedPayload
 from ...eda.subscriber import Subscriber
+from .config import PerceptionConfig
 from .service import PerceptionService
 
 logger = logging.getLogger(__name__)
@@ -26,10 +28,14 @@ class PerceptionServiceListener:
         js_context: JetStreamContext,
         *,
         default_user_id: str = "user",
+        asr: Any | None = None,
     ) -> None:
         self._service = service
         self._subscriber = Subscriber(nats_client, js_context)
         self._default_user_id = default_user_id
+        self._asr = asr
+        cfg = PerceptionConfig()
+        self._enable_asr_transcription = bool(getattr(cfg, "enable_asr_transcription", False))
 
     async def start(self, durable_name: str = "perception_listener") -> bool:
         """Begin listening for input events."""
@@ -84,6 +90,35 @@ class PerceptionServiceListener:
             if isinstance(consent, dict):
                 kwargs["audio_opt_in"] = consent.get("audio")
                 kwargs["video_opt_in"] = consent.get("video")
+
+            audio_path = kwargs.get("audio_path")
+            text_tokens = kwargs.get("text_tokens")
+            audio_opt_in = kwargs.get("audio_opt_in")
+            if (
+                text_tokens is None
+                and audio_path
+                and self._asr is not None
+                and self._enable_asr_transcription
+                and audio_opt_in is True
+            ):
+                try:
+                    tokens = self._asr.transcribe(audio_path)
+                    if inspect.isawaitable(tokens):
+                        tokens = await tokens
+                except Exception:
+                    logger.error("ASR transcription failed for message %s", message_id, exc_info=True)
+                else:
+                    extracted: Sequence[Any] | None = None
+                    if isinstance(tokens, dict):
+                        extracted = tokens.get("tokens") or tokens.get("text_tokens")
+                    elif hasattr(tokens, "tokens"):
+                        extracted = getattr(tokens, "tokens")
+                    elif isinstance(tokens, Sequence) and not isinstance(tokens, (str, bytes, bytearray)):
+                        extracted = tokens
+
+                    if extracted is not None:
+                        kwargs["text_tokens"] = extracted
+
             await self._service.run(**{k: v for k, v in kwargs.items() if v is not None})
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
