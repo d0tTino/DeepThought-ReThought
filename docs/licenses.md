@@ -53,14 +53,29 @@ upstream projects for the most current license information.
 ## License verification workflow
 
 Encoder model defaults live in `src/deepthought/services/perception/config.py`.
-When these defaults change, update `scripts/model_version_whitelist.json` with
-the new versions and their corresponding license information. After updating the
-whitelist and this document, verify everything with:
+Whenever you bump the `text_model`, `audio_model`, or `video_model` defaults you
+must keep `scripts/model_version_whitelist.json` and this license table in sync.
+The whitelist records the canonical model revisions alongside the license entry
+that should appear in this document.
+
+Follow this checklist when changing a perception default:
+
+1. Update the relevant field(s) in `PerceptionConfig`.
+2. Add the new revision and license metadata to
+   `scripts/model_version_whitelist.json` under both the top-level key and the
+   `licenses` section.
+3. Amend the table above so the **Component** and **License** columns match the
+   whitelist metadata.
+
+After editing the files, run the verification scripts locally to confirm the
+changes align:
 
 ```
 python scripts/check_model_versions.py
 python scripts/verify_licenses.py
 ```
 
-Both scripts will report an error if the versions or licenses diverge from the
-whitelist or if required entries are missing from this table.
+The CI `license_audit` job now executes the same commands. The workflow fails if
+the perception defaults drift from the whitelist or if the table omits required
+entries, ensuring perception model changes never merge without updated
+licenses.

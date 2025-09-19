@@ -7,7 +7,9 @@ DeepThought-ReThought is an experimental Artificial Intelligence (AI) project fo
 The project is hosted on GitHub: [https://github.com/d0tTino/DeepThought-ReThought](https://github.com/d0tTino/DeepThought-ReThought)
 
 See the [licenses guide](docs/licenses.md) for a list of bundled models and
-libraries and their permissive licenses.
+libraries and their permissive licenses, and review the
+[license verification workflow](docs/licenses.md#license-verification-workflow)
+before updating perception defaults.
 
 ## Installation
 
