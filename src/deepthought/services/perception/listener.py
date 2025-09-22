@@ -36,6 +36,14 @@ class PerceptionServiceListener:
         self._asr = asr
         cfg = PerceptionConfig()
         self._enable_asr_transcription = bool(getattr(cfg, "enable_asr_transcription", False))
+        hop = getattr(cfg, "text_hop_size", 0.03)
+        try:
+            hop_value = float(hop)
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            hop_value = 0.03
+        if hop_value <= 0:  # pragma: no cover - configuration guard
+            hop_value = 0.03
+        self._text_hop_size = hop_value
 
     async def start(self, durable_name: str = "perception_listener") -> bool:
         """Begin listening for input events."""
@@ -90,6 +98,24 @@ class PerceptionServiceListener:
             if isinstance(consent, dict):
                 kwargs["audio_opt_in"] = consent.get("audio")
                 kwargs["video_opt_in"] = consent.get("video")
+
+            if (
+                kwargs.get("text_tokens") is None
+                and isinstance(raw.get("user_input"), str)
+            ):
+                text = raw["user_input"].strip()
+                if text:
+                    hop = self._text_hop_size or 0.03
+                    tokens = []
+                    start = 0.0
+                    words = text.split()
+                    if not words:
+                        words = [text]
+                    for word in words:
+                        end = start + hop
+                        tokens.append((word, start, end))
+                        start = end
+                    kwargs["text_tokens"] = tokens
 
             audio_path = kwargs.get("audio_path")
             text_tokens = kwargs.get("text_tokens")
