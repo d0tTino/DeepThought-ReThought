@@ -18,6 +18,7 @@ from .listener import PerceptionServiceListener
 from .publisher import PerceptionPublisher
 from .service import PerceptionService
 from .service import run as run_service
+from .text_utils import hop_aligned_tokens, scrub_tokens
 from .user_embeddings import UserEmbeddings
 from .worker_audio import AudioPerceptionWorker
 from .worker_text import TextPerceptionWorker
@@ -142,12 +143,11 @@ async def _main() -> None:
         if args.tokens_json:
             with open(args.tokens_json, "r", encoding="utf8") as f:
                 raw_tokens = json.load(f)
-            text_tokens = [(t[0], float(t[1]), float(t[2])) for t in raw_tokens]
+            text_tokens = scrub_tokens(raw_tokens)
         elif args.text_path:
             with open(args.text_path, "r", encoding="utf8") as f:
-                words = f.read().strip().split()
-            hop = cfg.text_hop_size
-            text_tokens = [(w, i * hop, (i + 1) * hop) for i, w in enumerate(words)]
+                text_content = f.read()
+            text_tokens = hop_aligned_tokens(text_content, cfg.text_hop_size)
 
     audio_worker = None
     if args.audio_path:

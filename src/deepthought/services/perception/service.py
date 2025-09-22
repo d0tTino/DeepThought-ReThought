@@ -27,7 +27,8 @@ from .config import PerceptionConfig
 from .publisher import PerceptionPublisher
 from .user_embeddings import UserEmbeddings
 from .worker_audio import AudioPerceptionWorker
-from .worker_text import TextPerceptionWorker, Token
+from .text_utils import Token
+from .worker_text import TextPerceptionWorker
 from .worker_video import VideoPerceptionWorker
 
 
@@ -231,7 +232,8 @@ class PerceptionService:
                 MISSING_MODALITY_TOTAL.labels(modality=name).inc()
 
             if not modality_arrays:
-                raise ValueError("No modalities available for publication")
+                logger.warning("No modalities available for message %s; skipping", message_id)
+                return
 
             if len(modality_arrays) > 1 and self.fuser is None:
                 raise ValueError("Multiple modalities available but no fuser configured")
