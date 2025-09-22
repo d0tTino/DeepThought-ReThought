@@ -63,6 +63,7 @@ from deepthought.eda.events import EventSubjects
 from deepthought.services.perception.listener import PerceptionServiceListener
 from deepthought.services.perception.publisher import PerceptionPublisher
 from deepthought.services.perception.service import PerceptionService
+from deepthought.services.perception.text_utils import hop_aligned_tokens
 
 
 class DummyPublisher:
@@ -108,10 +109,38 @@ async def test_perception_listener_publishes_embeddings(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_listener_generates_tokens_from_user_input(monkeypatch):
+    monkeypatch.setattr(
+        "deepthought.services.perception.listener.PerceptionConfig",
+        lambda: SimpleNamespace(enable_asr_transcription=False, text_hop_size=0.05),
+    )
+
+    service = SimpleNamespace(run=AsyncMock())
+    listener = PerceptionServiceListener(
+        service,
+        FakeNATS(),
+        object(),
+        default_user_id="user",
+    )
+
+    payload = {"input_id": "m5", "user_input": "Email me at foo@example.com"}
+    msg = SimpleNamespace(data=json.dumps(payload).encode(), ack=AsyncMock(), headers=None)
+
+    await listener._handle(msg)
+
+    msg.ack.assert_awaited_once()
+    assert service.run.await_count == 1
+    _, kwargs = service.run.await_args
+    assert kwargs["message_id"] == "m5"
+    expected_tokens = hop_aligned_tokens(payload["user_input"], 0.05)
+    assert kwargs["text_tokens"] == expected_tokens
+
+
+@pytest.mark.asyncio
 async def test_listener_transcribes_audio_when_tokens_missing(monkeypatch):
     monkeypatch.setattr(
         "deepthought.services.perception.listener.PerceptionConfig",
-        lambda: SimpleNamespace(enable_asr_transcription=True),
+        lambda: SimpleNamespace(enable_asr_transcription=True, text_hop_size=0.05),
     )
     asr = SimpleNamespace(transcribe=AsyncMock(return_value=[("hello", 0.0, 1.0)]))
     service = SimpleNamespace(run=AsyncMock())
@@ -145,7 +174,7 @@ async def test_listener_transcribes_audio_when_tokens_missing(monkeypatch):
 async def test_listener_skips_asr_without_flag(monkeypatch):
     monkeypatch.setattr(
         "deepthought.services.perception.listener.PerceptionConfig",
-        lambda: SimpleNamespace(enable_asr_transcription=False),
+        lambda: SimpleNamespace(enable_asr_transcription=False, text_hop_size=0.05),
     )
 
     asr = SimpleNamespace(transcribe=AsyncMock(return_value=[("ignored", 0.0, 1.0)]))
@@ -179,7 +208,7 @@ async def test_listener_skips_asr_without_flag(monkeypatch):
 async def test_listener_skips_asr_without_audio_consent(monkeypatch):
     monkeypatch.setattr(
         "deepthought.services.perception.listener.PerceptionConfig",
-        lambda: SimpleNamespace(enable_asr_transcription=True),
+        lambda: SimpleNamespace(enable_asr_transcription=True, text_hop_size=0.05),
     )
 
     asr = SimpleNamespace(transcribe=AsyncMock(return_value=[("hello", 0.0, 1.0)]))
@@ -213,7 +242,7 @@ async def test_listener_skips_asr_without_audio_consent(monkeypatch):
 async def test_listener_skips_asr_when_audio_consent_missing(monkeypatch):
     monkeypatch.setattr(
         "deepthought.services.perception.listener.PerceptionConfig",
-        lambda: SimpleNamespace(enable_asr_transcription=True),
+        lambda: SimpleNamespace(enable_asr_transcription=True, text_hop_size=0.05),
     )
 
     asr = SimpleNamespace(transcribe=AsyncMock(return_value=[("hello", 0.0, 1.0)]))

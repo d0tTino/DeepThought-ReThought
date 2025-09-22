@@ -9,7 +9,6 @@ processing.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence, Tuple
@@ -19,21 +18,7 @@ from sentence_transformers import SentenceTransformer
 
 from deepthought.config import get_settings
 
-# A token is represented as ``(text, start_time, end_time)`` where times are in seconds.
-Token = Tuple[str, float, float]
-
-
-PII_PATTERNS = [
-    re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
-    re.compile(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"),
-    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-]
-
-
-def _scrub(text: str) -> str:
-    for pattern in PII_PATTERNS:
-        text = pattern.sub("[REDACTED]", text)
-    return text
+from .text_utils import Token, scrub_text
 
 
 @dataclass
@@ -69,7 +54,9 @@ class TextPerceptionWorker:
 
         memmap_path = Path(memmap_path)
 
-        scrubbed_tokens = [(_scrub(text), start, end) for text, start, end in tokens]
+        scrubbed_tokens = [
+            (scrub_text(str(text)), float(start), float(end)) for text, start, end in tokens
+        ]
 
         # Pre-compute embeddings to determine dimensionality
         embeddings = [np.asarray(self._model.encode(text)) for text, _, _ in scrubbed_tokens]

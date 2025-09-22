@@ -14,6 +14,7 @@ from ...eda.events import EventSubjects, InputReceivedPayload
 from ...eda.subscriber import Subscriber
 from .config import PerceptionConfig
 from .service import PerceptionService
+from .text_utils import hop_aligned_tokens, scrub_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class PerceptionServiceListener:
         self._default_user_id = default_user_id
         self._asr = asr
         cfg = PerceptionConfig()
+        self._config = cfg
         self._enable_asr_transcription = bool(getattr(cfg, "enable_asr_transcription", False))
 
     async def start(self, durable_name: str = "perception_listener") -> bool:
@@ -64,11 +66,23 @@ class PerceptionServiceListener:
                         await msg.ack()
                     return
 
+            payload_user_input: str | None = None
+            payload_input_id: str | None = None
             try:
                 payload = InputReceivedPayload.from_dict(raw)
-                message_id = payload.input_id or "unknown"
             except Exception:
-                message_id = raw.get("message_id") or "unknown"
+                payload_input_id = raw.get("input_id")
+                payload_user_input = raw.get("user_input")
+            else:
+                payload_input_id = payload.input_id
+                payload_user_input = payload.user_input
+
+            message_id = (
+                payload_input_id
+                or raw.get("message_id")
+                or raw.get("input_id")
+                or "unknown"
+            )
 
             user_id = (
                 raw.get("user_id")
@@ -93,6 +107,12 @@ class PerceptionServiceListener:
 
             audio_path = kwargs.get("audio_path")
             text_tokens = kwargs.get("text_tokens")
+            if text_tokens is None and isinstance(payload_user_input, str):
+                generated_tokens = hop_aligned_tokens(payload_user_input, self._config.text_hop_size)
+                if generated_tokens:
+                    kwargs["text_tokens"] = generated_tokens
+                    text_tokens = generated_tokens
+
             audio_opt_in = kwargs.get("audio_opt_in")
             if (
                 text_tokens is None
@@ -117,7 +137,9 @@ class PerceptionServiceListener:
                         extracted = tokens
 
                     if extracted is not None:
-                        kwargs["text_tokens"] = extracted
+                        sanitized = scrub_tokens(extracted)
+                        if sanitized:
+                            kwargs["text_tokens"] = sanitized
 
             await self._service.run(**{k: v for k, v in kwargs.items() if v is not None})
             if hasattr(msg, "ack") and callable(msg.ack):
