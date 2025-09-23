@@ -220,6 +220,14 @@ async def test_listener_processes_text_only_payload(monkeypatch, tmp_path):
     hop_ms = int(hop * 1000)
     assert text_payload["spans"] == [[0, hop_ms], [hop_ms, hop_ms * 2]]
     assert text_payload["embeddings"] == [[1.0, 2.0], [2.0, 3.0]]
-    assert text_payload["encoders"] == [{"name": "RecordingTextWorker"}] * 2
-    assert event_kwargs["provenance"] == {"modalities": ["text"]}
+    encoder = text_payload["encoders"][0]
+    assert encoder["name"] == "RecordingTextWorker"
+    assert encoder["modality"] == "text"
+    assert encoder["dim"] == 2
+    params = encoder["parameters"]
+    assert params.get("model") == "dummy"
+    assert params["hop_size"] == pytest.approx(hop)
+    provenance = event_kwargs["provenance"]
+    assert provenance["modalities"] == ["text"]
+    assert isinstance(provenance["timestamp"], float)
 

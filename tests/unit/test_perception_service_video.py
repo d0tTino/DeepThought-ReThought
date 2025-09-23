@@ -32,6 +32,7 @@ def test_service_publishes_video_embeddings_and_metadata():
             message_id="m1",
             user_id="u1",
             video_path="v.mp4",
+            video_opt_in=True,
             provenance={"test": True},
         )
     )
@@ -44,5 +45,14 @@ def test_service_publishes_video_embeddings_and_metadata():
     video_meta = publisher.kwargs["by_modality"]["video"]
     assert video_meta["spans"] == [[0, 50], [50, 100]]
     assert video_meta["embeddings"] == [[5.0, 6.0], [7.0, 8.0]]
-    assert video_meta["encoders"] == [{"name": "DummyVideoWorker"}] * 2
-    assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["video"]}
+    encoder = video_meta["encoders"][0]
+    assert encoder["name"] == "DummyVideoWorker"
+    assert encoder["modality"] == "video"
+    assert encoder["dim"] == 2
+    params = encoder["parameters"]
+    assert params.get("model")
+    assert "decode_fps" in params and "grid_fps" in params
+    provenance = publisher.kwargs["provenance"]
+    assert provenance["test"] is True
+    assert provenance["modalities"] == ["video"]
+    assert isinstance(provenance["timestamp"], float)

@@ -37,7 +37,7 @@ async def test_publish_embeddings(monkeypatch):
             "text": {
                 "spans": [[0, 1]],
                 "embeddings": [[0.0, 0.1]],
-                "encoders": [{"name": "test", "dim": 2, "modality": "text"}],
+                "encoders": [{"name": "test", "dim": 2, "modality": "text", "parameters": {}}],
             }
         },
         provenance={"source": "unit"},
@@ -83,12 +83,12 @@ async def test_publish_deduplicates_encoders(monkeypatch):
             "a": {
                 "spans": [],
                 "embeddings": [],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [{"name": "enc", "modality": "text", "parameters": {}}],
             },
             "b": {
                 "spans": [],
                 "embeddings": [],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [{"name": "enc", "modality": "text", "parameters": {}}],
             },
         },
     )

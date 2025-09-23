@@ -30,7 +30,7 @@ async def test_perception_publisher(monkeypatch):
             "text": {
                 "spans": [[0, 1]],
                 "embeddings": [[0.1, 0.2]],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [{"name": "enc", "modality": "text", "parameters": {}}],
             }
         },
         provenance={"p": 1},
@@ -88,12 +88,12 @@ async def test_perception_publisher_deduplicates_encoders(monkeypatch):
             "a": {
                 "spans": [],
                 "embeddings": [],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [{"name": "enc", "modality": "text", "parameters": {}}],
             },
             "b": {
                 "spans": [],
                 "embeddings": [],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [{"name": "enc", "modality": "text", "parameters": {}}],
             },
         },
     )
