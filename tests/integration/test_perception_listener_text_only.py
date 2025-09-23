@@ -220,6 +220,12 @@ async def test_listener_processes_text_only_payload(monkeypatch, tmp_path):
     hop_ms = int(hop * 1000)
     assert text_payload["spans"] == [[0, hop_ms], [hop_ms, hop_ms * 2]]
     assert text_payload["embeddings"] == [[1.0, 2.0], [2.0, 3.0]]
-    assert text_payload["encoders"] == [{"name": "RecordingTextWorker"}] * 2
-    assert event_kwargs["provenance"] == {"modalities": ["text"]}
+    assert len(text_payload["encoders"]) == 2
+    encoder = text_payload["encoders"][0]
+    assert encoder["name"] == "RecordingTextWorker"
+    assert encoder["modality"] == "text"
+    assert encoder["parameters"]["config_source"] == "PerceptionConfig.text_model"
+    assert "hop_size" in encoder["parameters"]
+    assert event_kwargs["provenance"]["modalities"] == ["text"]
+    assert "timestamp" in event_kwargs["provenance"]
 

@@ -37,7 +37,17 @@ async def test_publish_embeddings(monkeypatch):
             "text": {
                 "spans": [[0, 1]],
                 "embeddings": [[0.0, 0.1]],
-                "encoders": [{"name": "test", "dim": 2, "modality": "text"}],
+                "encoders": [
+                    {
+                        "name": "test",
+                        "dim": 2,
+                        "modality": "text",
+                        "parameters": {
+                            "hop_size": 0.25,
+                            "config_source": "PerceptionConfig.text_model",
+                        },
+                    }
+                ],
             }
         },
         provenance={"source": "unit"},
@@ -53,8 +63,10 @@ async def test_publish_embeddings(monkeypatch):
     text_mod = event.payload.by_modality["text"]
 
     assert text_mod.encoders[0].name == "test"
+    assert text_mod.encoders[0].parameters["hop_size"] == 0.25
     assert event.provenance == {"source": "unit"}
     assert event.encoders[0].name == "test"
+    assert event.encoders[0].parameters["config_source"] == "PerceptionConfig.text_model"
     assert captured["use_jetstream"] is True
     assert captured["retries"] == 3
 
@@ -83,12 +95,32 @@ async def test_publish_deduplicates_encoders(monkeypatch):
             "a": {
                 "spans": [],
                 "embeddings": [],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [
+                    {
+                        "name": "enc",
+                        "modality": "text",
+                        "dim": 2,
+                        "parameters": {
+                            "hop_size": 0.25,
+                            "config_source": "PerceptionConfig.text_model",
+                        },
+                    }
+                ],
             },
             "b": {
                 "spans": [],
                 "embeddings": [],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [
+                    {
+                        "name": "enc",
+                        "modality": "text",
+                        "dim": 2,
+                        "parameters": {
+                            "hop_size": 0.25,
+                            "config_source": "PerceptionConfig.text_model",
+                        },
+                    }
+                ],
             },
         },
     )

@@ -30,7 +30,17 @@ async def test_perception_publisher(monkeypatch):
             "text": {
                 "spans": [[0, 1]],
                 "embeddings": [[0.1, 0.2]],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [
+                    {
+                        "name": "enc",
+                        "modality": "text",
+                        "dim": 2,
+                        "parameters": {
+                            "hop_size": 0.5,
+                            "config_source": "PerceptionConfig.text_model",
+                        },
+                    }
+                ],
             }
         },
         provenance={"p": 1},
@@ -49,7 +59,9 @@ async def test_perception_publisher(monkeypatch):
 
     assert text_mod.spans == [[0, 1]]
     assert text_mod.encoders[0].name == "enc"
+    assert text_mod.encoders[0].parameters["hop_size"] == 0.5
     assert event.encoders[0].name == "enc"
+    assert event.encoders[0].parameters["config_source"] == "PerceptionConfig.text_model"
     assert event.provenance == {"p": 1}
 
 
@@ -88,12 +100,32 @@ async def test_perception_publisher_deduplicates_encoders(monkeypatch):
             "a": {
                 "spans": [],
                 "embeddings": [],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [
+                    {
+                        "name": "enc",
+                        "modality": "text",
+                        "dim": 2,
+                        "parameters": {
+                            "hop_size": 0.5,
+                            "config_source": "PerceptionConfig.text_model",
+                        },
+                    }
+                ],
             },
             "b": {
                 "spans": [],
                 "embeddings": [],
-                "encoders": [{"name": "enc", "modality": "text"}],
+                "encoders": [
+                    {
+                        "name": "enc",
+                        "modality": "text",
+                        "dim": 2,
+                        "parameters": {
+                            "hop_size": 0.5,
+                            "config_source": "PerceptionConfig.text_model",
+                        },
+                    }
+                ],
             },
         },
     )

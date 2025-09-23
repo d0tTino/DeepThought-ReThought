@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, Mapping, Sequence
 
@@ -52,14 +53,19 @@ class PerceptionPublisher:
             Number of times to retry publishing on failure.
         """
 
-        modality_payloads = {
-            name: ModalityEmbeddings(
+        modality_payloads: Dict[str, ModalityEmbeddings] = {}
+        for name, meta in (by_modality or {}).items():
+            encoders_meta = []
+            for enc in meta.get("encoders", []):
+                if isinstance(enc, EncoderMetadata):
+                    encoders_meta.append(enc)
+                else:
+                    encoders_meta.append(EncoderMetadata(**enc))
+            modality_payloads[name] = ModalityEmbeddings(
                 spans=[[int(span[0]), int(span[1])] for span in meta.get("spans", [])],
                 embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
-                encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
+                encoders=encoders_meta,
             )
-            for name, meta in (by_modality or {}).items()
-        }
 
         fused_vectors: list[list[float]] | None = None
         if fused is not None:
@@ -77,10 +83,11 @@ class PerceptionPublisher:
         )
 
         # Deduplicate encoders across modalities to avoid redundant metadata
-        top_encoders_map: dict[tuple[str, str | None], EncoderMetadata] = {}
+        top_encoders_map: dict[tuple[str | None, str | None, int | None, str], EncoderMetadata] = {}
         for mod in modality_payloads.values():
             for enc in mod.encoders:
-                key = (enc.name, enc.modality)
+                params_key = json.dumps(enc.parameters, sort_keys=True, default=str) if enc.parameters else "{}"
+                key = (enc.name, enc.modality, enc.dim, params_key)
                 top_encoders_map.setdefault(key, enc)
         top_encoders = list(top_encoders_map.values())
 

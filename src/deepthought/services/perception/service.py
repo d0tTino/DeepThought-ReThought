@@ -6,6 +6,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Sequence
@@ -33,6 +34,33 @@ from .worker_video import VideoPerceptionWorker
 
 
 logger = logging.getLogger(__name__)
+
+
+def _split_model_identifier(identifier: str | None) -> tuple[str | None, str | None]:
+    """Return ``(model, revision)`` for ``identifier`` split on ``@``."""
+
+    if not identifier:
+        return None, None
+    if "@" not in identifier:
+        return identifier, None
+    model, revision = identifier.rsplit("@", 1)
+    return model, revision
+
+
+def _clean_parameters(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove ``None`` values and stringify paths for metadata parameters."""
+
+    cleaned: Dict[str, Any] = {}
+    for key, value in data.items():
+        if value is None:
+            continue
+        if isinstance(value, Path):
+            cleaned[key] = str(value)
+        elif isinstance(value, (np.floating, np.integer)):
+            cleaned[key] = value.item()
+        else:
+            cleaned[key] = value
+    return cleaned
 
 
 @dataclass
@@ -83,9 +111,9 @@ class PerceptionService:
                 wandb_run = None
 
         store_embedding: torch.Tensor | None = None
+        provenance = dict(provenance or {})
 
         if embeddings is None:
-            provenance = dict(provenance or {})
             modality_arrays: Dict[str, np.ndarray] = {}
             modality_times: Dict[str, np.ndarray] = {}
             encoder_meta: Dict[str, Dict[str, Any]] = {}
@@ -93,7 +121,9 @@ class PerceptionService:
 
             if self.text_worker is not None and text_tokens:
                 feats = times = None
+                meta: Dict[str, Any] | None = None
                 cache_dir = Path(cfg.text_cache_dir) if cfg.text_cache_dir else None
+                meta_file: Path | None = None
                 if cache_dir is not None:
                     cache_dir.mkdir(parents=True, exist_ok=True)
                     token_bytes = json.dumps(list(text_tokens), sort_keys=True).encode()
@@ -104,7 +134,6 @@ class PerceptionService:
                         meta = json.loads(meta_file.read_text())
                         feats = np.memmap(feats_file, dtype="float32", mode="r", shape=tuple(meta["shape"]))
                         times = np.asarray(meta["timestamps"], dtype=np.float32)
-                        encoder_meta["text"] = meta["encoder"]
                     else:
                         start = time.perf_counter()
                         feats, times = self.text_worker(text_tokens, str(feats_file))
@@ -114,11 +143,9 @@ class PerceptionService:
                         meta = {
                             "shape": list(feats.shape),
                             "timestamps": times.tolist(),
-                            "encoder": {"name": self.text_worker.__class__.__name__},
                             "created": time.time(),
                         }
                         meta_file.write_text(json.dumps(meta))
-                        encoder_meta["text"] = meta["encoder"]
                 else:
                     with NamedTemporaryFile(suffix=".mm", delete=False) as tmp:
                         start = time.perf_counter()
@@ -126,10 +153,37 @@ class PerceptionService:
                         MODALITY_INFERENCE_LATENCY_SECONDS.labels(
                             service="perception_service", modality="text"
                         ).observe(time.perf_counter() - start)
-                    encoder_meta["text"] = {"name": self.text_worker.__class__.__name__}
                     Path(tmp.name).unlink(missing_ok=True)
-                modality_arrays["text"] = np.asarray(feats)
-                modality_times["text"] = np.asarray(times)
+                if feats is None or times is None:
+                    raise RuntimeError("Failed to compute text embeddings")
+                text_array = np.asarray(feats)
+                text_times = np.asarray(times)
+                text_model, text_revision = _split_model_identifier(cfg.text_model)
+                text_parameters = _clean_parameters(
+                    {
+                        "model": text_model or getattr(self.text_worker, "model_name", None),
+                        "revision": text_revision,
+                        "config_source": "PerceptionConfig.text_model",
+                        "config_value": cfg.text_model,
+                        "hop_size": float(cfg.text_hop_size),
+                        "cache_enabled": cache_dir is not None,
+                        "cache_path": cache_dir,
+                    }
+                )
+                text_dim = int(text_array.shape[-1]) if text_array.ndim > 1 else int(text_array.shape[0])
+                text_metadata = {
+                    "name": self.text_worker.__class__.__name__,
+                    "modality": "text",
+                    "dim": text_dim,
+                    "parameters": text_parameters,
+                }
+                if meta is not None and meta_file is not None:
+                    if meta.get("encoder") != text_metadata:
+                        meta["encoder"] = text_metadata
+                        meta_file.write_text(json.dumps(meta))
+                modality_arrays["text"] = text_array
+                modality_times["text"] = text_times
+                encoder_meta["text"] = text_metadata
 
             if self.audio_worker is not None and audio_path is not None:
                 if audio_opt_in is not True:
@@ -147,7 +201,6 @@ class PerceptionService:
                     meta = json.loads(meta_file.read_text())
                     feats = np.memmap(feats_file, dtype="float32", mode="r", shape=tuple(meta["shape"]))
                     times = np.asarray(meta["timestamps"], dtype=np.float32)
-                    encoder_meta["audio"] = meta["encoder"]
                 else:
                     start = time.perf_counter()
                     feats, times = self.audio_worker(audio_path, cache_dir=cache_dir)
@@ -157,13 +210,38 @@ class PerceptionService:
                     meta = {
                         "shape": list(feats.shape),
                         "timestamps": times.tolist(),
-                        "encoder": {"name": self.audio_worker.__class__.__name__},
                         "created": time.time(),
                     }
                     meta_file.write_text(json.dumps(meta))
-                    encoder_meta["audio"] = meta["encoder"]
-                modality_arrays["audio"] = np.asarray(feats)
-                modality_times["audio"] = np.asarray(times)
+                audio_array = np.asarray(feats)
+                audio_times = np.asarray(times)
+                audio_model, audio_revision = _split_model_identifier(cfg.audio_model)
+                audio_parameters = _clean_parameters(
+                    {
+                        "model": audio_model or getattr(self.audio_worker, "model", None),
+                        "revision": audio_revision,
+                        "config_source": "PerceptionConfig.audio_model",
+                        "config_value": cfg.audio_model,
+                        "window_size": float(getattr(self.audio_worker, "window_size", cfg.audio_window_size)),
+                        "hop_size": float(getattr(self.audio_worker, "step_size", cfg.audio_hop_size)),
+                        "cache_enabled": bool(getattr(self.audio_worker, "cache_dir", None) or cfg.audio_cache_dir),
+                        "cache_path": cache_dir,
+                        "model_path": getattr(self.audio_worker, "model_path", None) or cfg.audio_model_path,
+                    }
+                )
+                audio_dim = int(audio_array.shape[-1]) if audio_array.ndim > 1 else int(audio_array.shape[0])
+                audio_metadata = {
+                    "name": self.audio_worker.__class__.__name__,
+                    "modality": "audio",
+                    "dim": audio_dim,
+                    "parameters": audio_parameters,
+                }
+                if meta.get("encoder") != audio_metadata:
+                    meta["encoder"] = audio_metadata
+                    meta_file.write_text(json.dumps(meta))
+                modality_arrays["audio"] = audio_array
+                modality_times["audio"] = audio_times
+                encoder_meta["audio"] = audio_metadata
                 if not retain_media:
                     audio_path.unlink(missing_ok=True)
 
@@ -186,7 +264,6 @@ class PerceptionService:
                     feats = np.load(feats_file, mmap_mode="r")
                     meta = json.loads(meta_file.read_text())
                     times_arr = np.asarray(meta["timestamps"], dtype=np.float32)
-                    encoder_meta["video"] = meta["encoder"]
                 else:
                     start = time.perf_counter()
                     feats, times_arr = self.video_worker(video_path)
@@ -198,11 +275,9 @@ class PerceptionService:
                     meta = {
                         "shape": list(feats.shape),
                         "timestamps": times_arr.tolist(),
-                        "encoder": {"name": self.video_worker.__class__.__name__},
                         "created": time.time(),
                     }
                     meta_file.write_text(json.dumps(meta))
-                    encoder_meta["video"] = meta["encoder"]
                 times = np.asarray(meta["timestamps"], dtype=np.float32)
                 if times.ndim == 1:
                     if len(times) > 1:
@@ -211,8 +286,35 @@ class PerceptionService:
                         fps = grid_fps or decode_fps
                         step = 1.0 / float(fps)
                     times = np.column_stack((times, times + step))
-                modality_arrays["video"] = np.asarray(feats)
+                video_array = np.asarray(feats)
                 modality_times["video"] = times
+                video_model, video_revision = _split_model_identifier(cfg.video_model)
+                video_parameters = _clean_parameters(
+                    {
+                        "model": video_model or getattr(self.video_worker, "model_type", None),
+                        "revision": video_revision,
+                        "config_source": "PerceptionConfig.video_model",
+                        "config_value": cfg.video_model,
+                        "hop_size": float(cfg.video_hop_size),
+                        "cache_enabled": bool(getattr(self.video_worker, "cache_dir", None) or cfg.video_cache_dir),
+                        "cache_path": cache_dir,
+                        "decode_fps": decode_fps,
+                        "grid_fps": grid_fps,
+                        "model_variant": getattr(self.video_worker, "model_type", None),
+                    }
+                )
+                video_dim = int(video_array.shape[-1]) if video_array.ndim > 1 else int(video_array.shape[0])
+                video_metadata = {
+                    "name": self.video_worker.__class__.__name__,
+                    "modality": "video",
+                    "dim": video_dim,
+                    "parameters": video_parameters,
+                }
+                if meta.get("encoder") != video_metadata:
+                    meta["encoder"] = video_metadata
+                    meta_file.write_text(json.dumps(meta))
+                modality_arrays["video"] = video_array
+                encoder_meta["video"] = video_metadata
                 if not retain_media:
                     video_path.unlink(missing_ok=True)
 
@@ -263,7 +365,7 @@ class PerceptionService:
                 if name in modality_arrays:
                     arr = modality_arrays[name]
                     times = modality_times[name]
-                    dim = arr.shape[1]
+                    dim = int(arr.shape[-1]) if arr.ndim > 1 else int(arr.shape[0])
                     aligned = np.zeros((num_spans, dim), dtype=np.float32)
                     for i, (gs, ge) in enumerate(zip(grid_starts, grid_ends)):
                         mask = (gs < times[:, 1]) & (ge > times[:, 0])
@@ -355,6 +457,9 @@ class PerceptionService:
 
         if self.user_embeddings is not None and store_embedding is not None and store_embedding.numel() > 0:
             self.user_embeddings.set(user_id, store_embedding)
+
+        if "timestamp" not in provenance:
+            provenance["timestamp"] = datetime.now(timezone.utc).isoformat()
 
         await self.publisher.publish(
             message_id=message_id,

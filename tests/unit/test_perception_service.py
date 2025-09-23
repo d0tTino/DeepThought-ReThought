@@ -79,8 +79,16 @@ def test_service_publishes_raw_embeddings_and_metadata():
     text_meta = publisher.kwargs["by_modality"]["text"]
     assert text_meta["spans"] == [[0, 50], [50, 100]]
     assert text_meta["embeddings"] == [[1.0, 2.0], [3.0, 4.0]]
-    assert text_meta["encoders"] == [{"name": "DummyTextWorker"}] * 2
-    assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["text"]}
+    assert len(text_meta["encoders"]) == 2
+    text_encoder = text_meta["encoders"][0]
+    assert text_encoder["name"] == "DummyTextWorker"
+    assert text_encoder["modality"] == "text"
+    assert text_encoder["dim"] == 2
+    assert text_encoder["parameters"]["config_source"] == "PerceptionConfig.text_model"
+    assert "hop_size" in text_encoder["parameters"]
+    assert publisher.kwargs["provenance"]["test"] is True
+    assert publisher.kwargs["provenance"]["modalities"] == ["text"]
+    assert "timestamp" in publisher.kwargs["provenance"]
 
 
 class DummyVideoWorker:
@@ -109,8 +117,16 @@ def test_service_handles_video_modality():
     assert "video" in publisher.kwargs["by_modality"]
     video_meta = publisher.kwargs["by_modality"]["video"]
     assert video_meta["spans"] == [[0, 1000], [1000, 2000]]
-    assert video_meta["encoders"] == [{"name": "DummyVideoWorker"}] * 2
-    assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["video"]}
+    assert len(video_meta["encoders"]) == 2
+    video_encoder = video_meta["encoders"][0]
+    assert video_encoder["name"] == "DummyVideoWorker"
+    assert video_encoder["modality"] == "video"
+    assert video_encoder["dim"] == 2
+    assert video_encoder["parameters"]["config_source"] == "PerceptionConfig.video_model"
+    assert "hop_size" in video_encoder["parameters"]
+    assert publisher.kwargs["provenance"]["test"] is True
+    assert publisher.kwargs["provenance"]["modalities"] == ["video"]
+    assert "timestamp" in publisher.kwargs["provenance"]
 
 
 def test_service_requires_fuser_for_multiple_modalities(tmp_path):

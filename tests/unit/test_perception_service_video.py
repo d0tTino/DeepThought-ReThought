@@ -32,6 +32,7 @@ def test_service_publishes_video_embeddings_and_metadata():
             message_id="m1",
             user_id="u1",
             video_path="v.mp4",
+            video_opt_in=True,
             provenance={"test": True},
         )
     )
@@ -44,5 +45,13 @@ def test_service_publishes_video_embeddings_and_metadata():
     video_meta = publisher.kwargs["by_modality"]["video"]
     assert video_meta["spans"] == [[0, 50], [50, 100]]
     assert video_meta["embeddings"] == [[5.0, 6.0], [7.0, 8.0]]
-    assert video_meta["encoders"] == [{"name": "DummyVideoWorker"}] * 2
-    assert publisher.kwargs["provenance"] == {"test": True, "modalities": ["video"]}
+    assert len(video_meta["encoders"]) == 2
+    video_encoder = video_meta["encoders"][0]
+    assert video_encoder["name"] == "DummyVideoWorker"
+    assert video_encoder["modality"] == "video"
+    assert video_encoder["dim"] == 2
+    assert video_encoder["parameters"]["config_source"] == "PerceptionConfig.video_model"
+    assert "hop_size" in video_encoder["parameters"]
+    assert publisher.kwargs["provenance"]["test"] is True
+    assert publisher.kwargs["provenance"]["modalities"] == ["video"]
+    assert "timestamp" in publisher.kwargs["provenance"]
