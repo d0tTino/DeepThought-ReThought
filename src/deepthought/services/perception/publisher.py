@@ -34,8 +34,7 @@ class PerceptionPublisher:
         spans: Sequence[Sequence[int]] | None = None,
         modality_mask: Mapping[str, Sequence[bool | int]] | None = None,
         provenance: Dict[str, Any] | None = None,
-        spans: Sequence[Sequence[int]] | None = None,
-        contribution_mask: Mapping[str, Sequence[bool]] | None = None,
+        hop_contribution_mask: Mapping[str, Sequence[bool]] | None = None,
         retries: int = 3,
     ) -> Dict | None:
         """Publish a :class:`PerceptionEmbeddingsEvent` with retries.
@@ -54,7 +53,7 @@ class PerceptionPublisher:
             Provenance information about how the embeddings were generated.
         spans:
             Optional list of common grid spans shared across modalities.
-        contribution_mask:
+        hop_contribution_mask:
             Optional mapping of modality name to a boolean list indicating
             whether that modality contributed to each hop of ``spans``.
         retries:
@@ -85,9 +84,14 @@ class PerceptionPublisher:
                 [int(span[0]), int(span[1])] for span in spans if len(span) >= 2
             ]
 
-        mask_payload: dict[str, list[bool]] = {
+        modality_mask_payload: dict[str, list[bool]] = {
             name: [bool(flag) for flag in flags]
             for name, flags in (modality_mask or {}).items()
+        }
+
+        hop_mask_payload: dict[str, list[bool]] = {
+            name: [bool(flag) for flag in flags]
+            for name, flags in (hop_contribution_mask or {}).items()
         }
 
 
@@ -96,10 +100,9 @@ class PerceptionPublisher:
             user_id=user_id,
             fused=fused_vectors,
             spans=span_payload,
-            modality_mask=mask_payload,
+            modality_mask=modality_mask_payload,
             by_modality=modality_payloads,
-            spans=span_payload,
-            contribution_mask=mask_payload,
+            hop_contribution_mask=hop_mask_payload,
         )
 
         # Deduplicate encoders across modalities to avoid redundant metadata

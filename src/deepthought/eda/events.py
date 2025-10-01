@@ -192,8 +192,7 @@ class PerceptionEmbeddingsPayload(EventPayload):
     spans: list[list[int]] = field(default_factory=list)
     modality_mask: Dict[str, list[bool]] = field(default_factory=dict)
     by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
-    spans: Optional[list[list[int]]] = None
-    contribution_mask: Dict[str, list[bool]] = field(default_factory=dict)
+    hop_contribution_mask: Dict[str, list[bool]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsPayload":
@@ -215,7 +214,10 @@ class PerceptionEmbeddingsPayload(EventPayload):
         modality_mask = {
             name: [bool(flag) for flag in mask]
             for name, mask in data.get("modality_mask", {}).items()
-
+        }
+        hop_mask = {
+            name: [bool(flag) for flag in mask]
+            for name, mask in data.get("hop_contribution_mask", {}).items()
         }
         return cls(
             message_id=data["message_id"],
@@ -224,8 +226,7 @@ class PerceptionEmbeddingsPayload(EventPayload):
             spans=spans,
             modality_mask=modality_mask,
             by_modality=by_modality,
-            spans=[[int(span[0]), int(span[1])] for span in spans] if spans is not None else None,
-            contribution_mask=mask_map,
+            hop_contribution_mask=hop_mask,
         )
 
     @classmethod
@@ -268,7 +269,15 @@ class PerceptionEmbeddingsEvent(EventPayload):
         encoders = list(enc_map.values())
         payload_data = data.get("payload")
         if not payload_data:
-            payload_keys = {"message_id", "user_id", "fused", "spans", "modality_mask", "by_modality"}
+            payload_keys = {
+                "message_id",
+                "user_id",
+                "fused",
+                "spans",
+                "modality_mask",
+                "by_modality",
+                "hop_contribution_mask",
+            }
             payload_data = {k: data[k] for k in payload_keys if k in data}
         payload = PerceptionEmbeddingsPayload.from_dict(payload_data) if payload_data else None
         return cls(
