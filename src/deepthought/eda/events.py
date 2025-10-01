@@ -179,6 +179,7 @@ class ModalityEmbeddings(EventPayload):
     spans: list[list[int]] = field(default_factory=list)
     embeddings: list[list[float]] = field(default_factory=list)
     encoders: list[EncoderMetadata] = field(default_factory=list)
+    mask: list[bool] | None = None
 
 
 @dataclass
@@ -191,22 +192,30 @@ class PerceptionEmbeddingsPayload(EventPayload):
     spans: list[list[int]] = field(default_factory=list)
     modality_mask: Dict[str, list[bool]] = field(default_factory=dict)
     by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
+    spans: Optional[list[list[int]]] = None
+    contribution_mask: Dict[str, list[bool]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsPayload":
-        by_modality = {
-            name: ModalityEmbeddings(
+        by_modality = {}
+        for name, meta in data.get("by_modality", {}).items():
+            mask = meta.get("mask") if isinstance(meta, dict) else None
+            if mask is not None:
+                mask_list = [bool(value) for value in mask]
+            else:
+                mask_list = None
+            by_modality[name] = ModalityEmbeddings(
                 spans=[[int(span[0]), int(span[1])] for span in meta.get("spans", [])],
                 embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
                 encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
+                mask=mask_list,
             )
-            for name, meta in data.get("by_modality", {}).items()
-        }
         fused = data.get("fused")
         spans = [[int(span[0]), int(span[1])] for span in data.get("spans", [])]
         modality_mask = {
             name: [bool(flag) for flag in mask]
             for name, mask in data.get("modality_mask", {}).items()
+
         }
         return cls(
             message_id=data["message_id"],
@@ -215,6 +224,8 @@ class PerceptionEmbeddingsPayload(EventPayload):
             spans=spans,
             modality_mask=modality_mask,
             by_modality=by_modality,
+            spans=[[int(span[0]), int(span[1])] for span in spans] if spans is not None else None,
+            contribution_mask=mask_map,
         )
 
     @classmethod
