@@ -52,6 +52,8 @@ if "deepthought.services.perception.service" not in sys.modules:
                 user_id,
                 fused=kwargs.get("embeddings"),
                 by_modality=kwargs.get("by_modality"),
+                spans=kwargs.get("spans"),
+                modality_mask=kwargs.get("modality_mask"),
                 provenance=kwargs.get("provenance"),
             )
 
@@ -63,7 +65,7 @@ from deepthought.eda.events import EventSubjects
 from deepthought.services.perception.listener import PerceptionServiceListener
 from deepthought.services.perception.publisher import PerceptionPublisher
 from deepthought.services.perception.service import PerceptionService
-from deepthought.services.perception.text_utils import hop_aligned_tokens
+from deepthought.services.perception.text_utils import hop_aligned_tokens, scrub_tokens
 
 
 class DummyPublisher:
@@ -106,6 +108,8 @@ async def test_perception_listener_publishes_embeddings(monkeypatch):
     assert event.payload is not None
     assert event.payload.message_id == "m1"
     assert event.payload.user_id == "u1"
+    assert event.payload.spans == []
+    assert event.payload.modality_mask == {}
 
 
 @pytest.mark.asyncio
@@ -133,7 +137,7 @@ async def test_listener_generates_tokens_from_user_input(monkeypatch):
     _, kwargs = service.run.await_args
     assert kwargs["message_id"] == "m5"
     expected_tokens = hop_aligned_tokens(payload["user_input"], 0.05)
-    assert kwargs["text_tokens"] == expected_tokens
+    assert scrub_tokens(kwargs["text_tokens"]) == expected_tokens
 
 
 @pytest.mark.asyncio

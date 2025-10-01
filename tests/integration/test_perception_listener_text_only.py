@@ -215,11 +215,13 @@ async def test_listener_processes_text_only_payload(monkeypatch, tmp_path):
     event_kwargs = publisher.calls[0]
     assert event_kwargs["message_id"] == "unknown"
     assert event_kwargs["user_id"] == "fallback-user"
+    assert event_kwargs["spans"] == event_kwargs["by_modality"]["text"]["spans"]
 
     text_payload = event_kwargs["by_modality"]["text"]
     hop_ms = int(hop * 1000)
     assert text_payload["spans"] == [[0, hop_ms], [hop_ms, hop_ms * 2]]
     assert text_payload["embeddings"] == [[1.0, 2.0], [2.0, 3.0]]
+    assert event_kwargs["modality_mask"]["text"] == [True, True]
     encoder = text_payload["encoders"][0]
     assert encoder["name"] == "RecordingTextWorker"
     assert encoder["modality"] == "text"

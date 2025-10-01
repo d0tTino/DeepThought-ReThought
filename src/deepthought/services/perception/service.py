@@ -122,6 +122,7 @@ class PerceptionService:
         user_id: str,
         *,
         spans: Sequence[Sequence[int]] | None = None,
+        modality_mask: Dict[str, Sequence[bool]] | None = None,
         embeddings: Sequence[Sequence[float]] | None = None,
         encoders: Sequence[Dict[str, Any]] | None = None,
         provenance: Dict[str, Any] | None = None,
@@ -150,6 +151,15 @@ class PerceptionService:
         store_embedding: torch.Tensor | None = None
         provenance = dict(provenance or {})
         provenance.setdefault("timestamp", time.time())
+        grid_spans: list[list[int]] = (
+            [[int(span[0]), int(span[1])] for span in spans]
+            if spans is not None
+            else []
+        )
+        modality_mask_payload: Dict[str, list[bool]] = {
+            name: [bool(flag) for flag in flags]
+            for name, flags in (modality_mask or {}).items()
+        }
 
         grid_spans: list[list[int]] | None = None
         hop_contribution_mask: Dict[str, list[bool]] | None = None
@@ -430,9 +440,12 @@ class PerceptionService:
                     times = modality_times[name]
                     dim = arr.shape[1]
                     aligned = np.zeros((num_spans, dim), dtype=np.float32)
+                    mask_flags: list[bool] = []
                     for i, (gs, ge) in enumerate(zip(grid_starts, grid_ends)):
                         mask = (gs < times[:, 1]) & (ge > times[:, 0])
-                        if mask.any():
+                        active = bool(mask.any())
+                        mask_flags.append(active)
+                        if active:
                             aligned[i] = arr[mask].mean(axis=0)
                             hop_contribution_mask[name][i] = True
                     try:
@@ -445,9 +458,11 @@ class PerceptionService:
                         "encoders": [encoder_meta[name]] * num_spans,
                         "mask": hop_contribution_mask[name],
                     }
+                    modality_mask_payload[name] = mask_flags
                 elif self.fuser is not None and name in self.fuser.modality_dims:
                     dim = self.fuser.modality_dims[name]
                     aligned_modalities[name] = torch.zeros((num_spans, dim), dtype=torch.float32)
+                    modality_mask_payload.setdefault(name, [False] * num_spans)
 
             fused_list: Sequence[Sequence[float]] | None = None
             if self.fuser is not None:
@@ -462,7 +477,8 @@ class PerceptionService:
                             if expanded.ndim == 1:
                                 expanded = expanded.unsqueeze(0)
                             if expanded.ndim == 2:
-                                span_count = len(grid_spans or [])
+                                span_count = len(grid_spans)
+
                                 if span_count == 0:
                                     logger.warning("No spans generated; skipping stored embedding for user %s", user_id)
                                 else:
@@ -531,6 +547,8 @@ class PerceptionService:
             user_id=user_id,
             fused=fused_list,
             by_modality=modality_payload,
+            spans=grid_spans,
+            modality_mask=modality_mask_payload,
             provenance=provenance,
             spans=grid_spans,
             contribution_mask=hop_contribution_mask,

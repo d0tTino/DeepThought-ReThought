@@ -73,6 +73,8 @@ async def _replay(
                     message_id=payload.message_id,
                     user_id=payload.user_id,
                     embeddings=payload.fused,
+                    spans=payload.spans,
+                    modality_mask=payload.modality_mask,
                     encoders=encoders,
                     provenance=event.provenance,
                 )
