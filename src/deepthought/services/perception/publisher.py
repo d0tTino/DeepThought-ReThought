@@ -33,8 +33,9 @@ class PerceptionPublisher:
         by_modality: Mapping[str, Mapping[str, Any]] | None = None,
         spans: Sequence[Sequence[int]] | None = None,
         modality_mask: Mapping[str, Sequence[bool | int]] | None = None,
+        contribution_mask: Mapping[str, Sequence[bool | int]] | None = None,
         provenance: Dict[str, Any] | None = None,
-        hop_contribution_mask: Mapping[str, Sequence[bool]] | None = None,
+
         retries: int = 3,
     ) -> Dict | None:
         """Publish a :class:`PerceptionEmbeddingsEvent` with retries.
@@ -49,13 +50,17 @@ class PerceptionPublisher:
             Sequence of fused embedding vectors aligned to the common hop grid.
         by_modality:
             Mapping of modality name to its embeddings, spans and encoders.
-        provenance:
-            Provenance information about how the embeddings were generated.
         spans:
             Optional list of common grid spans shared across modalities.
-        hop_contribution_mask:
+        modality_mask:
+            Optional mapping of modality name to a boolean list indicating the
+            hops for which that modality produced embeddings.
+        contribution_mask:
+
             Optional mapping of modality name to a boolean list indicating
             whether that modality contributed to each hop of ``spans``.
+        provenance:
+            Provenance information about how the embeddings were generated.
         retries:
             Number of times to retry publishing on failure.
         """
@@ -89,9 +94,10 @@ class PerceptionPublisher:
             for name, flags in (modality_mask or {}).items()
         }
 
-        hop_mask_payload: dict[str, list[bool]] = {
+        contribution_mask_payload: dict[str, list[bool]] = {
             name: [bool(flag) for flag in flags]
-            for name, flags in (hop_contribution_mask or {}).items()
+            for name, flags in (contribution_mask or {}).items()
+
         }
 
 
@@ -102,7 +108,8 @@ class PerceptionPublisher:
             spans=span_payload,
             modality_mask=modality_mask_payload,
             by_modality=modality_payloads,
-            hop_contribution_mask=hop_mask_payload,
+            contribution_mask=contribution_mask_payload,
+
         )
 
         # Deduplicate encoders across modalities to avoid redundant metadata

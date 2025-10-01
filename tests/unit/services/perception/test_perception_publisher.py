@@ -1,4 +1,7 @@
+from types import ModuleType
 from unittest.mock import AsyncMock
+
+import sys
 
 import pytest
 
@@ -6,6 +9,17 @@ from deepthought.eda.events import (
     EventSubjects,
     PerceptionEmbeddingsEvent,
 )
+
+if "deepthought.services.perception.worker_video" not in sys.modules:
+    worker_video_stub = ModuleType("deepthought.services.perception.worker_video")
+    worker_video_stub.VideoPerceptionWorker = type("VideoPerceptionWorker", (), {})
+    sys.modules["deepthought.services.perception.worker_video"] = worker_video_stub
+
+if "deepthought.perception.worker_video" not in sys.modules:
+    perception_worker_stub = ModuleType("deepthought.perception.worker_video")
+    perception_worker_stub.video_to_feature_grid = lambda *args, **kwargs: None
+    sys.modules["deepthought.perception.worker_video"] = perception_worker_stub
+
 from deepthought.services.perception import publisher as perception_publisher
 
 
@@ -42,6 +56,7 @@ async def test_publish_embeddings(monkeypatch):
         },
         spans=[[0, 1]],
         modality_mask={"text": [True]},
+        contribution_mask={"text": [False]},
         provenance={"source": "unit"},
     )
 
@@ -54,6 +69,7 @@ async def test_publish_embeddings(monkeypatch):
     assert event.payload.fused == [[0.0, 0.1]]
     assert event.payload.spans == [[0, 1]]
     assert event.payload.modality_mask == {"text": [True]}
+    assert event.payload.contribution_mask == {"text": [False]}
     text_mod = event.payload.by_modality["text"]
 
     assert text_mod.encoders[0].name == "test"
