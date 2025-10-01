@@ -1,0 +1,141 @@
+# Orchestrator manifest describing DeepThought-ReThought services and their NATS wiring.
+nats:
+  url: ${NATS_URL:-nats://nats:4222}
+  authentication:
+    # Supports either token or user/password/creds depending on deployment.
+    token: ${NATS_TOKEN:-}
+    user: ${NATS_USER:-}
+    password: ${NATS_PASSWORD:-}
+    creds_file: ${NATS_CREDS_FILE:-}
+  tls:
+    enabled: ${NATS_TLS_ENABLED:-false}
+    ca_file: ${NATS_CA_FILE:-}
+    cert_file: ${NATS_CERT_FILE:-}
+    key_file: ${NATS_KEY_FILE:-}
+
+services:
+  discord-gateway:
+    description: Discord interface that ingests user traffic and relays responses.
+    build:
+      context: ./src/deepthought/services/discord_gateway
+    environment:
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      NATS_CREDS_FILE: ${NATS_CREDS_FILE:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+    healthcheck:
+      command: ["python", "-m", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    subscribe:
+      - subject: dtr.response.ranked
+        queue: discord-gateway
+    publish:
+      - subject: dtr.input.received
+
+  social-graph:
+    description: Maintains incremental and snapshot views of the social graph.
+    build:
+      context: ./src/deepthought/services/social_graph
+    environment:
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      GRAPH_DB_URL: ${GRAPH_DB_URL:-}
+    healthcheck:
+      command: ["python", "healthcheck.py"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    subscribe:
+      - subject: dtr.input.received
+        queue: social-graph
+      - subject: dtr.quest.update
+        queue: social-graph
+    publish:
+      - subject: dtr.social.graph.update
+      - subject: dtr.social.graph.snapshot
+
+  questlog:
+    description: Tracks quest lifecycle transitions and orchestrates updates.
+    build:
+      context: ./src/deepthought/services/questlog
+    environment:
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      QUEST_DB_URL: ${QUEST_DB_URL:-}
+    healthcheck:
+      command: ["python", "-m", "questlog.healthcheck"]
+      interval: 45s
+      timeout: 10s
+      retries: 3
+    subscribe:
+      - subject: dtr.input.received
+        queue: questlog
+      - subject: dtr.social.graph.update
+        queue: questlog
+    publish:
+      - subject: dtr.quest.create
+      - subject: dtr.quest.update
+      - subject: dtr.quest.done
+
+  perception:
+    description: Generates audio and image embeddings for downstream consumers.
+    build:
+      context: ./src/deepthought/services/perception
+    environment:
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      MODEL_CACHE_DIR: ${MODEL_CACHE_DIR:-/models}
+    healthcheck:
+      command: ["python", "-m", "perception.healthcheck"]
+      interval: 45s
+      timeout: 10s
+      retries: 3
+    subscribe:
+      - subject: dtr.input.received
+        queue: perception
+    publish:
+      - subject: dtr.perception.audio.embed
+      - subject: dtr.perception.image.embed
+
+  responder:
+    description: Produces ranked response candidates using context and memory.
+    build:
+      context: ./src/deepthought/services/responder
+    environment:
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      MODEL_NAME: ${RESPONDER_MODEL_NAME:-}
+    healthcheck:
+      command: ["python", "-m", "responder.healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    subscribe:
+      - subject: dtr.input.received
+        queue: responder
+      - subject: dtr.memory.retrieved
+        queue: responder
+      - subject: dtr.perception.audio.embed
+        queue: responder
+      - subject: dtr.perception.image.embed
+        queue: responder
+    publish:
+      - subject: dtr.response.candidates
+
+  selector:
+    description: Scores response candidates and emits the final reply.
+    build:
+      context: ./src/deepthought/services/selector
+    environment:
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
+      SELECTION_STRATEGY: ${SELECTION_STRATEGY:-deterministic}
+    healthcheck:
+      command: ["python", "-m", "selector.healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    subscribe:
+      - subject: dtr.response.candidates
+        queue: selector
+      - subject: dtr.quest.update
+        queue: selector
+    publish:
+      - subject: dtr.response.ranked
+      - subject: dtr.llm.response_generated

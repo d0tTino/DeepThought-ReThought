@@ -77,6 +77,35 @@ Users would typically incorporate these scripts into their Unity projects and us
         ```
 5.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
 
+## Deployment
+
+The repository includes an `orchestrator.yaml` manifest that captures the
+recommended NATS connection settings and lists each DeepThought-ReThought
+service together with the subjects they subscribe to and publish. Before
+launching the stack you should:
+
+1.  Ensure a NATS server is available and export the environment variables used
+    in the manifest (for example `NATS_URL`, `NATS_CREDS_FILE`,
+    `DISCORD_BOT_TOKEN`, etc.).
+2.  Build the individual service containers using the build contexts referenced
+    under `src/deepthought/services/...` in the manifest. When using Docker
+    Compose this can be achieved with:
+
+    ```bash
+    docker compose -f orchestrator.yaml build
+    ```
+
+3.  Start the services, allowing Compose (or your chosen orchestrator) to wire
+    up the subjects as described in the manifest:
+
+    ```bash
+    docker compose -f orchestrator.yaml up
+    ```
+
+Each service definition also carries health-check information so that your
+orchestrator can restart unhealthy containers and environment variables that
+centralise the NATS credentials used for connectivity.
+
 ## Testing
 
 Tests are implemented using the `pytest` framework. A running NATS server with
