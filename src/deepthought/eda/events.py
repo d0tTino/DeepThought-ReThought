@@ -192,7 +192,6 @@ class PerceptionEmbeddingsPayload(EventPayload):
     spans: list[list[int]] = field(default_factory=list)
     modality_mask: Dict[str, list[bool]] = field(default_factory=dict)
     by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
-    spans: Optional[list[list[int]]] = None
     contribution_mask: Dict[str, list[bool]] = field(default_factory=dict)
 
     @classmethod
@@ -211,11 +210,16 @@ class PerceptionEmbeddingsPayload(EventPayload):
                 mask=mask_list,
             )
         fused = data.get("fused")
-        spans = [[int(span[0]), int(span[1])] for span in data.get("spans", [])]
+        spans = [
+            [int(span[0]), int(span[1])] for span in data.get("spans", []) if len(span) >= 2
+        ]
         modality_mask = {
             name: [bool(flag) for flag in mask]
             for name, mask in data.get("modality_mask", {}).items()
-
+        }
+        contribution_mask = {
+            name: [bool(flag) for flag in mask]
+            for name, mask in data.get("contribution_mask", {}).items()
         }
         return cls(
             message_id=data["message_id"],
@@ -224,8 +228,7 @@ class PerceptionEmbeddingsPayload(EventPayload):
             spans=spans,
             modality_mask=modality_mask,
             by_modality=by_modality,
-            spans=[[int(span[0]), int(span[1])] for span in spans] if spans is not None else None,
-            contribution_mask=mask_map,
+            contribution_mask=contribution_mask,
         )
 
     @classmethod

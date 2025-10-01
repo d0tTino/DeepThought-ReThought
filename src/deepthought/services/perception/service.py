@@ -549,9 +549,8 @@ class PerceptionService:
             by_modality=modality_payload,
             spans=grid_spans,
             modality_mask=modality_mask_payload,
-            provenance=provenance,
-            spans=grid_spans,
             contribution_mask=hop_contribution_mask,
+            provenance=provenance,
         )
 
         if wandb_run is not None:
