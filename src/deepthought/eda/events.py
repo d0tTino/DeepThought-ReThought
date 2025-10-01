@@ -189,10 +189,11 @@ class PerceptionEmbeddingsPayload(EventPayload):
     message_id: str
     user_id: str
     fused: Optional[list[list[float]]] = None
-    spans: Optional[list[list[int]]] = None
+    spans: list[list[int]] = field(default_factory=list)
     modality_mask: Dict[str, list[bool]] = field(default_factory=dict)
-    contribution_mask: Dict[str, list[bool]] = field(default_factory=dict)
     by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
+    hop_contribution_mask: Dict[str, list[bool]] = field(default_factory=dict)
+
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsPayload":
@@ -228,33 +229,23 @@ class PerceptionEmbeddingsPayload(EventPayload):
             if fused_list and isinstance(fused_list[0], (int, float)):
                 fused_vectors.append([float(x) for x in fused_list])
             else:
-                for emb in fused_list:
-                    fused_vectors.append([float(x) for x in emb])
-
-        spans_raw = data.get("spans")
-        spans_list: Optional[list[list[int]]] = None
-        if spans_raw is not None:
-            spans_list = [
-                [int(span[0]), int(span[1])]
-                for span in spans_raw
-                if isinstance(span, (list, tuple)) and len(span) >= 2
-            ]
-
-        raw_modality_mask = data.get("modality_mask") or {}
-        modality_mask: Dict[str, list[bool]] = {}
-        if isinstance(raw_modality_mask, dict):
-            modality_mask = {
-                name: [bool(flag) for flag in flags]
-                for name, flags in raw_modality_mask.items()
-            }
-
-        raw_contribution_mask = data.get("contribution_mask") or {}
-        contribution_mask: Dict[str, list[bool]] = {}
-        if isinstance(raw_contribution_mask, dict):
-            contribution_mask = {
-                name: [bool(flag) for flag in flags]
-                for name, flags in raw_contribution_mask.items()
-            }
+                mask_list = None
+            by_modality[name] = ModalityEmbeddings(
+                spans=[[int(span[0]), int(span[1])] for span in meta.get("spans", [])],
+                embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
+                encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
+                mask=mask_list,
+            )
+        fused = data.get("fused")
+        spans = [[int(span[0]), int(span[1])] for span in data.get("spans", [])]
+        modality_mask = {
+            name: [bool(flag) for flag in mask]
+            for name, mask in data.get("modality_mask", {}).items()
+        }
+        hop_mask = {
+            name: [bool(flag) for flag in mask]
+            for name, mask in data.get("hop_contribution_mask", {}).items()
+        }
 
         return cls(
             message_id=data["message_id"],
@@ -264,6 +255,8 @@ class PerceptionEmbeddingsPayload(EventPayload):
             modality_mask=modality_mask,
             contribution_mask=contribution_mask,
             by_modality=by_modality,
+            hop_contribution_mask=hop_mask,
+
         )
 
     @classmethod
@@ -312,8 +305,9 @@ class PerceptionEmbeddingsEvent(EventPayload):
                 "fused",
                 "spans",
                 "modality_mask",
-                "contribution_mask",
                 "by_modality",
+                "hop_contribution_mask",
+
             }
             payload_data = {k: data[k] for k in payload_keys if k in data}
         payload = PerceptionEmbeddingsPayload.from_dict(payload_data) if payload_data else None

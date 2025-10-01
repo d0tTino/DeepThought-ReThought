@@ -80,6 +80,7 @@ async def test_grid_hop_size_overrides_default(monkeypatch):
     assert text_meta["embeddings"] == [[2.0, 3.0]]
     assert publisher.kwargs["spans"] == text_meta["spans"]
     assert publisher.kwargs["modality_mask"]["text"] == [True]
+    assert publisher.kwargs["hop_contribution_mask"]["text"] == [True]
     encoder = text_meta["encoders"][0]
     assert encoder["name"] == "DummyTextWorker"
     assert encoder["modality"] == "text"
@@ -142,6 +143,7 @@ async def test_text_encoder_metadata_cache_roundtrip(monkeypatch, tmp_path):
     }
     assert publisher.kwargs["spans"] == text_meta["spans"]
     assert publisher.kwargs["modality_mask"]["text"] == [True, True]
+    assert publisher.kwargs["hop_contribution_mask"]["text"] == [True, True]
     provenance = publisher.kwargs["provenance"]
     assert provenance["modalities"] == ["text"]
     assert provenance["timestamp"] == pytest.approx(1234.0)
@@ -175,4 +177,5 @@ async def test_text_encoder_metadata_cache_roundtrip(monkeypatch, tmp_path):
     assert hit_meta["encoders"][0] == override_meta
     assert publisher.kwargs["spans"] == hit_meta["spans"]
     assert publisher.kwargs["modality_mask"]["text"] == [True, True]
+    assert publisher.kwargs["hop_contribution_mask"]["text"] == [True, True]
     assert publisher.kwargs["provenance"]["timestamp"] == pytest.approx(5678.0)
