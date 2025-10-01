@@ -31,6 +31,8 @@ class PerceptionPublisher:
         *,
         fused: Sequence[Sequence[float]] | None = None,
         by_modality: Mapping[str, Mapping[str, Any]] | None = None,
+        spans: Sequence[Sequence[int]] | None = None,
+        modality_mask: Mapping[str, Sequence[bool | int]] | None = None,
         provenance: Dict[str, Any] | None = None,
         retries: int = 3,
     ) -> Dict | None:
@@ -69,10 +71,23 @@ class PerceptionPublisher:
             else:
                 fused_vectors = [[float(x) for x in emb] for emb in fused_list]
 
+        span_payload: list[list[int]] = []
+        if spans is not None:
+            span_payload = [
+                [int(span[0]), int(span[1])] for span in spans if len(span) >= 2
+            ]
+
+        mask_payload: dict[str, list[bool]] = {
+            name: [bool(flag) for flag in flags]
+            for name, flags in (modality_mask or {}).items()
+        }
+
         payload = PerceptionEmbeddingsPayload(
             message_id=message_id,
             user_id=user_id,
             fused=fused_vectors,
+            spans=span_payload,
+            modality_mask=mask_payload,
             by_modality=modality_payloads,
         )
 

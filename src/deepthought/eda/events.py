@@ -188,6 +188,8 @@ class PerceptionEmbeddingsPayload(EventPayload):
     message_id: str
     user_id: str
     fused: Optional[list[list[float]]] = None
+    spans: list[list[int]] = field(default_factory=list)
+    modality_mask: Dict[str, list[bool]] = field(default_factory=dict)
     by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
 
     @classmethod
@@ -201,10 +203,17 @@ class PerceptionEmbeddingsPayload(EventPayload):
             for name, meta in data.get("by_modality", {}).items()
         }
         fused = data.get("fused")
+        spans = [[int(span[0]), int(span[1])] for span in data.get("spans", [])]
+        modality_mask = {
+            name: [bool(flag) for flag in mask]
+            for name, mask in data.get("modality_mask", {}).items()
+        }
         return cls(
             message_id=data["message_id"],
             user_id=data["user_id"],
             fused=[[float(x) for x in emb] for emb in fused] if fused is not None else None,
+            spans=spans,
+            modality_mask=modality_mask,
             by_modality=by_modality,
         )
 
@@ -248,7 +257,7 @@ class PerceptionEmbeddingsEvent(EventPayload):
         encoders = list(enc_map.values())
         payload_data = data.get("payload")
         if not payload_data:
-            payload_keys = {"message_id", "user_id", "fused", "by_modality"}
+            payload_keys = {"message_id", "user_id", "fused", "spans", "modality_mask", "by_modality"}
             payload_data = {k: data[k] for k in payload_keys if k in data}
         payload = PerceptionEmbeddingsPayload.from_dict(payload_data) if payload_data else None
         return cls(

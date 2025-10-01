@@ -92,6 +92,8 @@ async def test_perception_replay_idempotent(nats_server):
         message_id="m1",
         user_id="u1",
         fused=[[0.1, 0.2]],
+        spans=[[0, 1]],
+        modality_mask={"text": [True]},
         by_modality={
             "text": ModalityEmbeddings(spans=[[0, 1]], embeddings=[[0.1, 0.2]], encoders=[])
         },

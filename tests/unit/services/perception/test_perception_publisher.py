@@ -40,6 +40,8 @@ async def test_publish_embeddings(monkeypatch):
                 "encoders": [{"name": "test", "dim": 2, "modality": "text", "parameters": {}}],
             }
         },
+        spans=[[0, 1]],
+        modality_mask={"text": [True]},
         provenance={"source": "unit"},
     )
 
@@ -50,6 +52,8 @@ async def test_publish_embeddings(monkeypatch):
     assert event.payload is not None
     assert event.payload.message_id == "msg1"
     assert event.payload.fused == [[0.0, 0.1]]
+    assert event.payload.spans == [[0, 1]]
+    assert event.payload.modality_mask == {"text": [True]}
     text_mod = event.payload.by_modality["text"]
 
     assert text_mod.encoders[0].name == "test"
@@ -91,6 +95,8 @@ async def test_publish_deduplicates_encoders(monkeypatch):
                 "encoders": [{"name": "enc", "modality": "text", "parameters": {}}],
             },
         },
+        spans=[],
+        modality_mask={},
     )
 
     event = captured["payload"]

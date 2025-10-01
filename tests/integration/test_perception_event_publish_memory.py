@@ -92,6 +92,8 @@ async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_pa
                 "encoders": [],
             }
         },
+        spans=[[0, 1]],
+        modality_mask={"text": [True]},
     )
 
     js.publish.assert_awaited_once()
@@ -100,6 +102,9 @@ async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_pa
     payload = json.loads(data.decode())
     assert payload["message_id"] == "m1"
     assert payload["user_id"] == "u1"
+    assert payload["spans"] == [[0, 1]]
+    assert payload["modality_mask"] == {"text": [True]}
+    assert payload["spans"] == payload["by_modality"]["text"]["spans"]
 
 
 @pytest.mark.asyncio
@@ -156,6 +161,8 @@ async def test_perception_modality_dropout(monkeypatch, tmp_path):
                 "encoders": [],
             }
         },
+        spans=[[0, 1]],
+        modality_mask={"text": [True], "video": [False]},
     )
 
     js.publish.assert_awaited_once()
@@ -163,6 +170,8 @@ async def test_perception_modality_dropout(monkeypatch, tmp_path):
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
     payload = json.loads(data.decode())
     assert payload["user_id"] == "u1"
+    assert payload["modality_mask"]["video"] == [False]
+    assert payload["spans"] == payload["by_modality"]["text"]["spans"]
 
 
 @pytest.mark.asyncio

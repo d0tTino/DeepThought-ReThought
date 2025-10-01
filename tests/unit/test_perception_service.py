@@ -79,6 +79,8 @@ def test_service_publishes_raw_embeddings_and_metadata():
     text_meta = publisher.kwargs["by_modality"]["text"]
     assert text_meta["spans"] == [[0, 50], [50, 100]]
     assert text_meta["embeddings"] == [[1.0, 2.0], [3.0, 4.0]]
+    assert publisher.kwargs["spans"] == text_meta["spans"]
+    assert publisher.kwargs["modality_mask"]["text"] == [True, True]
     encoder = text_meta["encoders"][0]
     assert encoder["name"] == "DummyTextWorker"
     assert encoder["modality"] == "text"
@@ -119,6 +121,8 @@ def test_service_handles_video_modality():
     assert "video" in publisher.kwargs["by_modality"]
     video_meta = publisher.kwargs["by_modality"]["video"]
     assert video_meta["spans"] == [[0, 1000], [1000, 2000]]
+    assert publisher.kwargs["spans"] == video_meta["spans"]
+    assert publisher.kwargs["modality_mask"]["video"] == [True, True]
     encoder = video_meta["encoders"][0]
     assert encoder["name"] == "DummyVideoWorker"
     assert encoder["modality"] == "video"

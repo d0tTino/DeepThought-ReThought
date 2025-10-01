@@ -59,6 +59,8 @@ def test_spans_and_metrics_increment() -> None:
     assert publisher.kwargs is not None
     spans = publisher.kwargs["by_modality"]["text"]["spans"]
     assert spans == [[0, 50], [50, 100]]
+    assert publisher.kwargs["spans"] == spans
+    assert publisher.kwargs["modality_mask"]["text"] == [True, True]
 
     total_after = _counter_value(INPUTS_TOTAL, "perception_service")
     count_after = _hist_count(INPUT_LATENCY_SECONDS, "perception_service")

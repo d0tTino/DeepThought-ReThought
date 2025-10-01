@@ -33,6 +33,8 @@ async def test_perception_publisher(monkeypatch):
                 "encoders": [{"name": "enc", "modality": "text", "parameters": {}}],
             }
         },
+        spans=[[0, 1]],
+        modality_mask={"text": [True]},
         provenance={"p": 1},
     )
     assert result == {"seq": 1}
@@ -44,6 +46,8 @@ async def test_perception_publisher(monkeypatch):
     assert event.payload is not None
     assert event.payload.message_id == "msg1"
     assert event.payload.fused == [[0.1, 0.2]]
+    assert event.payload.spans == [[0, 1]]
+    assert event.payload.modality_mask == {"text": [True]}
     assert "text" in event.payload.by_modality
     text_mod = event.payload.by_modality["text"]
 
@@ -69,6 +73,8 @@ async def test_perception_publisher_defaults(monkeypatch):
     assert payload.payload is not None
     assert payload.payload.fused is None
     assert payload.payload.by_modality == {}
+    assert payload.payload.spans == []
+    assert payload.payload.modality_mask == {}
     assert payload.provenance == {}
 
 
@@ -96,6 +102,8 @@ async def test_perception_publisher_deduplicates_encoders(monkeypatch):
                 "encoders": [{"name": "enc", "modality": "text", "parameters": {}}],
             },
         },
+        spans=[],
+        modality_mask={},
     )
     subject, payload = pub._publisher.publish.call_args[0]
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS

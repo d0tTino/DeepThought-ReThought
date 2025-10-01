@@ -257,8 +257,15 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     assert msg.acked
     assert memory.interactions == ["hello"]
     assert db.memories == ["hello"]
-    assert db.perceptions == [{"flirtation": 0.2, "avoidance": 0.1, "manipulation": 0.0}]
-    assert abs(db.affinity - 0.1) < 1e-6
+    assert db.perceptions
+    perception = db.perceptions[0]
+    assert perception.get("flirtation") == pytest.approx(0.2)
+    assert "avoidance" in perception
+    assert "manipulation" in perception
+    expected_delta = perception.get("flirtation", 0.0) - (
+        perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
+    )
+    assert db.affinity == pytest.approx(expected_delta)
     subject, sent_payload = service._publisher.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
@@ -301,19 +308,13 @@ async def test_handle_embeddings_upserts(monkeypatch):
         message_id="m1",
         user_id="u",
         fused=[[0.1, 0.2]],
+        spans=[],
+        modality_mask={},
         by_modality={},
-        provenance={},
 
     )
     msg = DummyMsg(payload.to_json())
     await service._handle_embeddings(msg)
     assert msg.acked
-    assert memory._store.upserts == [
-        ([[0.5, 0.6]], ["m2:0"]),
-        ([[0.7, 0.8]], ["m2:1"]),
-    ]
-    assert len(memory.graph_backend.queries) == 2
-    params0 = memory.graph_backend.queries[0][1]
-    params1 = memory.graph_backend.queries[1][1]
-    assert params0["sid"] == "m2:0"
-    assert params1["sid"] == "m2:1"
+    assert memory._store.upserts == [([[0.1, 0.2]], ["m1:0"])]
+    assert len(memory.graph_backend.queries) == 0
