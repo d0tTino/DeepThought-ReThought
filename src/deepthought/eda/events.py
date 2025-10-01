@@ -205,19 +205,27 @@ class PerceptionEmbeddingsPayload(EventPayload):
                     meta_dict = asdict(meta)
                 else:
                     meta_dict = dict(meta) if isinstance(meta, dict) else {}
+
                 mask = meta_dict.get("mask")
                 mask_list = [bool(value) for value in mask] if mask is not None else None
+                spans = [
+                    [int(span[0]), int(span[1])]
+                    for span in meta_dict.get("spans", [])
+                    if isinstance(span, (list, tuple)) and len(span) >= 2
+                ]
+                embeddings = [
+                    [float(x) for x in emb]
+                    for emb in meta_dict.get("embeddings", [])
+                    if isinstance(emb, (list, tuple))
+                ]
+                encoders = [
+                    enc if isinstance(enc, EncoderMetadata) else EncoderMetadata(**enc)
+                    for enc in meta_dict.get("encoders", [])
+                ]
                 by_modality[name] = ModalityEmbeddings(
-                    spans=[
-                        [int(span[0]), int(span[1])]
-                        for span in meta_dict.get("spans", [])
-                        if isinstance(span, (list, tuple)) and len(span) >= 2
-                    ],
-                    embeddings=[
-                        [float(x) for x in emb]
-                        for emb in meta_dict.get("embeddings", [])
-                    ],
-                    encoders=[EncoderMetadata(**enc) for enc in meta_dict.get("encoders", [])],
+                    spans=spans,
+                    embeddings=embeddings,
+                    encoders=encoders,
                     mask=mask_list,
                 )
 
@@ -225,45 +233,40 @@ class PerceptionEmbeddingsPayload(EventPayload):
         fused_vectors: Optional[list[list[float]]] = None
         if fused_raw is not None:
             fused_vectors = []
-            fused_list = list(fused_raw)
-            if fused_list and isinstance(fused_list[0], (int, float)):
-                fused_vectors.append([float(x) for x in fused_list])
-            else:
-                mask_list = None
-            by_modality[name] = ModalityEmbeddings(
-                spans=[[int(span[0]), int(span[1])] for span in meta.get("spans", [])],
-                embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
-                encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
-                mask=mask_list,
-            )
-        fused = data.get("fused")
+            if isinstance(fused_raw, (list, tuple)):
+                if fused_raw and isinstance(fused_raw[0], (int, float)):
+                    fused_vectors.append([float(x) for x in fused_raw])
+                else:
+                    for vector in fused_raw:
+                        if isinstance(vector, (list, tuple)):
+                            fused_vectors.append([float(x) for x in vector])
+            if not fused_vectors:
+                fused_vectors = None
+
         spans = [
-            [int(span[0]), int(span[1])] for span in data.get("spans", []) if len(span) >= 2
+            [int(span[0]), int(span[1])]
+            for span in data.get("spans", [])
+            if isinstance(span, (list, tuple)) and len(span) >= 2
         ]
+
         modality_mask = {
             name: [bool(flag) for flag in mask]
-            for name, mask in data.get("modality_mask", {}).items()
+            for name, mask in (data.get("modality_mask") or {}).items()
         }
+
         contribution_mask = {
             name: [bool(flag) for flag in mask]
-            for name, mask in data.get("contribution_mask", {}).items()
-
-        }
-        hop_mask = {
-            name: [bool(flag) for flag in mask]
-            for name, mask in data.get("hop_contribution_mask", {}).items()
+            for name, mask in (data.get("contribution_mask") or {}).items()
         }
 
         return cls(
             message_id=data["message_id"],
             user_id=data["user_id"],
             fused=fused_vectors,
-            spans=spans_list,
+            spans=spans,
             modality_mask=modality_mask,
-            contribution_mask=contribution_mask,
             by_modality=by_modality,
             contribution_mask=contribution_mask,
-
         )
 
     @classmethod
