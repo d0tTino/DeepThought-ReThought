@@ -1,19 +1,26 @@
 # File: tests/test_eda_flow.py
-"""
-Tests for the EDA flow using NATS JetStream in DeepThought reThought.
-(Simplified test with direct subscription and event sync)
-"""
+"""Tests for the EDA flow using NATS JetStream in DeepThought reThought."""
+
 import os
-import pytest
-
-# Skip this module unless RUN_NATS_TESTS=1 is set
-if os.getenv("RUN_NATS_TESTS") != "1":
-    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
-
 import asyncio
 import logging
+
+import pytest
 import pytest_asyncio
+
 from src.deepthought.config import DEFAULT_CONFIG
+from src.deepthought.eda.events import (
+    EventSubjects,
+    SocialGraphUpdatePayload,
+    SocialGraphSnapshotPayload,
+    QuestCreatePayload,
+    QuestUpdatePayload,
+    QuestDonePayload,
+    ResponseCandidatesPayload,
+    ResponseRankedPayload,
+    PerceptionAudioEmbedPayload,
+    PerceptionImageEmbedPayload,
+)
 from nats.aio.client import Client as NATS
 from nats.aio.errors import ErrTimeout
 from nats.js import JetStreamContext
@@ -28,9 +35,9 @@ from nats.js.api import (
 )
 from nats.js.errors import Error
 
-# Skip this module unless RUN_NATS_TESTS=1 is set
-if os.getenv("RUN_NATS_TESTS") != "1":
-    pytest.skip("NATS tests skipped (set RUN_NATS_TESTS=1 to enable)", allow_module_level=True)
+
+RUN_NATS_TESTS = os.getenv("RUN_NATS_TESTS") == "1"
+NATS_SKIP_REASON = "NATS tests skipped (set RUN_NATS_TESTS=1 to enable)"
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +53,113 @@ SUBJECT_GET_FINAL_RESULT = f"{SUBJECT_PREFIX}.result.get"
 STREAM_NAME = DEFAULT_CONFIG.stream_name
 
 
+def test_event_subject_constants_and_payload_roundtrip():
+    """Ensure new EDA subjects exist and payloads round-trip through JSON."""
+
+    assert EventSubjects.SOCIAL_GRAPH_UPDATE == "dtr.social.graph.update"
+    assert EventSubjects.SOCIAL_GRAPH_SNAPSHOT == "dtr.social.graph.snapshot"
+    assert EventSubjects.QUEST_CREATE == "dtr.quest.create"
+    assert EventSubjects.QUEST_UPDATE == "dtr.quest.update"
+    assert EventSubjects.QUEST_DONE == "dtr.quest.done"
+    assert EventSubjects.RESPONSE_CANDIDATES == "dtr.response.candidates"
+    assert EventSubjects.RESPONSE_RANKED == "dtr.response.ranked"
+    assert EventSubjects.PERCEPTION_AUDIO_EMBED == "dtr.perception.audio.embed"
+    assert EventSubjects.PERCEPTION_IMAGE_EMBED == "dtr.perception.image.embed"
+
+    payload_cases = [
+        (
+            SocialGraphUpdatePayload,
+            {
+                "user_id": "user-123",
+                "updates": {"edges_added": [["user-123", "user-456"]]},
+                "timestamp": "2024-01-01T00:00:00Z",
+            },
+        ),
+        (
+            SocialGraphSnapshotPayload,
+            {
+                "user_id": "user-123",
+                "graph": {
+                    "nodes": ["user-123", "user-456"],
+                    "edges": [["user-123", "user-456"]],
+                },
+            },
+        ),
+        (
+            QuestCreatePayload,
+            {
+                "quest_id": "quest-1",
+                "name": "Collect artifacts",
+                "description": "Gather three unique artifacts",
+                "metadata": {"difficulty": "medium"},
+            },
+        ),
+        (
+            QuestUpdatePayload,
+            {
+                "quest_id": "quest-1",
+                "status": "in_progress",
+                "progress": 0.5,
+                "metadata": {"artifact_count": 1},
+            },
+        ),
+        (
+            QuestDonePayload,
+            {
+                "quest_id": "quest-1",
+                "result": {"success": True, "reward": 1200},
+                "timestamp": "2024-01-02T12:00:00Z",
+            },
+        ),
+        (
+            ResponseCandidatesPayload,
+            {
+                "input_id": "input-42",
+                "candidates": [
+                    {"text": "Hello", "score": 0.7},
+                    {"text": "Hi there", "score": 0.6},
+                ],
+            },
+        ),
+        (
+            ResponseRankedPayload,
+            {
+                "input_id": "input-42",
+                "ranked_candidates": [
+                    {"text": "Hello", "score": 0.92},
+                    {"text": "Hi there", "score": 0.75},
+                ],
+                "selected_index": 0,
+            },
+        ),
+        (
+            PerceptionAudioEmbedPayload,
+            {
+                "audio_id": "audio-1",
+                "embedding": [0.1, 0.2, 0.3],
+                "metadata": {"sample_rate": 16000},
+            },
+        ),
+        (
+            PerceptionImageEmbedPayload,
+            {
+                "image_id": "image-1",
+                "embedding": [0.9, 0.8, 0.7],
+                "metadata": {"height": 256, "width": 256},
+            },
+        ),
+    ]
+
+    for payload_cls, payload_kwargs in payload_cases:
+        payload = payload_cls(**payload_kwargs)
+        json_payload = payload.to_json()
+        from_json = payload_cls.from_json(json_payload)
+        assert from_json == payload
+
+        from_dict = payload_cls.from_dict(payload_kwargs)
+        assert from_dict == payload
+
+
 # Helper function to get NATS URL from environment variable
 def get_nats_url() -> str:
     return os.getenv("NATS_URL", DEFAULT_CONFIG.nats_url)
@@ -58,6 +172,9 @@ async def nats_connection():
     Fixture that creates a NATS client connection and tears it down after the test.
     This fixture only yields the NATS client, not the JetStream context.
     """
+    if not RUN_NATS_TESTS:
+        pytest.skip(NATS_SKIP_REASON)
+
     nc = None
 
     try:
@@ -82,6 +199,7 @@ async def nats_connection():
 
 # Simple test to check that the fixture works
 @pytest.mark.asyncio
+@pytest.mark.skipif(not RUN_NATS_TESTS, reason=NATS_SKIP_REASON)
 async def test_nats_connection_fixture(nats_connection):
     """Test that the NATS connection fixture is working properly."""
     assert nats_connection.is_connected, "NATS connection should be connected"
@@ -90,6 +208,7 @@ async def test_nats_connection_fixture(nats_connection):
 
 # The test function using an ephemeral consumer
 @pytest.mark.asyncio
+@pytest.mark.skipif(not RUN_NATS_TESTS, reason=NATS_SKIP_REASON)
 async def test_full_flow_direct_subscribe(nats_connection):
     """
     Test the full EDA flow using JetStream publish and a direct ephemeral subscribe.
