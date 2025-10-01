@@ -32,6 +32,8 @@ class PerceptionPublisher:
         fused: Sequence[Sequence[float]] | None = None,
         by_modality: Mapping[str, Mapping[str, Any]] | None = None,
         provenance: Dict[str, Any] | None = None,
+        spans: Sequence[Sequence[int]] | None = None,
+        contribution_mask: Mapping[str, Sequence[bool]] | None = None,
         retries: int = 3,
     ) -> Dict | None:
         """Publish a :class:`PerceptionEmbeddingsEvent` with retries.
@@ -48,18 +50,24 @@ class PerceptionPublisher:
             Mapping of modality name to its embeddings, spans and encoders.
         provenance:
             Provenance information about how the embeddings were generated.
+        spans:
+            Optional list of common grid spans shared across modalities.
+        contribution_mask:
+            Optional mapping of modality name to a boolean list indicating
+            whether that modality contributed to each hop of ``spans``.
         retries:
             Number of times to retry publishing on failure.
         """
 
-        modality_payloads = {
-            name: ModalityEmbeddings(
+        modality_payloads: Dict[str, ModalityEmbeddings] = {}
+        for name, meta in (by_modality or {}).items():
+            mask = meta.get("mask") if isinstance(meta, Mapping) else None
+            modality_payloads[name] = ModalityEmbeddings(
                 spans=[[int(span[0]), int(span[1])] for span in meta.get("spans", [])],
                 embeddings=[list(map(float, emb)) for emb in meta.get("embeddings", [])],
                 encoders=[EncoderMetadata(**enc) for enc in meta.get("encoders", [])],
+                mask=[bool(value) for value in mask] if mask is not None else None,
             )
-            for name, meta in (by_modality or {}).items()
-        }
 
         fused_vectors: list[list[float]] | None = None
         if fused is not None:
@@ -69,11 +77,27 @@ class PerceptionPublisher:
             else:
                 fused_vectors = [[float(x) for x in emb] for emb in fused_list]
 
+        span_payload = (
+            [[int(span[0]), int(span[1])] for span in spans]
+            if spans is not None
+            else None
+        )
+        mask_payload = (
+            {
+                name: [bool(value) for value in values]
+                for name, values in contribution_mask.items()
+            }
+            if contribution_mask is not None
+            else {}
+        )
+
         payload = PerceptionEmbeddingsPayload(
             message_id=message_id,
             user_id=user_id,
             fused=fused_vectors,
             by_modality=modality_payloads,
+            spans=span_payload,
+            contribution_mask=mask_payload,
         )
 
         # Deduplicate encoders across modalities to avoid redundant metadata

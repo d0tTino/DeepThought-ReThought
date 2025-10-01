@@ -151,6 +151,9 @@ class PerceptionService:
         provenance = dict(provenance or {})
         provenance.setdefault("timestamp", time.time())
 
+        grid_spans: list[list[int]] | None = None
+        hop_contribution_mask: Dict[str, list[bool]] | None = None
+
         if embeddings is None:
             modality_arrays: Dict[str, np.ndarray] = {}
             modality_times: Dict[str, np.ndarray] = {}
@@ -411,7 +414,7 @@ class PerceptionService:
             num_spans = int(np.ceil((end - start) / hop))
             grid_starts = start + np.arange(num_spans) * hop
             grid_ends = grid_starts + hop
-            spans = [[int(gs * 1000), int(ge * 1000)] for gs, ge in zip(grid_starts, grid_ends)]
+            grid_spans = [[int(gs * 1000), int(ge * 1000)] for gs, ge in zip(grid_starts, grid_ends)]
 
             if self.fuser is not None:
                 expected_order = list(self.fuser.modality_dims.keys())
@@ -420,6 +423,7 @@ class PerceptionService:
 
             aligned_modalities: Dict[str, torch.Tensor] = {}
             modality_payload: Dict[str, Dict[str, Any]] = {}
+            hop_contribution_mask = {name: [False] * num_spans for name in expected_order}
             for name in expected_order:
                 if name in modality_arrays:
                     arr = modality_arrays[name]
@@ -430,14 +434,16 @@ class PerceptionService:
                         mask = (gs < times[:, 1]) & (ge > times[:, 0])
                         if mask.any():
                             aligned[i] = arr[mask].mean(axis=0)
+                            hop_contribution_mask[name][i] = True
                     try:
                         aligned_modalities[name] = torch.from_numpy(aligned)
                     except RuntimeError:  # pragma: no cover - torch built without numpy
                         aligned_modalities[name] = torch.tensor(aligned.tolist(), dtype=torch.float32)
                     modality_payload[name] = {
-                        "spans": spans,
+                        "spans": grid_spans,
                         "embeddings": aligned.tolist(),
                         "encoders": [encoder_meta[name]] * num_spans,
+                        "mask": hop_contribution_mask[name],
                     }
                 elif self.fuser is not None and name in self.fuser.modality_dims:
                     dim = self.fuser.modality_dims[name]
@@ -456,7 +462,7 @@ class PerceptionService:
                             if expanded.ndim == 1:
                                 expanded = expanded.unsqueeze(0)
                             if expanded.ndim == 2:
-                                span_count = len(spans)
+                                span_count = len(grid_spans or [])
                                 if span_count == 0:
                                     logger.warning("No spans generated; skipping stored embedding for user %s", user_id)
                                 else:
@@ -506,6 +512,9 @@ class PerceptionService:
         else:
             modality_payload = {}
             fused_list = embeddings  # type: ignore[assignment]
+            if spans is not None:
+                grid_spans = [[int(span[0]), int(span[1])] for span in spans]
+            hop_contribution_mask = None
             if self.user_embeddings is not None:
                 fused_tensor = torch.tensor(embeddings, dtype=torch.float32)
                 if fused_tensor.numel() > 0:
@@ -523,6 +532,8 @@ class PerceptionService:
             fused=fused_list,
             by_modality=modality_payload,
             provenance=provenance,
+            spans=grid_spans,
+            contribution_mask=hop_contribution_mask,
         )
 
         if wandb_run is not None:
