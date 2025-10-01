@@ -151,17 +151,15 @@ class PerceptionService:
         store_embedding: torch.Tensor | None = None
         provenance = dict(provenance or {})
         provenance.setdefault("timestamp", time.time())
-        grid_spans: list[list[int]] = (
+        grid_spans: list[list[int]] | None = (
             [[int(span[0]), int(span[1])] for span in spans]
             if spans is not None
-            else []
+            else None
         )
         modality_mask_payload: Dict[str, list[bool]] = {
             name: [bool(flag) for flag in flags]
             for name, flags in (modality_mask or {}).items()
         }
-
-        grid_spans: list[list[int]] | None = None
         hop_contribution_mask: Dict[str, list[bool]] | None = None
 
         if embeddings is None:
@@ -551,6 +549,7 @@ class PerceptionService:
             modality_mask=modality_mask_payload,
             contribution_mask=hop_contribution_mask,
             provenance=provenance,
+
         )
 
         if wandb_run is not None:
