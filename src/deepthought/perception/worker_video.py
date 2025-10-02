@@ -16,6 +16,7 @@ from PIL import Image
 from pathlib import Path
 
 from deepthought.config import get_settings
+from deepthought.utils.model_specs import split_model_revision
 
 try:  # pragma: no cover - optional dependency
     import open_clip
@@ -172,7 +173,8 @@ def video_to_feature_grid(
         Optional path to a ``.npy`` file for caching frame embeddings.
     """
     frames, timestamps = decode_video(path, decode_fps)
-    feats = embed_frames(frames, model_type=model_type, cache_path=embed_cache)
+    model_key, _ = split_model_revision(model_type)
+    feats = embed_frames(frames, model_type=model_key, cache_path=embed_cache)
     if grid_fps is None:
         grid_fps = decode_fps
     if len(timestamps) == 0:

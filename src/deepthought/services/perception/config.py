@@ -7,6 +7,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+from ...utils.model_specs import split_model_revision
+
 
 def _default_modality_dims() -> dict[str, int]:
     """Return default embedding dimensions for supported modalities."""
@@ -53,3 +55,17 @@ class PerceptionConfig(BaseSettings):
 
     class Config:
         env_prefix = "DT_PERCEPTION_"
+
+    @property
+    def video_model_key(self) -> str:
+        """Return the base model identifier without any revision suffix."""
+
+        model_key, _ = split_model_revision(self.video_model)
+        return model_key
+
+    @property
+    def video_model_revision(self) -> str | None:
+        """Return the revision component for ``video_model`` if provided."""
+
+        _, revision = split_model_revision(self.video_model)
+        return revision
