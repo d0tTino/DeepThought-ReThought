@@ -9,6 +9,7 @@ import logging
 import os
 import socket
 import sys
+from typing import Any, Dict
 from urllib.parse import urlparse
 
 from nats.aio.client import Client as NATS
@@ -36,6 +37,79 @@ PERCEPTION_CONSUMERS = [
     "memory-perception-consumer",
     "analytics-perception-consumer",
 ]
+
+
+_RETENTION_POLICY_ALIASES: Dict[str, RetentionPolicy] = {
+    "limits": RetentionPolicy.LIMITS,
+    "interest": RetentionPolicy.INTEREST,
+    "workqueue": RetentionPolicy.WORK_QUEUE,
+    "work_queue": RetentionPolicy.WORK_QUEUE,
+    "work-queue": RetentionPolicy.WORK_QUEUE,
+}
+
+
+def _get_retention_policy(env_value: str | None) -> RetentionPolicy:
+    """Return the :class:`RetentionPolicy` for ``env_value``.
+
+    If ``env_value`` is ``None`` or invalid, ``RetentionPolicy.LIMITS`` is used.
+    """
+
+    if not env_value:
+        return RetentionPolicy.LIMITS
+
+    policy = _RETENTION_POLICY_ALIASES.get(env_value.strip().lower())
+    if policy is None:
+        logger.warning(
+            "Unknown PERCEPTION_RETENTION_POLICY '%s'; defaulting to LIMITS",
+            env_value,
+        )
+        return RetentionPolicy.LIMITS
+    return policy
+
+
+def _get_optional_int(env_var: str) -> int | None:
+    """Return an ``int`` from ``env_var`` or ``None`` if unset/invalid."""
+
+    raw = os.getenv(env_var)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid integer for %s: %s", env_var, raw)
+        return None
+
+
+def _build_perception_stream_config() -> StreamConfig:
+    """Create the PERCEPTION stream configuration honoring environment overrides."""
+
+    retention_policy = _get_retention_policy(os.getenv("PERCEPTION_RETENTION_POLICY"))
+    max_msgs_per_subject = _get_optional_int("PERCEPTION_MAX_MSGS_PER_SUBJECT")
+    max_msgs = _get_optional_int("PERCEPTION_MAX_MSGS")
+    max_bytes = _get_optional_int("PERCEPTION_MAX_BYTES")
+    max_age_seconds = _get_optional_int("PERCEPTION_MAX_AGE_SECONDS")
+
+    config_kwargs: Dict[str, Any] = {
+        "name": "PERCEPTION",
+        "subjects": ["dtr.perception.>"],
+        "retention": retention_policy,
+        "storage": StorageType.FILE,
+        "discard": DiscardPolicy.OLD,
+    }
+
+    if max_msgs_per_subject is not None:
+        config_kwargs["max_msgs_per_subject"] = max_msgs_per_subject
+    else:
+        config_kwargs["max_msgs_per_subject"] = 10000
+
+    if max_msgs is not None:
+        config_kwargs["max_msgs"] = max_msgs
+    if max_bytes is not None:
+        config_kwargs["max_bytes"] = max_bytes
+    if max_age_seconds is not None:
+        config_kwargs["max_age"] = max_age_seconds * 1_000_000_000
+
+    return StreamConfig(**config_kwargs)
 
 
 def check_nats_server_running(url: str = NATS_URL) -> bool:
@@ -123,15 +197,8 @@ async def setup_jetstream() -> None:
             stream = await js.update_stream(config=stream_config)
             logger.info(f"Updated JetStream stream: {stream.config.name}")
 
-        # Define PERCEPTION stream
-        perception_stream = StreamConfig(
-            name="PERCEPTION",
-            subjects=["dtr.perception.>"],
-            retention=RetentionPolicy.LIMITS,
-            storage=StorageType.MEMORY,
-            max_msgs_per_subject=10000,
-            discard=DiscardPolicy.OLD,
-        )
+        # Define PERCEPTION stream with durability configuration overrides
+        perception_stream = _build_perception_stream_config()
 
         try:
             await js.add_stream(config=perception_stream)

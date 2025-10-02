@@ -33,6 +33,8 @@ After alignment and optional fusion, embeddings are published to:
 - `dtr.perception.embeddings`
 
 All messages are stored in the `PERCEPTION` stream created by `setup_jetstream.py`.
+The stream now persists data to disk by default so replay jobs survive
+process or node restarts.
 
 ## Event Schema
 
@@ -133,6 +135,35 @@ python -m deepthought.services.perception.cli --grid-hop-size 0.1 --listen
 
 The listener consumes `dtr.input.received` messages and publishes aligned embeddings to `dtr.perception.embeddings`.
 
+## Durability Configuration
+
+`setup_jetstream.py` configures the `PERCEPTION` stream with file-backed JetStream
+storage and exposes several environment variables for tuning durability:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PERCEPTION_RETENTION_POLICY` | `limits` | Retention policy (`limits`, `interest`, or `workqueue`). |
+| `PERCEPTION_MAX_MSGS_PER_SUBJECT` | `10000` | Cap on messages per subject (set to `0` or unset for unlimited). |
+| `PERCEPTION_MAX_MSGS` | unset | Global message limit across the stream. |
+| `PERCEPTION_MAX_BYTES` | unset | Byte budget for the stream. |
+| `PERCEPTION_MAX_AGE_SECONDS` | unset | Age limit before JetStream evicts entries. |
+
+Unset values fall back to JetStream defaults (`-1`/unlimited). For production
+commercialization we recommend budgeting disk space explicitly and pinning a
+retention window, for example:
+
+```bash
+export PERCEPTION_RETENTION_POLICY=limits
+export PERCEPTION_MAX_BYTES=$((80 * 1024 * 1024 * 1024))   # 80 GiB
+export PERCEPTION_MAX_MSGS_PER_SUBJECT=0                   # unlimited per subject
+export PERCEPTION_MAX_AGE_SECONDS=$((7 * 24 * 60 * 60))    # 7 days
+```
+
+These settings keep roughly a week of perception traffic while preventing the
+stream from exhausting disk space. Increase `PERCEPTION_MAX_BYTES` or shorten
+`PERCEPTION_MAX_AGE_SECONDS` based on observed throughput and retention
+requirements.
+
 ## Replay and Monitoring
 
 ### Replaying Events
@@ -196,7 +227,7 @@ Key flags:
 Perception inputs may contain personally identifiable information. Deployments **must** obtain user consent and disclose how media and derived embeddings are stored or shared.
 
 - **Consent toggles:** set `PERCEPTION_REQUIRE_CONSENT=1` to ignore messages without an explicit `"consent": true` flag. Per-modality variables such as `DT_REQUIRE_AUDIO_CONSENT` and `DT_AUDIO_CONSENT` can enforce and grant consent for specific media types.
-- **Data retention:** the `PERCEPTION` stream defaults to JetStream's `limits` policy. Override `PERCEPTION_RETENTION_POLICY` with `limits`, `interest`, or `workqueue` to control storage duration.
+- **Data retention:** adjust the environment variables above to match your legal and operational policies. File-backed storage means embeddings persist until retention limits or quotas evict them.
 - **External monitoring:** enabling W&B (`DT_WANDB_ENABLED=1`) sends metrics to a third-party service. Ensure this complies with your privacy policy.
 
 Example configuration:
