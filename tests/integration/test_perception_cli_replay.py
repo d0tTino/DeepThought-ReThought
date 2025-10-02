@@ -95,3 +95,33 @@ async def test_perception_cli_replay_honors_consent(monkeypatch, nats_server):
 
     assert len(received) == 1
     assert received[0]["message_id"] == "m1"
+
+
+@pytest.mark.asyncio
+async def test_setup_script_configures_file_storage(monkeypatch, nats_server):
+    if not nats_server_available(nats_server):
+        pytest.skip("NATS server not available")
+
+    monkeypatch.setenv("NATS_URL", nats_server)
+    monkeypatch.setenv("PERCEPTION_RETENTION_POLICY", "workqueue")
+    monkeypatch.setenv("PERCEPTION_MAX_MSGS_PER_SUBJECT", "4321")
+    monkeypatch.setenv("PERCEPTION_MAX_MSGS", "9000")
+    monkeypatch.setenv("PERCEPTION_MAX_BYTES", "1048576")
+    monkeypatch.setenv("PERCEPTION_MAX_AGE_SECONDS", "60")
+
+    setup_mod = importlib.import_module("setup_jetstream")
+    setup_mod = importlib.reload(setup_mod)
+    await setup_mod.setup_jetstream()
+
+    nc = await NATS().connect(servers=[nats_server])
+    js = nc.jetstream()
+    info = await js.stream_info("PERCEPTION")
+
+    assert info.config.storage == StorageType.FILE
+    assert info.config.retention == RetentionPolicy.WORK_QUEUE
+    assert info.config.max_msgs_per_subject == 4321
+    assert info.config.max_msgs == 9000
+    assert info.config.max_bytes == 1048576
+    assert info.config.max_age == 60 * 1_000_000_000
+
+    await nc.drain()
