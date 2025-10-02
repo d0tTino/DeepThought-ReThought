@@ -77,6 +77,36 @@ Users would typically incorporate these scripts into their Unity projects and us
         ```
 5.  **Run Components/Tests:** (Specific instructions TBD as components are developed)
 
+### Discord Gateway Bot
+
+The repository includes a Discord gateway that bridges channels with the DeepThought
+event bus. To run the bot locally:
+
+1.  Create a Discord application and bot token via the [Discord Developer Portal](https://discord.com/developers/applications).
+    Invite the bot to your server with the `Send Messages` and `Read Message History`
+    permissions.
+2.  Ensure JetStream has a durable consumer for the `dtr.response.ranked` subject.
+    When using `setup_jetstream.py`, the stream created for DeepThought events can be
+    reused; just make sure the consumer allows queue subscriptions under the durable
+    name `gw_ranked_v1`.
+3.  Export the required environment variables:
+
+    ```bash
+    export DISCORD_BOT_TOKEN="your-bot-token"
+    export NATS_URL="nats://localhost:4222"              # optional when using defaults
+    export NATS_CREDS_FILE="/path/to/creds.creds"        # optional user credentials file
+    ```
+
+4.  Start the gateway:
+
+    ```bash
+    python bot_gateway.py
+    ```
+
+The gateway publishes text messages from Discord to the `discord.message.text`
+subject and posts responses from `dtr.response.ranked` back into the originating
+Discord channels using the durable consumer `gw_ranked_v1` for reliable delivery.
+
 ## Deployment
 
 The repository includes an `orchestrator.yaml` manifest that captures the
