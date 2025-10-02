@@ -43,6 +43,9 @@ class EventSubjects:
     QUEST_DONE = "dtr.quest.done"
     """Published when a quest has been completed."""
 
+    QUEST_SNAPSHOT = "dtr.quest.snapshot"
+    """Published with the current in-memory quest state."""
+
     # Response selection events
     RESPONSE_CANDIDATES = "dtr.response.candidates"
     """Published with the set of response candidates produced by responders."""
@@ -56,7 +59,10 @@ class EventSubjects:
 
     PERCEPTION_IMAGE_EMBED = "dtr.perception.image.embed"
     """Published when image perception embeddings are created."""
-    
+
+    PERCEPTION_FUSED = "dtr.perception.fused"
+    """Published when audio and image embeddings are fused."""
+
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
     # e.g., METRICS = "dtr.metrics.reported"
@@ -157,6 +163,15 @@ class QuestDonePayload(EventPayload):
 
 
 @dataclass
+class QuestSnapshotPayload(EventPayload):
+    """Payload for snapshots of the quest log."""
+
+    quests: List[Dict[str, Any]]
+    changed: Dict[str, Any]
+    timestamp: Optional[str] = None
+
+
+@dataclass
 class ResponseCandidatesPayload(EventPayload):
     """Payload for response candidate generation events."""
 
@@ -191,5 +206,15 @@ class PerceptionImageEmbedPayload(EventPayload):
 
     image_id: str
     embedding: List[float]
+    metadata: Optional[Dict[str, Any]] = None
+    timestamp: Optional[str] = None
+
+
+@dataclass
+class PerceptionFusedPayload(EventPayload):
+    """Payload for fused multimodal perception events."""
+
+    input_id: str
+    features: Dict[str, Any]
     metadata: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
