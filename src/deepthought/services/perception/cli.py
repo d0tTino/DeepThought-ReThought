@@ -164,7 +164,8 @@ async def _main() -> None:
         fps = max(1, min(3, int(round(1 / cfg.video_hop_size))))
         video_worker = VideoPerceptionWorker(
             decode_fps=fps,
-            model_type=cfg.video_model,
+            model_type=cfg.video_model_key,
+            model_revision=cfg.video_model_revision,
             grid_fps=fps,
             cache_dir=cfg.video_cache_dir,
         )

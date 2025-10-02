@@ -17,6 +17,7 @@ import numpy as np
 
 from deepthought.config import get_settings
 from deepthought.perception.worker_video import video_to_feature_grid
+from deepthought.utils.model_specs import split_model_revision
 
 
 @dataclass
@@ -39,12 +40,18 @@ class VideoPerceptionWorker:
     model_type: str = "siglip"
     grid_fps: int | None = None
     cache_dir: Path | None = None
+    model_revision: str | None = None
 
     def __post_init__(self) -> None:  # pragma: no cover - simple validation
         if not 1 <= self.decode_fps <= 3:
             raise ValueError("decode_fps must be between 1 and 3 fps")
         if self.grid_fps is not None and self.grid_fps <= 0:
             raise ValueError("grid_fps must be positive")
+        model_key, inferred_revision = split_model_revision(self.model_type)
+        revision = self.model_revision or inferred_revision
+        self._model_key = model_key
+        self.model_revision = revision
+        self.model_type = f"{model_key}@{revision}" if revision else model_key
 
     def __call__(self, path: str | Path) -> Tuple[np.ndarray, np.ndarray]:
         """Process ``path`` and return ``(features, times)`` arrays.
@@ -63,7 +70,8 @@ class VideoPerceptionWorker:
         if self.cache_dir is not None:
             cache_dir = Path(self.cache_dir)
             cache_dir.mkdir(parents=True, exist_ok=True)
-            suffix = f"{self.decode_fps}_{self.model_type}_{self.grid_fps or self.decode_fps}"
+            suffix_model = self.model_type
+            suffix = f"{self.decode_fps}_{suffix_model}_{self.grid_fps or self.decode_fps}"
             stem = path.stem
             feats_file = cache_dir / f"{stem}_{suffix}_feats.npy"
             times_file = cache_dir / f"{stem}_{suffix}_times.npy"
@@ -78,7 +86,7 @@ class VideoPerceptionWorker:
                 feats, times = video_to_feature_grid(
                     str(path),
                     self.decode_fps,
-                    self.model_type,
+                    self._model_key,
                     self.grid_fps,
                     embed_cache=embed_file,
                 )
@@ -86,7 +94,7 @@ class VideoPerceptionWorker:
                 feats, times = video_to_feature_grid(
                     str(path),
                     self.decode_fps,
-                    self.model_type,
+                    self._model_key,
                     self.grid_fps,
                 )
             if feats_file and times_file:
