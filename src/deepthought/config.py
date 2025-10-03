@@ -251,6 +251,9 @@ class BotEnv(BaseSettings):
 
     DISCORD_TOKEN: str
     MONITOR_CHANNEL: int
+    PROJECTS_FORUM_CHANNEL: int | None = None
+    PROJECTS_INDEX_CHANNEL: int | None = None
+    PROJECTS_REQUIRE_EVENTS: bool = False
     NATS_URL: AnyUrl = "nats://localhost:4222"
 
     model_config = SettingsConfigDict(env_prefix="")
