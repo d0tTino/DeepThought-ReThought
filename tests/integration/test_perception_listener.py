@@ -61,7 +61,7 @@ if "deepthought.services.perception.service" not in sys.modules:
     sys.modules["deepthought.services.perception.service"] = service_stub
     setattr(perception_pkg, "service", service_stub)
 
-from deepthought.eda.events import EventSubjects
+from deepthought.eda.events import EventSubjects, PerceptionExtractEvent, PerceptionExtractPayload
 from deepthought.services.perception.listener import PerceptionServiceListener
 from deepthought.services.perception.publisher import PerceptionPublisher
 from deepthought.services.perception.service import PerceptionService
@@ -240,6 +240,48 @@ async def test_listener_skips_asr_without_audio_consent(monkeypatch):
     assert service.run.await_count == 1
     _, kwargs = service.run.await_args
     assert "text_tokens" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_listener_handles_extract_requests(monkeypatch):
+    monkeypatch.setattr(
+        "deepthought.services.perception.listener.PerceptionConfig",
+        lambda: SimpleNamespace(enable_asr_transcription=False, text_hop_size=0.05),
+    )
+
+    service = SimpleNamespace(run=AsyncMock())
+    listener = PerceptionServiceListener(
+        service,
+        FakeNATS(),
+        object(),
+        default_user_id="user",
+    )
+
+    request = PerceptionExtractEvent(
+        payload=PerceptionExtractPayload(
+            message_id="mx",
+            user_id="ux",
+            text="Email me",
+            text_hop_size=0.1,
+            modality_mask={"text": [True]},
+            provenance={"source": "replay"},
+            retain_media=True,
+        )
+    )
+    msg = SimpleNamespace(data=request.to_json().encode(), ack=AsyncMock())
+
+    await listener.handle_extract(msg)
+
+    msg.ack.assert_awaited_once()
+    assert service.run.await_count == 1
+    _, kwargs = service.run.await_args
+    assert kwargs["message_id"] == "mx"
+    assert kwargs["user_id"] == "ux"
+    assert kwargs["modality_mask"] == {"text": [True]}
+    assert kwargs["provenance"] == {"source": "replay"}
+    assert kwargs["retain_media"] is True
+    tokens = kwargs["text_tokens"]
+    assert isinstance(tokens, list) and tokens
 
 
 @pytest.mark.asyncio

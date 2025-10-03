@@ -123,6 +123,7 @@ class PerceptionService:
         *,
         spans: Sequence[Sequence[int]] | None = None,
         modality_mask: Dict[str, Sequence[bool]] | None = None,
+        contribution_mask: Dict[str, Sequence[bool]] | None = None,
         embeddings: Sequence[Sequence[float]] | None = None,
         encoders: Sequence[Dict[str, Any]] | None = None,
         provenance: Dict[str, Any] | None = None,
@@ -161,6 +162,11 @@ class PerceptionService:
             for name, flags in (modality_mask or {}).items()
         }
         hop_contribution_mask: Dict[str, list[bool]] | None = None
+        if contribution_mask is not None:
+            hop_contribution_mask = {
+                name: [bool(flag) for flag in flags]
+                for name, flags in contribution_mask.items()
+            }
 
         if embeddings is None:
             modality_arrays: Dict[str, np.ndarray] = {}
@@ -528,7 +534,7 @@ class PerceptionService:
             fused_list = embeddings  # type: ignore[assignment]
             if spans is not None:
                 grid_spans = [[int(span[0]), int(span[1])] for span in spans]
-            hop_contribution_mask = None
+            # ``hop_contribution_mask`` is preserved when provided explicitly
             if self.user_embeddings is not None:
                 fused_tensor = torch.tensor(embeddings, dtype=torch.float32)
                 if fused_tensor.numel() > 0:

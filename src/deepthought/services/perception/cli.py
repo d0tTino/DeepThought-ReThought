@@ -49,7 +49,22 @@ async def _main() -> None:
     parser.add_argument("--nats-url", default=defaults.nats_url)
     parser.add_argument("--listen", action="store_true", help="Listen for INPUT_RECEIVED events")
     parser.add_argument("--durable", default="perception_service", help="Durable consumer name for listen mode")
+    parser.add_argument(
+        "--extract-durable",
+        default="perception-extract-listener",
+        help="Durable consumer name for perception extract requests",
+    )
     parser.add_argument("--replay", action="store_true", help="Replay existing stream messages from start")
+    parser.add_argument(
+        "--no-input-listener",
+        action="store_true",
+        help="Disable subscription to dtr.input.received when running in listen mode",
+    )
+    parser.add_argument(
+        "--no-extract-listener",
+        action="store_true",
+        help="Disable subscription to dtr.perception.extract when running in listen mode",
+    )
     parser.add_argument("--message-id")
     parser.add_argument("--user-id", default="user")
     parser.add_argument(
@@ -90,6 +105,9 @@ async def _main() -> None:
     parser.add_argument("--wandb-project", default=defaults.wandb_project)
     parser.add_argument("--wandb-sweep-id", default=defaults.wandb_sweep_id)
     args = parser.parse_args()
+
+    if args.listen and args.no_input_listener and args.no_extract_listener:
+        parser.error("At least one listener must be enabled when --listen is specified")
 
     if not args.listen and (not args.message_id or not args.user_id):
         parser.error("--message-id and --user-id are required unless --listen is specified")
@@ -218,13 +236,25 @@ async def _main() -> None:
     if args.listen:
         listener = PerceptionServiceListener(service, nc, js, default_user_id=args.user_id)
         deliver_policy = DeliverPolicy.ALL if args.replay else DeliverPolicy.NEW
-        await js.subscribe(
-            EventSubjects.INPUT_RECEIVED,
-            durable=args.durable,
-            deliver_policy=deliver_policy,
-            cb=listener._handle,
-            manual_ack=True,
-        )
+        subscriptions = []
+        if not args.no_input_listener:
+            sub = await js.subscribe(
+                EventSubjects.INPUT_RECEIVED,
+                durable=args.durable,
+                deliver_policy=deliver_policy,
+                cb=listener.handle_input,
+                manual_ack=True,
+            )
+            subscriptions.append(sub)
+        if not args.no_extract_listener:
+            sub = await js.subscribe(
+                EventSubjects.PERCEPTION_EXTRACT,
+                durable=args.extract_durable,
+                deliver_policy=deliver_policy,
+                cb=listener.handle_extract,
+                manual_ack=True,
+            )
+            subscriptions.append(sub)
         try:
             await asyncio.Future()
         finally:
