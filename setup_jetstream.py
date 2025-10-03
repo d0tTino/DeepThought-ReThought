@@ -36,6 +36,7 @@ NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
 PERCEPTION_CONSUMERS = [
     "memory-perception-consumer",
     "analytics-perception-consumer",
+    "perception-extract-listener",
 ]
 
 

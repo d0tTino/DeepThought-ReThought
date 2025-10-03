@@ -26,6 +26,7 @@ flowchart LR
 The service consumes perception inputs from:
 
 - `dtr.input.received`
+- `dtr.perception.extract`
 
 After alignment and optional fusion, embeddings are published to:
 
@@ -92,6 +93,44 @@ Embeddings are wrapped in a `PerceptionEmbeddingsEvent` containing encoder metad
 
 Each `spans` entry captures `[start_ms, end_ms]` for the aligned hop, and `encoders` describe the model that produced the embedding. The `provenance` block now includes the git commit, installed package version, and (when available) the container image tag alongside the timestamp and detected modalities so downstream consumers can trace how embeddings were generated.
 
+### Extraction Requests
+
+External tools can request fresh embeddings without going through the
+`dtr.input.received` pipeline by publishing `PerceptionExtractEvent`
+messages on `dtr.perception.extract`. The payload mirrors the arguments
+accepted by `PerceptionService.run`:
+
+```json
+{
+  "event": "dtr.perception.extract",
+  "version": 1,
+  "payload": {
+    "message_id": "42",
+    "user_id": "alice",
+    "text": "optional raw text used to derive tokens",
+    "text_tokens": [["Email", 0.0, 0.03], ["me", 0.03, 0.06]],
+    "text_hop_size": 0.03,
+    "audio_path": "/tmp/audio.wav",
+    "video_path": null,
+    "embeddings": [[0.1, 0.2, 0.3]],
+    "spans": [[0, 30]],
+    "modality_mask": {"text": [true]},
+    "contribution_mask": {"text": [true]},
+    "encoders": [{"name": "gte-small", "modality": "text"}],
+    "provenance": {"timestamp": 1713972000.0},
+    "audio_opt_in": true,
+    "video_opt_in": false,
+    "retain_media": false
+  }
+}
+```
+
+Only `message_id` and `user_id` are required; the service will derive hop
+aligned tokens from `text` when `text_tokens` are omitted. When
+`embeddings` is provided the existing fused vectors are republished,
+which is useful for replay jobs. Otherwise the active perception workers
+process any referenced media paths and emit new embeddings.
+
 ## Embedding Events
 
 `PERCEPTION.EMBEDDINGS` events on the `dtr.perception.embeddings` subject carry the
@@ -139,7 +178,12 @@ export NATS_URL=nats://localhost:4222
 python -m deepthought.services.perception.cli --grid-hop-size 0.1 --listen
 ```
 
-The listener consumes `dtr.input.received` messages and publishes aligned embeddings to `dtr.perception.embeddings`.
+The listener consumes `dtr.input.received` messages and, unless disabled,
+`dtr.perception.extract` requests before publishing aligned embeddings to
+`dtr.perception.embeddings`. Use `--no-input-listener` or
+`--no-extract-listener` to disable individual subscriptions and
+`--extract-durable` to customize the durable consumer name for the
+extraction channel.
 
 ## Durability Configuration
 
@@ -186,6 +230,10 @@ requirements.
    ```bash
    python scripts/replay_perception.py --nats-url nats://localhost:4222
    ```
+
+   The replay script publishes `PerceptionExtractEvent` requests so the
+   running perception service reprocesses each message and emits fresh
+   `dtr.perception.embeddings` events.
 
 
 ### Monitoring with Weights & Biases

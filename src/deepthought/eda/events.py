@@ -29,6 +29,7 @@ class EventSubjects:
 
     # Perception events
     PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings"
+    PERCEPTION_EXTRACT = "dtr.perception.extract"
 
     # Raw chat message events
     CHAT_RAW = "chat.raw"
@@ -316,7 +317,7 @@ class PerceptionEmbeddingsEvent(EventPayload):
                 "spans",
                 "modality_mask",
                 "by_modality",
-                "hop_contribution_mask",
+                "contribution_mask",
 
             }
             payload_data = {k: data[k] for k in payload_keys if k in data}
@@ -331,6 +332,191 @@ class PerceptionEmbeddingsEvent(EventPayload):
 
     @classmethod
     def from_json(cls, json_str: str) -> "PerceptionEmbeddingsEvent":
+        return cls.from_dict(json.loads(json_str))
+
+
+@dataclass
+class PerceptionExtractPayload(EventPayload):
+    """Payload describing a perception extraction request."""
+
+    message_id: str
+    user_id: str
+    text: Optional[str] = None
+    text_tokens: Optional[list[list[Any]]] = None
+    embeddings: Optional[list[list[float]]] = None
+    spans: Optional[list[list[int]]] = None
+    modality_mask: Dict[str, list[bool]] = field(default_factory=dict)
+    contribution_mask: Dict[str, list[bool]] = field(default_factory=dict)
+    encoders: list[Dict[str, Any]] = field(default_factory=list)
+    provenance: Dict[str, Any] = field(default_factory=dict)
+    audio_path: Optional[str] = None
+    video_path: Optional[str] = None
+    audio_opt_in: Optional[bool] = None
+    video_opt_in: Optional[bool] = None
+    retain_media: Optional[bool] = None
+    text_hop_size: Optional[float] = None
+
+    @staticmethod
+    def _parse_tokens(raw_tokens: Any) -> Optional[list[list[Any]]]:
+        if not raw_tokens:
+            return None
+        tokens: list[list[Any]] = []
+        if isinstance(raw_tokens, (list, tuple)):
+            for token in raw_tokens:
+                if not isinstance(token, (list, tuple)) or len(token) < 3:
+                    continue
+                word = str(token[0])
+                try:
+                    start = float(token[1])
+                    end = float(token[2])
+                except (TypeError, ValueError):
+                    continue
+                tokens.append([word, start, end])
+        return tokens or None
+
+    @staticmethod
+    def _parse_spans(raw_spans: Any) -> Optional[list[list[int]]]:
+        if raw_spans is None:
+            return None
+        spans: list[list[int]] = []
+        for span in raw_spans:
+            if not isinstance(span, (list, tuple)) or len(span) < 2:
+                continue
+            try:
+                start = int(span[0])
+                end = int(span[1])
+            except (TypeError, ValueError):
+                continue
+            spans.append([start, end])
+        return spans or None
+
+    @staticmethod
+    def _parse_embeddings(raw_embeddings: Any) -> Optional[list[list[float]]]:
+        if raw_embeddings is None:
+            return None
+        embeddings: list[list[float]] = []
+        if isinstance(raw_embeddings, (list, tuple)):
+            if raw_embeddings and isinstance(raw_embeddings[0], (int, float)):
+                embeddings.append([float(x) for x in raw_embeddings])
+            else:
+                for vector in raw_embeddings:
+                    if isinstance(vector, (list, tuple)):
+                        embeddings.append([float(x) for x in vector])
+        return embeddings or None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PerceptionExtractPayload":
+        tokens = cls._parse_tokens(
+            data.get("text_tokens") or data.get("tokens")
+        )
+        text = data.get("text")
+        if text is None and isinstance(data.get("user_input"), str):
+            text = data["user_input"]
+
+        modality_mask: Dict[str, list[bool]] = {}
+        for name, flags in (data.get("modality_mask") or {}).items():
+            modality_mask[name] = [bool(flag) for flag in flags]
+
+        contribution_mask: Dict[str, list[bool]] = {}
+        for name, flags in (data.get("contribution_mask") or {}).items():
+            contribution_mask[name] = [bool(flag) for flag in flags]
+
+        encoders_raw = data.get("encoders") or []
+        encoders: list[Dict[str, Any]] = []
+        for enc in encoders_raw:
+            if isinstance(enc, dict):
+                encoders.append(dict(enc))
+
+        provenance = data.get("provenance")
+        if provenance is None or not isinstance(provenance, dict):
+            provenance = {}
+
+        consent = data.get("consent")
+        audio_opt_in = data.get("audio_opt_in")
+        video_opt_in = data.get("video_opt_in")
+        if isinstance(consent, dict):
+            audio_opt_in = consent.get("audio") if audio_opt_in is None else audio_opt_in
+            video_opt_in = consent.get("video") if video_opt_in is None else video_opt_in
+
+        return cls(
+            message_id=data["message_id"],
+            user_id=data["user_id"],
+            text=text,
+            text_tokens=tokens,
+            embeddings=cls._parse_embeddings(data.get("embeddings") or data.get("fused")),
+            spans=cls._parse_spans(data.get("spans")),
+            modality_mask=modality_mask,
+            contribution_mask=contribution_mask,
+            encoders=encoders,
+            provenance=provenance,
+            audio_path=data.get("audio_path"),
+            video_path=data.get("video_path"),
+            audio_opt_in=audio_opt_in,
+            video_opt_in=video_opt_in,
+            retain_media=data.get("retain_media"),
+            text_hop_size=data.get("text_hop_size") or data.get("tokens_hop_size"),
+        )
+
+
+@dataclass
+class PerceptionExtractEvent(EventPayload):
+    """Event describing a perception extraction request."""
+
+    event: str = EventSubjects.PERCEPTION_EXTRACT
+    version: int = 1
+    payload: Optional[PerceptionExtractPayload] = None
+
+    def to_json(self) -> str:
+        base = {
+            "event": self.event,
+            "version": self.version,
+        }
+        payload_dict = asdict(self.payload) if self.payload else {}
+        if self.payload:
+            base["payload"] = payload_dict
+        else:
+            base.update(payload_dict)
+        return json.dumps({**base, **payload_dict})
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PerceptionExtractEvent":
+        payload_data = data.get("payload")
+        if not payload_data:
+            payload_keys = {
+                "message_id",
+                "user_id",
+                "text",
+                "text_tokens",
+                "tokens",
+                "embeddings",
+                "fused",
+                "spans",
+                "modality_mask",
+                "contribution_mask",
+                "encoders",
+                "provenance",
+                "audio_path",
+                "video_path",
+                "audio_opt_in",
+                "video_opt_in",
+                "retain_media",
+                "text_hop_size",
+                "tokens_hop_size",
+            }
+            payload_data = {k: data[k] for k in payload_keys if k in data}
+        payload = (
+            PerceptionExtractPayload.from_dict(payload_data)
+            if payload_data
+            else None
+        )
+        return cls(
+            event=data.get("event", EventSubjects.PERCEPTION_EXTRACT),
+            version=data.get("version", 1),
+            payload=payload,
+        )
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "PerceptionExtractEvent":
         return cls.from_dict(json.loads(json_str))
 
 

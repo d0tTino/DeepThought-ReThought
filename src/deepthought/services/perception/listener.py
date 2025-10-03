@@ -10,7 +10,11 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-from ...eda.events import EventSubjects, InputReceivedPayload
+from ...eda.events import (
+    EventSubjects,
+    InputReceivedPayload,
+    PerceptionExtractEvent,
+)
 from ...eda.subscriber import Subscriber
 from .config import PerceptionConfig
 from .service import PerceptionService
@@ -47,14 +51,54 @@ class PerceptionServiceListener:
             hop_value = 0.03
         self._text_hop_size = hop_value
 
-    async def start(self, durable_name: str = "perception_listener") -> bool:
-        """Begin listening for input events."""
+    async def start(
+        self,
+        durable_name: str = "perception_listener",
+        *,
+        listen_extract: bool = False,
+        extract_durable: str | None = None,
+    ) -> bool:
+        """Begin listening for input events and optional extract requests."""
+
+        ok = await self.start_input(durable_name=durable_name)
+        if listen_extract:
+            extract_ok = await self.start_extract(
+                durable_name=extract_durable or "perception-extract-listener",
+            )
+            ok = ok and extract_ok
+        return ok
+
+    async def start_input(self, durable_name: str = "perception_listener") -> bool:
+        """Subscribe to ``dtr.input.received`` events."""
+
         return await self._subscriber.subscribe(
             subject=EventSubjects.INPUT_RECEIVED,
             handler=self._handle,
             use_jetstream=True,
             durable=durable_name,
         )
+
+    async def start_extract(
+        self, durable_name: str = "perception-extract-listener"
+    ) -> bool:
+        """Subscribe to ``dtr.perception.extract`` events."""
+
+        return await self._subscriber.subscribe(
+            subject=EventSubjects.PERCEPTION_EXTRACT,
+            handler=self._handle_extract,
+            use_jetstream=True,
+            durable=durable_name,
+        )
+
+    async def handle_input(self, msg: Msg) -> None:
+        """Public alias for processing input messages."""
+
+        await self._handle(msg)
+
+    async def handle_extract(self, msg: Msg) -> None:
+        """Public alias for processing extraction requests."""
+
+        await self._handle_extract(msg)
 
     async def _handle(self, msg: Msg) -> None:
         """Decode event payload and dispatch to the service."""
@@ -182,3 +226,71 @@ class PerceptionServiceListener:
                     await msg.ack()
                 except Exception:  # pragma: no cover - defensive
                     logger.error("Failed to ack message after error", exc_info=True)
+
+    async def _handle_extract(self, msg: Msg) -> None:
+        """Process a perception extraction request."""
+
+        try:
+            try:
+                raw: Dict[str, Any] = json.loads(msg.data.decode())
+            except Exception:
+                raw = {}
+
+            event = PerceptionExtractEvent.from_dict(raw)
+            payload = event.payload
+            if payload is None:
+                if hasattr(msg, "ack") and callable(msg.ack):
+                    await msg.ack()
+                return
+
+            text_tokens = None
+            if payload.text_tokens:
+                text_tokens = scrub_tokens(payload.text_tokens)
+            elif isinstance(payload.text, str) and payload.text.strip():
+                hop = payload.text_hop_size or self._text_hop_size
+                try:
+                    hop_value = float(hop)
+                except (TypeError, ValueError):
+                    hop_value = self._text_hop_size
+                if hop_value <= 0:
+                    hop_value = self._text_hop_size
+                try:
+                    generated = hop_aligned_tokens(payload.text, hop_value)
+                except Exception:
+                    generated = []
+                if generated:
+                    text_tokens = generated
+
+            kwargs: Dict[str, Any] = {
+                "message_id": payload.message_id,
+                "user_id": payload.user_id,
+                "spans": payload.spans,
+                "modality_mask": payload.modality_mask,
+                "embeddings": payload.embeddings,
+                "encoders": payload.encoders,
+                "provenance": payload.provenance,
+                "text_tokens": text_tokens,
+                "audio_path": payload.audio_path,
+                "video_path": payload.video_path,
+                "audio_opt_in": payload.audio_opt_in,
+                "video_opt_in": payload.video_opt_in,
+                "contribution_mask": payload.contribution_mask,
+            }
+            if payload.retain_media is not None:
+                kwargs["retain_media"] = bool(payload.retain_media)
+
+            await self._service.run(**{k: v for k, v in kwargs.items() if v is not None})
+            if hasattr(msg, "ack") and callable(msg.ack):
+                await msg.ack()
+        except Exception:  # pragma: no cover - defensive
+            logger.error("Failed to process perception extract request", exc_info=True)
+            if hasattr(msg, "nak") and callable(msg.nak):
+                try:
+                    await msg.nak()
+                except Exception:  # pragma: no cover - defensive
+                    logger.error("Failed to NAK message", exc_info=True)
+            elif hasattr(msg, "ack") and callable(msg.ack):
+                try:
+                    await msg.ack()
+                except Exception:  # pragma: no cover - defensive
+                    logger.error("Failed to ack message after extract error", exc_info=True)

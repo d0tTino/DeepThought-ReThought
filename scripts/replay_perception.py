@@ -13,9 +13,13 @@ from nats.errors import TimeoutError
 from nats.js.api import ConsumerConfig, DeliverPolicy
 from nats.js.client import JetStreamContext
 
-from deepthought.eda.events import EventSubjects, PerceptionEmbeddingsEvent
-from deepthought.services.perception.publisher import PerceptionPublisher
-from deepthought.services.perception.service import PerceptionService
+from deepthought.eda.events import (
+    EventSubjects,
+    PerceptionEmbeddingsEvent,
+    PerceptionExtractEvent,
+    PerceptionExtractPayload,
+)
+from deepthought.eda.publisher import Publisher
 
 
 async def _replay(
@@ -29,8 +33,7 @@ async def _replay(
     await nc.connect(servers=[nats_url])
     js: JetStreamContext = nc.jetstream()
 
-    publisher = PerceptionPublisher(nc, js)
-    service = PerceptionService(publisher)
+    publisher = Publisher(nc, js)
 
     sub = await js.pull_subscribe(
         EventSubjects.PERCEPTION_EMBEDDINGS,
@@ -69,14 +72,22 @@ async def _replay(
                 encoders: list[Dict[str, Any]] = [
                     {"name": enc.name, "modality": enc.modality} for enc in event.encoders
                 ]
-                await service.run(
-                    message_id=payload.message_id,
-                    user_id=payload.user_id,
-                    embeddings=payload.fused,
-                    spans=payload.spans,
-                    modality_mask=payload.modality_mask,
-                    encoders=encoders,
-                    provenance=event.provenance,
+                request = PerceptionExtractEvent(
+                    payload=PerceptionExtractPayload(
+                        message_id=payload.message_id,
+                        user_id=payload.user_id,
+                        embeddings=payload.fused,
+                        spans=payload.spans,
+                        modality_mask=payload.modality_mask,
+                        contribution_mask=payload.contribution_mask,
+                        encoders=encoders,
+                        provenance=event.provenance,
+                    )
+                )
+                await publisher.publish(
+                    EventSubjects.PERCEPTION_EXTRACT,
+                    request,
+                    use_jetstream=True,
                 )
                 await msg.ack()
     finally:
