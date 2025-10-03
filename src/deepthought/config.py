@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
+import subprocess
+from importlib import metadata
 from pathlib import Path
 from typing import Optional
 
@@ -176,6 +179,71 @@ def get_settings(config_file: Optional[str] = None) -> Settings:
         _settings_cache = load_settings(config_file)
         _settings_path = path
     return _settings_cache
+
+
+def _first_non_empty(*names: str) -> str | None:
+    """Return the first non-empty environment variable among ``names``."""
+
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            value = value.strip()
+            if value:
+                return value
+    return None
+
+
+@functools.lru_cache(maxsize=1)
+def get_git_commit() -> str | None:
+    """Return the current git commit hash if available."""
+
+    env_value = _first_non_empty("DT_GIT_COMMIT", "GIT_COMMIT", "SOURCE_COMMIT", "SOURCE_VERSION")
+    if env_value:
+        return env_value
+
+    repo_root = Path(__file__).resolve().parents[2]
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=str(repo_root),
+        )
+    except Exception:  # pragma: no cover - git may be unavailable at runtime
+        return None
+    commit = result.stdout.strip()
+    return commit or None
+
+
+@functools.lru_cache(maxsize=1)
+def get_package_version() -> str | None:
+    """Return the installed ``deepthought`` package version if available."""
+
+    env_value = _first_non_empty("DT_PACKAGE_VERSION", "PACKAGE_VERSION")
+    if env_value:
+        return env_value
+
+    try:  # pragma: no cover - importlib metadata may not know about the package
+        return metadata.version("deepthought")
+    except metadata.PackageNotFoundError:
+        pass
+    except Exception:  # pragma: no cover - unexpected metadata failures
+        return None
+
+    try:
+        from . import __version__
+
+        return __version__
+    except Exception:  # pragma: no cover - __version__ may be missing
+        return None
+
+
+@functools.lru_cache(maxsize=1)
+def get_container_tag() -> str | None:
+    """Return the container image tag if it was provided."""
+
+    return _first_non_empty("DT_CONTAINER_TAG", "CONTAINER_TAG", "IMAGE_TAG")
 
 
 class BotEnv(BaseSettings):

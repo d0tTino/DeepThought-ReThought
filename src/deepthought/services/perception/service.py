@@ -14,7 +14,12 @@ import logging
 import numpy as np
 import torch
 
-from ...config import get_settings
+from ...config import (
+    get_container_tag,
+    get_git_commit,
+    get_package_version,
+    get_settings,
+)
 from ...metrics.prometheus import (
     INPUT_LATENCY_SECONDS,
     INPUTS_TOTAL,
@@ -151,6 +156,18 @@ class PerceptionService:
         store_embedding: torch.Tensor | None = None
         provenance = dict(provenance or {})
         provenance.setdefault("timestamp", time.time())
+
+        git_commit = get_git_commit()
+        if git_commit is not None:
+            provenance.setdefault("git_commit", git_commit)
+
+        package_version = get_package_version()
+        if package_version is not None:
+            provenance.setdefault("package_version", package_version)
+
+        container_tag = get_container_tag()
+        if container_tag is not None:
+            provenance.setdefault("container_tag", container_tag)
         grid_spans: list[list[int]] | None = (
             [[int(span[0]), int(span[1])] for span in spans]
             if spans is not None

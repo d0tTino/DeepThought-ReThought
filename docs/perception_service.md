@@ -49,7 +49,13 @@ Embeddings are wrapped in a `PerceptionEmbeddingsEvent` containing encoder metad
     {"name": "AudioPerceptionWorker"},
     {"name": "VideoPerceptionWorker"}
   ],
-  "provenance": {"timestamp": 1713972000.0, "modalities": ["text", "audio", "video"]},
+  "provenance": {
+    "timestamp": 1713972000.0,
+    "modalities": ["text", "audio", "video"],
+    "git_commit": "deadbeef",
+    "package_version": "0.0.test",
+    "container_tag": "local/dev"
+  },
   "payload": {
     "message_id": "42",
     "user_id": "user",
@@ -84,7 +90,7 @@ Embeddings are wrapped in a `PerceptionEmbeddingsEvent` containing encoder metad
 }
 ```
 
-Each `spans` entry captures `[start_ms, end_ms]` for the aligned hop, and `encoders` describe the model that produced the embedding.
+Each `spans` entry captures `[start_ms, end_ms]` for the aligned hop, and `encoders` describe the model that produced the embedding. The `provenance` block now includes the git commit, installed package version, and (when available) the container image tag alongside the timestamp and detected modalities so downstream consumers can trace how embeddings were generated.
 
 ## Embedding Events
 
