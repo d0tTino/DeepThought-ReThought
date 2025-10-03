@@ -68,6 +68,7 @@ from deepthought.utils import UserRateLimiter
 
 try:
     import discord
+    from discord.ext import commands
 except Exception:  # pragma: no cover - optional dependency
     from datetime import datetime as dt_datetime
     from datetime import timezone as dt_timezone
@@ -107,13 +108,20 @@ except Exception:  # pragma: no cover - optional dependency
         def default(cls):
             return cls()
 
+    class _DummyCommandTree:
+        def __init__(self, client):
+            self.client = client
+
     discord = SimpleNamespace(
         Client=Client,
         Message=Message,
         TextChannel=TextChannel,
         Intents=Intents,
         utils=_DummyUtils,
+        app_commands=SimpleNamespace(CommandTree=_DummyCommandTree),
     )
+
+    commands = SimpleNamespace(Bot=Client)
 
 import nats
 from nats.aio.msg import Msg
@@ -818,15 +826,17 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
             break
 
 
-class SocialGraphBot(discord.Client):
+class SocialGraphBot(commands.Bot):
     """Discord bot that records interactions and demonstrates simple awareness."""
 
-    def __init__(self, *args, monitor_channel_id: int, **kwargs):
+    def __init__(self, *args, monitor_channel_id: int, command_prefix: str = "!", **kwargs):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
         intents.presences = True
-        super().__init__(*args, intents=intents, **kwargs)
+        super().__init__(*args, command_prefix=command_prefix, intents=intents, **kwargs)
+        if not hasattr(self, "tree"):
+            self.tree = discord.app_commands.CommandTree(self)
         self.monitor_channel_id = monitor_channel_id
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler(db_manager)
@@ -859,12 +869,12 @@ class SocialGraphBot(discord.Client):
                 logger.warning("Failed to subscribe to CHAT_RAW: %s", exc)
                 self._subscriber = None
 
-        self._bg_tasks.append(self.loop.create_task(monitor_channels(self, self.monitor_channel_id)))
-        self._bg_tasks.append(self.loop.create_task(process_deep_reflections(self)))
-        self._bg_tasks.append(self.loop.create_task(process_goals(self)))
-        self._bg_tasks.append(self.loop.create_task(process_intentions(self)))
+        self._bg_tasks.append(asyncio.create_task(monitor_channels(self, self.monitor_channel_id)))
+        self._bg_tasks.append(asyncio.create_task(process_deep_reflections(self)))
+        self._bg_tasks.append(asyncio.create_task(process_goals(self)))
+        self._bg_tasks.append(asyncio.create_task(process_intentions(self)))
         if THOUGHT_CHANNEL_ID is not None:
-            self._bg_tasks.append(self.loop.create_task(process_thought_commands(self)))
+            self._bg_tasks.append(asyncio.create_task(process_thought_commands(self)))
 
     async def on_ready(self) -> None:
         """Log basic information once the bot connects."""
@@ -1122,10 +1132,13 @@ class SocialGraphBot(discord.Client):
         await super().close()
 
 
-def run(token: str, monitor_channel_id: int) -> None:
+async def run(token: str, monitor_channel_id: int) -> None:
     """Run the SocialGraphBot."""
     bot = SocialGraphBot(monitor_channel_id=monitor_channel_id)
-    bot.run(token)
+    try:
+        await bot.start(token)
+    finally:
+        await bot.close()
 
 
 async def enqueue_goal(goal: str, priority: int = 1) -> None:
@@ -1148,4 +1161,4 @@ if __name__ == "__main__":
         asyncio.run(enqueue_goal(args.enqueue_goal, args.priority))
     else:
         env = load_bot_env()
-        run(env.DISCORD_TOKEN, env.MONITOR_CHANNEL)
+        asyncio.run(run(env.DISCORD_TOKEN, env.MONITOR_CHANNEL))
