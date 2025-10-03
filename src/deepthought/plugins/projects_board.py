@@ -18,6 +18,7 @@ from discord.ext import commands
 
 from ..config import get_settings
 from ..goal_scheduler import GoalScheduler
+from ..services.db_manager import DBManager
 
 __all__ = ["ProjectsBoard", "ProjectRecord"]
 
@@ -105,15 +106,28 @@ class ProjectsBoard(commands.Cog):
     def __init__(
         self,
         bot: commands.Bot,
-        *,
+        db_manager: DBManager | None = None,
         scheduler: GoalScheduler | None = None,
+        *,
+        forum_channel_id: int | None = None,
+        index_channel_id: int | None = None,
+        monitor_channel_id: int | None = None,
+        require_events: bool = False,
     ) -> None:
         self.bot = bot
-        self._scheduler = scheduler or GoalScheduler()
+        self._db_manager = db_manager
+        self._scheduler = scheduler or GoalScheduler(db_manager)
         self._db_path = get_settings().social_graph_db
         self._conn: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
-        self._forum_channel_id = self._resolve_forum_channel_id()
+        self._forum_channel_id = (
+            forum_channel_id
+            if forum_channel_id is not None
+            else self._resolve_forum_channel_id()
+        )
+        self._index_channel_id = index_channel_id
+        self._monitor_channel_id = monitor_channel_id
+        self._require_events = require_events
         self._startup_task: asyncio.Task[None] | None = None
         self._ready = asyncio.Event()
         if self.bot.loop.is_running():
@@ -750,6 +764,15 @@ class ProjectsBoard(commands.Cog):
     async def _locate_index_thread(
         self, channel: discord.ForumChannel
     ) -> discord.Thread | None:
+        if self._index_channel_id is not None:
+            thread = self.bot.get_channel(self._index_channel_id)
+            if thread is None:
+                with contextlib.suppress(discord.HTTPException, discord.NotFound, discord.Forbidden):
+                    thread = await self.bot.fetch_channel(self._index_channel_id)
+            if isinstance(thread, discord.Thread):
+                return thread
+            if thread is not None:
+                _LOG.warning("Configured projects index channel %s is not a thread", thread)
         for thread in channel.threads:
             if thread.name == INDEX_THREAD_NAME:
                 return thread
@@ -804,6 +827,8 @@ class ProjectsBoard(commands.Cog):
         self, record: ProjectRecord, guild: discord.Guild | None
     ) -> None:
         if guild is None or record is None:
+            return
+        if not self._require_events:
             return
         if record.archived_at:
             await self._cancel_scheduled_event(record, guild)

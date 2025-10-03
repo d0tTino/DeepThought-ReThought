@@ -59,6 +59,7 @@ DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.perception.emotion_detection import detect_emotions
 from deepthought.perception.social_perception import analyze as analyze_social
+from deepthought.plugins.projects_board import ProjectsBoard
 from deepthought.services import PersonaManager, TrustService
 from deepthought.services.db_manager import DBManager
 from deepthought.services.manipulative_detection import manipulation_score
@@ -829,7 +830,16 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
 class SocialGraphBot(commands.Bot):
     """Discord bot that records interactions and demonstrates simple awareness."""
 
-    def __init__(self, *args, monitor_channel_id: int, command_prefix: str = "!", **kwargs):
+    def __init__(
+        self,
+        *args,
+        monitor_channel_id: int,
+        forum_channel_id: int | None = None,
+        index_channel_id: int | None = None,
+        require_scheduled_events: bool = False,
+        command_prefix: str = "!",
+        **kwargs,
+    ):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
@@ -838,11 +848,15 @@ class SocialGraphBot(commands.Bot):
         if not hasattr(self, "tree"):
             self.tree = discord.app_commands.CommandTree(self)
         self.monitor_channel_id = monitor_channel_id
+        self.forum_channel_id = forum_channel_id
+        self.index_channel_id = index_channel_id
+        self.require_scheduled_events = require_scheduled_events
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler(db_manager)
         self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
         self.persona_manager = PersonaManager(db_manager)
         self._subscriber: Subscriber | None = None
+        self._projects_board: ProjectsBoard | None = None
 
     async def setup_hook(self) -> None:
         await db_manager.connect()
@@ -868,6 +882,17 @@ class SocialGraphBot(commands.Bot):
             except Exception as exc:  # pragma: no cover - subscription error
                 logger.warning("Failed to subscribe to CHAT_RAW: %s", exc)
                 self._subscriber = None
+
+        self._projects_board = ProjectsBoard(
+            self,
+            db_manager,
+            self.goal_scheduler,
+            forum_channel_id=self.forum_channel_id,
+            index_channel_id=self.index_channel_id,
+            monitor_channel_id=self.monitor_channel_id,
+            require_events=self.require_scheduled_events,
+        )
+        await self.add_cog(self._projects_board)
 
         self._bg_tasks.append(asyncio.create_task(monitor_channels(self, self.monitor_channel_id)))
         self._bg_tasks.append(asyncio.create_task(process_deep_reflections(self)))
@@ -1132,9 +1157,21 @@ class SocialGraphBot(commands.Bot):
         await super().close()
 
 
-async def run(token: str, monitor_channel_id: int) -> None:
+async def run(
+    token: str,
+    monitor_channel_id: int,
+    *,
+    forum_channel_id: int | None = None,
+    index_channel_id: int | None = None,
+    require_scheduled_events: bool = False,
+) -> None:
     """Run the SocialGraphBot."""
-    bot = SocialGraphBot(monitor_channel_id=monitor_channel_id)
+    bot = SocialGraphBot(
+        monitor_channel_id=monitor_channel_id,
+        forum_channel_id=forum_channel_id,
+        index_channel_id=index_channel_id,
+        require_scheduled_events=require_scheduled_events,
+    )
     try:
         await bot.start(token)
     finally:
@@ -1161,4 +1198,12 @@ if __name__ == "__main__":
         asyncio.run(enqueue_goal(args.enqueue_goal, args.priority))
     else:
         env = load_bot_env()
-        asyncio.run(run(env.DISCORD_TOKEN, env.MONITOR_CHANNEL))
+        asyncio.run(
+            run(
+                env.DISCORD_TOKEN,
+                env.MONITOR_CHANNEL,
+                forum_channel_id=env.PROJECTS_FORUM_CHANNEL,
+                index_channel_id=env.PROJECTS_INDEX_CHANNEL,
+                require_scheduled_events=env.PROJECTS_REQUIRE_EVENTS,
+            )
+        )
