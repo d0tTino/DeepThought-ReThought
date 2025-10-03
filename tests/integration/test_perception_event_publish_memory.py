@@ -1,5 +1,7 @@
 import importlib
 import json
+import sys
+import types
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -17,6 +19,16 @@ def _ensure_real_torch():
         importlib.reload(torch.nn.modules.linear)
 
 
+core_video_module = types.ModuleType("deepthought.perception.worker_video")
+
+
+def _stub_video_to_feature_grid(*args, **kwargs):  # pragma: no cover - patched per test
+    raise RuntimeError("video_to_feature_grid stub requires monkeypatch")
+
+
+core_video_module.video_to_feature_grid = _stub_video_to_feature_grid
+sys.modules.setdefault("deepthought.perception.worker_video", core_video_module)
+
 from deepthought.eda.events import EventSubjects
 from deepthought.modules.fuser import ModalityFuser
 from deepthought.services.perception.publisher import PerceptionPublisher
@@ -24,6 +36,8 @@ from deepthought.services.perception.user_embeddings import UserEmbeddings
 from deepthought.services.perception.worker_audio import AudioPerceptionWorker
 from deepthought.services.perception.worker_text import TextPerceptionWorker
 from deepthought.services.perception.worker_video import VideoPerceptionWorker
+
+import deepthought.services.perception.worker_text as worker_text_module
 
 
 class DummySentenceModel:
@@ -41,14 +55,20 @@ class DummyJetStream:
         self.publish = AsyncMock(return_value=SimpleNamespace(seq=1, stream="s"))
 
 
+PROVENANCE_META = {
+    "git_commit": "deadbeef",
+    "package_version": "0.0.test",
+    "container_tag": "integration-test",
+    "timestamp": 1.0,
+}
+
+
 @pytest.mark.asyncio
 async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker_text_module, "SentenceTransformer", lambda name: DummySentenceModel())
     monkeypatch.setattr(
-        "deepthought.services.perception.worker_text.SentenceTransformer",
-        lambda name: DummySentenceModel(),
-    )
-    monkeypatch.setattr(
-        "deepthought.services.perception.worker_video.video_to_feature_grid",
+        core_video_module,
+        "video_to_feature_grid",
         lambda path, decode_fps, model_type, grid_fps: (
             np.asarray([[1.0, 2.0]], dtype=np.float32),
             np.asarray([0.0], dtype=np.float32),
@@ -63,8 +83,7 @@ async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_pa
     audio_feats, _ = audio_worker(audio_path)
     text_worker = TextPerceptionWorker(hop_seconds=0.05)
     text_feats, _ = text_worker([("hi", 0.0, 0.05)], tmp_path / "t.dat")
-    video_worker = VideoPerceptionWorker()
-    video_feats, _ = video_worker("v.mp4")
+    video_feats, _ = core_video_module.video_to_feature_grid("v.mp4", 1, "model", 1)
 
     store = UserEmbeddings(tmp_path / "emb.json")
     try:
@@ -94,6 +113,7 @@ async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_pa
         },
         spans=[[0, 1]],
         modality_mask={"text": [True]},
+        provenance=PROVENANCE_META,
     )
 
     js.publish.assert_awaited_once()
@@ -105,18 +125,19 @@ async def test_perception_event_publishing_and_memory_upsert(monkeypatch, tmp_pa
     assert payload["spans"] == [[0, 1]]
     assert payload["modality_mask"] == {"text": [True]}
     assert payload["spans"] == payload["by_modality"]["text"]["spans"]
+    assert payload["provenance"]["git_commit"] == "deadbeef"
+    assert payload["provenance"]["package_version"] == "0.0.test"
+    assert payload["provenance"]["container_tag"] == "integration-test"
 
 
 @pytest.mark.asyncio
 async def test_perception_modality_dropout(monkeypatch, tmp_path):
     """Ensure publishing still succeeds when a modality is dropped."""
 
+    monkeypatch.setattr(worker_text_module, "SentenceTransformer", lambda name: DummySentenceModel())
     monkeypatch.setattr(
-        "deepthought.services.perception.worker_text.SentenceTransformer",
-        lambda name: DummySentenceModel(),
-    )
-    monkeypatch.setattr(
-        "deepthought.services.perception.worker_video.video_to_feature_grid",
+        core_video_module,
+        "video_to_feature_grid",
         lambda path, decode_fps, model_type, grid_fps: (
             np.asarray([[1.0, 2.0]], dtype=np.float32),
             np.asarray([0.0], dtype=np.float32),
@@ -130,9 +151,8 @@ async def test_perception_modality_dropout(monkeypatch, tmp_path):
     audio_worker = AudioPerceptionWorker()
     audio_feats, _ = audio_worker(audio_path)
     text_worker = TextPerceptionWorker(hop_seconds=0.05)
-    text_feats = text_worker([("hi", 0.0, 0.05)], tmp_path / "t.dat")
-    video_worker = VideoPerceptionWorker()
-    video_feats, _ = video_worker("v.mp4")
+    text_feats, _ = text_worker([("hi", 0.0, 0.05)], tmp_path / "t.dat")
+    video_feats, _ = core_video_module.video_to_feature_grid("v.mp4", 1, "model", 1)
 
     store = UserEmbeddings(tmp_path / "emb.json")
     try:
@@ -178,12 +198,10 @@ async def test_perception_modality_dropout(monkeypatch, tmp_path):
 async def test_user_embedding_update(monkeypatch, tmp_path):
     """User embeddings are updated on subsequent fusions."""
 
+    monkeypatch.setattr(worker_text_module, "SentenceTransformer", lambda name: DummySentenceModel())
     monkeypatch.setattr(
-        "deepthought.services.perception.worker_text.SentenceTransformer",
-        lambda name: DummySentenceModel(),
-    )
-    monkeypatch.setattr(
-        "deepthought.services.perception.worker_video.video_to_feature_grid",
+        core_video_module,
+        "video_to_feature_grid",
         lambda path, decode_fps, model_type, grid_fps: (
             np.asarray([[1.0, 2.0]], dtype=np.float32),
             np.asarray([0.0], dtype=np.float32),
@@ -197,9 +215,8 @@ async def test_user_embedding_update(monkeypatch, tmp_path):
     audio_worker = AudioPerceptionWorker()
     audio_feats, _ = audio_worker(audio_path)
     text_worker = TextPerceptionWorker(hop_seconds=0.05)
-    text_feats = text_worker([("hi", 0.0, 0.05)], tmp_path / "t.dat")
-    video_worker = VideoPerceptionWorker()
-    video_feats, _ = video_worker("v.mp4")
+    text_feats, _ = text_worker([("hi", 0.0, 0.05)], tmp_path / "t.dat")
+    video_feats, _ = core_video_module.video_to_feature_grid("v.mp4", 1, "model", 1)
 
     store = UserEmbeddings(tmp_path / "emb.json")
     try:
@@ -222,6 +239,7 @@ async def test_user_embedding_update(monkeypatch, tmp_path):
         "u1",
         fused=fused1.squeeze(0).detach().numpy().tolist(),
         by_modality={},
+        provenance=PROVENANCE_META,
     )
 
     fused2 = fuser(modalities, user_embedding=torch.ones((1, 2)), user_id="u1", embedding_store=store)
@@ -233,6 +251,7 @@ async def test_user_embedding_update(monkeypatch, tmp_path):
         "u1",
         fused=fused2.squeeze(0).detach().numpy().tolist(),
         by_modality={},
+        provenance=PROVENANCE_META,
     )
 
     assert js.publish.await_count == 2

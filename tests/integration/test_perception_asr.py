@@ -58,6 +58,15 @@ _ensure_stub("deepthought.services", services_pkg)
 perception_pkg = types.ModuleType("deepthought.services.perception")
 perception_pkg.__path__ = ["src/deepthought/services/perception"]
 _ensure_stub("deepthought.services.perception", perception_pkg)
+
+
+@pytest.fixture(autouse=True)
+def _stub_build_metadata(monkeypatch):
+    from deepthought.services.perception import service as service_module
+
+    monkeypatch.setattr(service_module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(service_module, "get_package_version", lambda: "0.0.test")
+    monkeypatch.setattr(service_module, "get_container_tag", lambda: "integration-test")
 services_pkg.perception = perception_pkg  # type: ignore[attr-defined]
 
 
@@ -287,3 +296,6 @@ async def test_perception_asr_pipeline(tmp_path: Path, monkeypatch: pytest.Monke
 
     provenance = publisher.kwargs["provenance"]
     assert set(provenance["modalities"]) == {"text", "audio"}
+    assert provenance["git_commit"] == "deadbeef"
+    assert provenance["package_version"] == "0.0.test"
+    assert provenance["container_tag"] == "integration-test"

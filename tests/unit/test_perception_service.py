@@ -1,14 +1,42 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import sys
+import types
 from typing import Dict, Sequence, Tuple
 
 import numpy as np
 import pytest
 import torch
 
+os.environ.setdefault("DEEPTHOUGHT_LIGHT_IMPORT", "1")
+services_pkg = types.ModuleType("deepthought.services")
+services_pkg.__path__ = ["src/deepthought/services"]
+sys.modules.setdefault("deepthought.services", services_pkg)
+
+perception_pkg = types.ModuleType("deepthought.services.perception")
+perception_pkg.__path__ = ["src/deepthought/services/perception"]
+sys.modules.setdefault("deepthought.services.perception", perception_pkg)
+
+worker_video_stub = types.ModuleType("deepthought.services.perception.worker_video")
+worker_video_stub.VideoPerceptionWorker = object
+sys.modules.setdefault("deepthought.services.perception.worker_video", worker_video_stub)
+
+core_video_stub = types.ModuleType("deepthought.perception.worker_video")
+core_video_stub.video_to_feature_grid = lambda *args, **kwargs: (np.zeros((1, 1)), np.zeros((1,)))
+sys.modules.setdefault("deepthought.perception.worker_video", core_video_stub)
+
 from deepthought.services.perception.service import PerceptionService
 from deepthought.services.perception.user_embeddings import UserEmbeddings
+
+
+@pytest.fixture(autouse=True)
+def _stub_build_metadata(monkeypatch):
+    service_module = sys.modules[PerceptionService.__module__]
+    monkeypatch.setattr(service_module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(service_module, "get_package_version", lambda: "0.0.test")
+    monkeypatch.setattr(service_module, "get_container_tag", lambda: "unit-test")
 
 
 class DummyPublisher:
@@ -93,6 +121,9 @@ def test_service_publishes_raw_embeddings_and_metadata():
     assert provenance["test"] is True
     assert provenance["modalities"] == ["text"]
     assert isinstance(provenance["timestamp"], float)
+    assert provenance["git_commit"] == "deadbeef"
+    assert provenance["package_version"] == "0.0.test"
+    assert provenance["container_tag"] == "unit-test"
 
 
 class DummyVideoWorker:
@@ -134,6 +165,9 @@ def test_service_handles_video_modality():
     assert provenance["test"] is True
     assert provenance["modalities"] == ["video"]
     assert isinstance(provenance["timestamp"], float)
+    assert provenance["git_commit"] == "deadbeef"
+    assert provenance["package_version"] == "0.0.test"
+    assert provenance["container_tag"] == "unit-test"
 
 
 def test_service_requires_fuser_for_multiple_modalities(tmp_path):

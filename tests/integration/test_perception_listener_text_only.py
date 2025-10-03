@@ -17,6 +17,13 @@ from deepthought.services.perception.listener import PerceptionServiceListener
 from deepthought.services.perception.service import PerceptionService
 
 
+@pytest.fixture(autouse=True)
+def _stub_build_metadata(monkeypatch):
+    monkeypatch.setattr(service_module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(service_module, "get_package_version", lambda: "0.0.test")
+    monkeypatch.setattr(service_module, "get_container_tag", lambda: "integration-test")
+
+
 class FakeNATS:
     """Minimal NATS client stub used by the listener."""
 
@@ -232,4 +239,7 @@ async def test_listener_processes_text_only_payload(monkeypatch, tmp_path):
     provenance = event_kwargs["provenance"]
     assert provenance["modalities"] == ["text"]
     assert isinstance(provenance["timestamp"], float)
+    assert provenance["git_commit"] == "deadbeef"
+    assert provenance["package_version"] == "0.0.test"
+    assert provenance["container_tag"] == "integration-test"
 

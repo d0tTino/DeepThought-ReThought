@@ -26,6 +26,13 @@ from deepthought.services.perception import service as service_module  # noqa: E
 from deepthought.services.perception.service import PerceptionService  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _stub_build_metadata(monkeypatch):
+    monkeypatch.setattr(service_module, "get_git_commit", lambda: "deadbeef")
+    monkeypatch.setattr(service_module, "get_package_version", lambda: "0.0.test")
+    monkeypatch.setattr(service_module, "get_container_tag", lambda: "unit-test")
+
+
 class DummyPublisher:
     def __init__(self) -> None:
         self.kwargs: Dict | None = None
@@ -80,7 +87,7 @@ async def test_grid_hop_size_overrides_default(monkeypatch):
     assert text_meta["embeddings"] == [[2.0, 3.0]]
     assert publisher.kwargs["spans"] == text_meta["spans"]
     assert publisher.kwargs["modality_mask"]["text"] == [True]
-    assert publisher.kwargs["hop_contribution_mask"]["text"] == [True]
+    assert publisher.kwargs["contribution_mask"]["text"] == [True]
     encoder = text_meta["encoders"][0]
     assert encoder["name"] == "DummyTextWorker"
     assert encoder["modality"] == "text"
@@ -89,6 +96,9 @@ async def test_grid_hop_size_overrides_default(monkeypatch):
     provenance = publisher.kwargs["provenance"]
     assert provenance["modalities"] == ["text"]
     assert isinstance(provenance["timestamp"], float)
+    assert provenance["git_commit"] == "deadbeef"
+    assert provenance["package_version"] == "0.0.test"
+    assert provenance["container_tag"] == "unit-test"
 
 
 @pytest.mark.asyncio
@@ -143,10 +153,13 @@ async def test_text_encoder_metadata_cache_roundtrip(monkeypatch, tmp_path):
     }
     assert publisher.kwargs["spans"] == text_meta["spans"]
     assert publisher.kwargs["modality_mask"]["text"] == [True, True]
-    assert publisher.kwargs["hop_contribution_mask"]["text"] == [True, True]
+    assert publisher.kwargs["contribution_mask"]["text"] == [True, True]
     provenance = publisher.kwargs["provenance"]
     assert provenance["modalities"] == ["text"]
     assert provenance["timestamp"] == pytest.approx(1234.0)
+    assert provenance["git_commit"] == "deadbeef"
+    assert provenance["package_version"] == "0.0.test"
+    assert provenance["container_tag"] == "unit-test"
 
     meta_path = next(Path(fake_cfg.text_cache_dir).glob("*_meta.json"))
     meta_data = json.loads(meta_path.read_text())
@@ -177,5 +190,8 @@ async def test_text_encoder_metadata_cache_roundtrip(monkeypatch, tmp_path):
     assert hit_meta["encoders"][0] == override_meta
     assert publisher.kwargs["spans"] == hit_meta["spans"]
     assert publisher.kwargs["modality_mask"]["text"] == [True, True]
-    assert publisher.kwargs["hop_contribution_mask"]["text"] == [True, True]
+    assert publisher.kwargs["contribution_mask"]["text"] == [True, True]
     assert publisher.kwargs["provenance"]["timestamp"] == pytest.approx(5678.0)
+    assert publisher.kwargs["provenance"]["git_commit"] == "deadbeef"
+    assert publisher.kwargs["provenance"]["package_version"] == "0.0.test"
+    assert publisher.kwargs["provenance"]["container_tag"] == "unit-test"
