@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timedelta
+from typing import Any, Mapping
 
 import aiosqlite
 
@@ -48,6 +49,9 @@ MAX_THEORY_LENGTH = 256
 MAX_PROMPT_LENGTH = 2000
 AFFINITY_POS_DELTA = int(os.getenv("AFFINITY_POS_DELTA", "1"))
 AFFINITY_NEG_DELTA = int(os.getenv("AFFINITY_NEG_DELTA", "-1"))
+
+
+UNSET = object()
 
 
 class DBManager:
@@ -218,6 +222,20 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS projects (
+            project_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            thread_id INTEGER UNIQUE,
+            title TEXT NOT NULL,
+            priority INTEGER DEFAULT 0,
+            status TEXT NOT NULL,
+            due_date TEXT,
+            holiday INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            archived_at TEXT
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS lies (
             quest_id INTEGER,
             question TEXT,
@@ -321,6 +339,7 @@ class DBManager:
             if dir_path:
                 os.makedirs(dir_path, exist_ok=True)
             self._db = await aiosqlite.connect(self.db_path)
+            self._db.row_factory = aiosqlite.Row
             if not self._initialized:
                 for query in self.CREATE_TABLE_QUERIES:
                     await self._db.execute(query)
@@ -344,6 +363,56 @@ class DBManager:
             await self._db.execute("ALTER TABLE relationships ADD COLUMN interaction_weight REAL DEFAULT 0")
         if "last_interaction" not in cols:
             await self._db.execute("ALTER TABLE relationships ADD COLUMN last_interaction DATETIME")
+
+    @staticmethod
+    def _normalize_timestamp_input(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.replace(microsecond=0).isoformat()
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        raise TypeError("timestamp value must be datetime, str, or None")
+
+    @staticmethod
+    def _format_timestamp(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.replace(microsecond=0).isoformat()
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
+                try:
+                    parsed = datetime.strptime(text, fmt)
+                    return parsed.replace(microsecond=0).isoformat()
+                except ValueError:
+                    continue
+            try:
+                parsed = datetime.fromisoformat(text)
+            except ValueError:
+                return text
+            return parsed.replace(microsecond=0).isoformat()
+        return str(value)
+
+    def _project_row_to_dict(self, row: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "project_id": row["project_id"],
+            "thread_id": row["thread_id"],
+            "title": row["title"],
+            "priority": row["priority"],
+            "status": row["status"],
+            "due_date": self._format_timestamp(row["due_date"]),
+            "holiday": bool(row["holiday"]),
+            "created_at": self._format_timestamp(row["created_at"]),
+            "updated_at": self._format_timestamp(row["updated_at"]),
+            "archived_at": self._format_timestamp(row["archived_at"]),
+        }
 
     def _create_table_statements(self) -> list[str]:
         """Return SQL statements for creating required tables."""
@@ -835,6 +904,165 @@ class DBManager:
             (task_id,),
         )
         await self._db.commit()
+
+    async def create_project(
+        self,
+        thread_id: int | None,
+        title: str,
+        *,
+        priority: int = 0,
+        status: str = "active",
+        due_date: datetime | str | None = None,
+        holiday: bool = False,
+    ) -> dict[str, Any]:
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError("title must be a non-empty string")
+        if not isinstance(status, str) or not status.strip():
+            raise ValueError("status must be a non-empty string")
+        await self.connect()
+        assert self._db
+        due_value = self._normalize_timestamp_input(due_date)
+        cur = await self._db.execute(
+            """
+            INSERT INTO projects (thread_id, title, priority, status, due_date, holiday)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(thread_id) if thread_id is not None else None,
+                title.strip(),
+                int(priority),
+                status.strip(),
+                due_value,
+                int(bool(holiday)),
+            ),
+        )
+        await self._db.commit()
+        project_id = cur.lastrowid
+        if project_id is None:
+            raise RuntimeError("Failed to determine project identifier")
+        project = await self.get_project(project_id)
+        if project is None:
+            raise RuntimeError("Failed to load project after creation")
+        return project
+
+    async def update_project(
+        self,
+        thread_id: int,
+        *,
+        title: str | None = None,
+        priority: int | None = None,
+        status: str | None = None,
+        due_date: datetime | str | None | object = UNSET,
+        holiday: bool | None = None,
+    ) -> dict[str, Any] | None:
+        await self.connect()
+        assert self._db
+        clauses: list[str] = []
+        params: list[Any] = []
+        if title is not None:
+            if not isinstance(title, str) or not title.strip():
+                raise ValueError("title must be a non-empty string")
+            clauses.append("title = ?")
+            params.append(title.strip())
+        if priority is not None:
+            clauses.append("priority = ?")
+            params.append(int(priority))
+        if status is not None:
+            if not isinstance(status, str) or not status.strip():
+                raise ValueError("status must be a non-empty string")
+            clauses.append("status = ?")
+            params.append(status.strip())
+        if due_date is not UNSET:
+            due_value = self._normalize_timestamp_input(due_date)
+            clauses.append("due_date = ?")
+            params.append(due_value)
+        if holiday is not None:
+            clauses.append("holiday = ?")
+            params.append(int(bool(holiday)))
+        if not clauses:
+            return await self.get_project_by_thread(thread_id)
+        clauses.append("updated_at = CURRENT_TIMESTAMP")
+        query = f"UPDATE projects SET {', '.join(clauses)} WHERE thread_id = ?"
+        params.append(int(thread_id))
+        cur = await self._db.execute(query, params)
+        await self._db.commit()
+        if cur.rowcount == 0:
+            return None
+        return await self.get_project_by_thread(thread_id)
+
+    async def get_project(self, project_id: int) -> dict[str, Any] | None:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            """
+            SELECT project_id, thread_id, title, priority, status, due_date, holiday, created_at, updated_at, archived_at
+            FROM projects
+            WHERE project_id = ?
+            """,
+            (int(project_id),),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return self._project_row_to_dict(row)
+
+    async def get_project_by_thread(self, thread_id: int | None) -> dict[str, Any] | None:
+        await self.connect()
+        assert self._db
+        if thread_id is None:
+            query = (
+                "SELECT project_id, thread_id, title, priority, status, due_date, holiday, created_at, updated_at, archived_at "
+                "FROM projects WHERE thread_id IS NULL"
+            )
+            params = ()
+        else:
+            query = (
+                "SELECT project_id, thread_id, title, priority, status, due_date, holiday, created_at, updated_at, archived_at "
+                "FROM projects WHERE thread_id = ?"
+            )
+            params = (int(thread_id),)
+        async with self._db.execute(query, params) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return self._project_row_to_dict(row)
+
+    async def list_projects(self, *, include_archived: bool = False) -> list[dict[str, Any]]:
+        await self.connect()
+        assert self._db
+        query = (
+            "SELECT project_id, thread_id, title, priority, status, due_date, holiday, created_at, updated_at, archived_at "
+            "FROM projects"
+        )
+        if not include_archived:
+            query += " WHERE archived_at IS NULL"
+        query += " ORDER BY priority DESC, COALESCE(due_date, ''), title"
+        async with self._db.execute(query) as cur:
+            rows = await cur.fetchall()
+        return [self._project_row_to_dict(row) for row in rows]
+
+    async def archive_project(
+        self,
+        thread_id: int,
+        *,
+        status: str | None = "archived",
+    ) -> dict[str, Any] | None:
+        await self.connect()
+        assert self._db
+        clauses = ["archived_at = CURRENT_TIMESTAMP", "updated_at = CURRENT_TIMESTAMP"]
+        params: list[Any] = []
+        if status is not None:
+            if not isinstance(status, str) or not status.strip():
+                raise ValueError("status must be a non-empty string")
+            clauses.append("status = ?")
+            params.append(status.strip())
+        query = f"UPDATE projects SET {', '.join(clauses)} WHERE thread_id = ?"
+        params.append(int(thread_id))
+        cur = await self._db.execute(query, params)
+        await self._db.commit()
+        if cur.rowcount == 0:
+            return None
+        return await self.get_project_by_thread(thread_id)
 
     async def add_intention(self, goal: str, priority: int) -> int:
         """Queue an intention with ``goal`` and ``priority``."""
