@@ -59,6 +59,24 @@ STATUS_CHOICES: List[app_commands.Choice[str]] = [
 ]
 
 
+PRIORITY_CANONICAL: dict[str, str] = {
+    "high": "Priority: High",
+    "medium": "Priority: Medium",
+    "low": "Priority: Low",
+}
+
+PRIORITY_ALIASES: dict[str, str] = {}
+for key, canonical in PRIORITY_CANONICAL.items():
+    PRIORITY_ALIASES[canonical.casefold()] = key
+    PRIORITY_ALIASES[key] = key
+    if ":" in canonical:
+        PRIORITY_ALIASES[canonical.replace(":", "").casefold()] = key
+for alias in ("urgent", "critical"):
+    PRIORITY_ALIASES[alias] = "high"
+
+_MISSING = object()
+
+
 @dataclass(slots=True)
 class ProjectRecord:
     """Representation of a project stored in SQLite."""
@@ -92,6 +110,241 @@ class ProjectRecord:
             f"• Due: {due}",
             f"• Tags: {tags}",
         ]
+
+
+class ProjectsBoardView(discord.ui.View):
+    """Persistent view used to control the projects board."""
+
+    def __init__(
+        self,
+        board: "ProjectsBoard",
+        *,
+        board_id: int,
+        records: list[ProjectRecord],
+        selected_project_id: int | None,
+        holiday_only: bool,
+    ) -> None:
+        super().__init__(timeout=None)
+        self.board = board
+        self.board_id = board_id
+        self.records = records
+        self.selected_project_id = selected_project_id
+        self.holiday_only = holiday_only
+
+        self.add_item(self.ProjectSelect(self))
+        self.add_item(self.ActionSelect(self))
+        self.add_item(self.RefreshButton(self))
+        self.add_item(self.HolidayButton(self))
+        self.add_item(self.ClearSelectionButton(self))
+
+    # ------------------------------------------------------------------
+    # Component helpers
+    # ------------------------------------------------------------------
+    def _project_options(self) -> list[discord.SelectOption]:
+        options: list[discord.SelectOption] = []
+        for record in self.records:
+            due_label = self.board._format_due_label(record.due_date)
+            description = f"{record.status.capitalize()} · {due_label}"
+            options.append(
+                discord.SelectOption(
+                    label=f"#{record.project_id} · {record.name}",
+                    value=str(record.project_id),
+                    description=description[:100],
+                    default=self.selected_project_id == record.project_id,
+                )
+            )
+        if not options:
+            options.append(
+                discord.SelectOption(
+                    label="No projects available",
+                    value="noop",
+                    description="Create a project to get started",
+                    default=False,
+                )
+            )
+        return options
+
+    def _action_options(self) -> list[discord.SelectOption]:
+        record = next(
+            (proj for proj in self.records if proj.project_id == self.selected_project_id),
+            None,
+        )
+        if record is None:
+            return [
+                discord.SelectOption(
+                    label="Select a project first",
+                    value="noop",
+                    description="Choose a project to perform actions",
+                    default=True,
+                )
+            ]
+
+        options: list[discord.SelectOption] = []
+        for value, label in [
+            ("active", "Set status: Active"),
+            ("planning", "Set status: Planning"),
+            ("blocked", "Set status: Blocked"),
+            ("completed", "Set status: Completed"),
+        ]:
+            options.append(
+                discord.SelectOption(
+                    label=label,
+                    value=f"status:{value}",
+                    default=record.status.lower() == value,
+                )
+            )
+
+        priority = self.board._priority_from_tags(record.tags)
+        options.extend(
+            [
+                discord.SelectOption(
+                    label="Priority: High",
+                    value="priority:high",
+                    emoji="‼️",
+                    default=priority == "high",
+                ),
+                discord.SelectOption(
+                    label="Priority: Medium",
+                    value="priority:medium",
+                    emoji="🔸",
+                    default=priority == "medium",
+                ),
+                discord.SelectOption(
+                    label="Priority: Low",
+                    value="priority:low",
+                    emoji="🔻",
+                    default=priority == "low",
+                ),
+                discord.SelectOption(
+                    label="Clear priority",
+                    value="priority:none",
+                    emoji="✖️",
+                    default=priority is None,
+                ),
+            ]
+        )
+
+        options.append(
+            discord.SelectOption(
+                label="Archive project",
+                value="archive",
+                emoji="📦",
+            )
+        )
+        return options
+
+    # ------------------------------------------------------------------
+    # Interaction helpers
+    # ------------------------------------------------------------------
+    async def handle_project_selected(self, interaction: discord.Interaction, project_id: int) -> None:
+        await self.board._handle_project_selection(interaction, self.board_id, project_id)
+
+    async def handle_action_selected(self, interaction: discord.Interaction, value: str) -> None:
+        await self.board._handle_action_selection(
+            interaction, self.board_id, self.selected_project_id, value
+        )
+
+    async def handle_refresh(self, interaction: discord.Interaction) -> None:
+        await self.board._handle_refresh(interaction, self.board_id)
+
+    async def handle_toggle_holiday(self, interaction: discord.Interaction) -> None:
+        await self.board._handle_toggle_holiday(interaction, self.board_id)
+
+    async def handle_clear_selection(self, interaction: discord.Interaction) -> None:
+        await self.board._handle_clear_selection(interaction, self.board_id)
+
+    # ------------------------------------------------------------------
+    # Component definitions
+    # ------------------------------------------------------------------
+    class ProjectSelect(discord.ui.Select):
+        def __init__(self, view: "ProjectsBoardView") -> None:
+            options = view._project_options()
+            disabled = len(view.records) == 0
+            super().__init__(
+                placeholder="Select a project",
+                min_values=1,
+                max_values=1,
+                options=options,
+                custom_id=f"proj_select:{view.board_id}",
+                disabled=disabled,
+            )
+            self.view: ProjectsBoardView = view
+
+        async def callback(self, interaction: discord.Interaction) -> None:
+            if not self.values or self.values[0] == "noop":
+                await interaction.response.send_message(
+                    "No selectable projects are available.", ephemeral=True
+                )
+                return
+            project_id = int(self.values[0])
+            await self.view.handle_project_selected(interaction, project_id)
+
+    class ActionSelect(discord.ui.Select):
+        def __init__(self, view: "ProjectsBoardView") -> None:
+            options = view._action_options()
+            disabled = view.selected_project_id is None
+            custom_id = (
+                f"proj_action:{view.selected_project_id}" if view.selected_project_id else "proj_action:0"
+            )
+            super().__init__(
+                placeholder="Choose an action",
+                min_values=1,
+                max_values=1,
+                options=options,
+                custom_id=custom_id,
+                disabled=disabled,
+                row=1,
+            )
+            self.view: ProjectsBoardView = view
+
+        async def callback(self, interaction: discord.Interaction) -> None:
+            if not self.values:
+                return
+            value = self.values[0]
+            if value == "noop":
+                await interaction.response.send_message(
+                    "Select a project before choosing an action.", ephemeral=True
+                )
+                return
+            await self.view.handle_action_selected(interaction, value)
+
+    class RefreshButton(discord.ui.Button):
+        def __init__(self, view: "ProjectsBoardView") -> None:
+            super().__init__(
+                style=discord.ButtonStyle.primary,
+                label="Refresh",
+                custom_id="btn_refresh",
+                row=2,
+            )
+            self.view: ProjectsBoardView = view
+
+        async def callback(self, interaction: discord.Interaction) -> None:
+            await self.view.handle_refresh(interaction)
+
+    class HolidayButton(discord.ui.Button):
+        def __init__(self, view: "ProjectsBoardView") -> None:
+            label = "Holiday Filter: On" if view.holiday_only else "Holiday Filter: Off"
+            style = (
+                discord.ButtonStyle.success if view.holiday_only else discord.ButtonStyle.secondary
+            )
+            super().__init__(label=label, style=style, custom_id="btn_holiday", row=2)
+            self.view: ProjectsBoardView = view
+
+        async def callback(self, interaction: discord.Interaction) -> None:
+            await self.view.handle_toggle_holiday(interaction)
+
+    class ClearSelectionButton(discord.ui.Button):
+        def __init__(self, view: "ProjectsBoardView") -> None:
+            super().__init__(
+                style=discord.ButtonStyle.secondary,
+                label="Clear Selection",
+                custom_id="btn_clear",
+                row=2,
+            )
+            self.view: ProjectsBoardView = view
+
+        async def callback(self, interaction: discord.Interaction) -> None:
+            await self.view.handle_clear_selection(interaction)
 
 
 class ProjectsBoard(commands.Cog):
@@ -130,6 +383,8 @@ class ProjectsBoard(commands.Cog):
         self._require_events = require_events
         self._startup_task: asyncio.Task[None] | None = None
         self._ready = asyncio.Event()
+        self._board_filters: dict[int, bool] = {}
+        self._board_selection: dict[int, int | None] = {}
         if self.bot.loop.is_running():
             self._startup_task = self.bot.loop.create_task(self._startup())
         else:  # pragma: no cover - only triggered in sync setup paths
@@ -661,6 +916,39 @@ class ProjectsBoard(commands.Cog):
             await self._cancel_scheduled_event(updated, channel.guild if channel else None)
         return updated
 
+    async def _set_project_priority(
+        self, project_id: int, priority: str | None, channel: discord.ForumChannel
+    ) -> ProjectRecord | None:
+        record = await self._fetch_project(project_id)
+        if record is None:
+            return None
+        tag_names = self._apply_priority_tags(record.tags, priority)
+        applied_tags = await self._resolve_tags(
+            channel,
+            record.status,
+            None,
+            record.holiday,
+            record.due_date,
+            existing=tag_names,
+        )
+        now = datetime.now(UTC)
+        await self._execute(
+            """
+            UPDATE projects
+            SET tags = ?, updated_at = ?
+            WHERE project_id = ?
+            """,
+            json.dumps([tag.name for tag in applied_tags]) if applied_tags else None,
+            self._serialize_datetime(now),
+            project_id,
+        )
+        await self._commit()
+        thread = await self._fetch_thread(channel, record.thread_id)
+        if thread:
+            with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+                await thread.edit(applied_tags=applied_tags)
+        return await self._fetch_project(project_id)
+
     async def _fetch_thread(
         self, channel: discord.ForumChannel, thread_id: int | None
     ) -> discord.Thread | None:
@@ -739,11 +1027,89 @@ class ProjectsBoard(commands.Cog):
     # ------------------------------------------------------------------
     # Index embed management
     # ------------------------------------------------------------------
-    async def _update_index_embed(self, channel: discord.ForumChannel) -> None:
+    async def _update_index_embed(
+        self,
+        channel: discord.ForumChannel,
+        *,
+        interaction: discord.Interaction | None = None,
+        selected_project_id: int | None | object = _MISSING,
+        holiday_only: bool | None = None,
+    ) -> None:
         records = await self._fetch_projects(include_archived=False)
+        thread, message = await self._ensure_index_message(channel)
+        if thread is None and interaction is None:
+            return
+        message_id: int | None = None
+        if interaction and interaction.message:
+            message_id = interaction.message.id
+        elif message is not None:
+            message_id = message.id
+        elif thread is not None:
+            message_id = thread.id
+
+        if message_id is None:
+            return
+
+        current_filter = self._board_filters.get(message_id, False)
+        holiday_flag = current_filter if holiday_only is None else holiday_only
+        self._board_filters[message_id] = holiday_flag
+
+        filtered_records = (
+            [record for record in records if record.holiday]
+            if holiday_flag
+            else list(records)
+        )
+
+        valid_ids = {record.project_id for record in filtered_records}
+        if selected_project_id is _MISSING:
+            selection = self._board_selection.get(message_id)
+        else:
+            selection = selected_project_id
+        if selection not in valid_ids:
+            selection = None
+        self._board_selection[message_id] = selection
+
+        embed = self._build_board_embed(filtered_records, holiday_only=holiday_flag)
+        view = ProjectsBoardView(
+            self,
+            board_id=message_id,
+            records=filtered_records,
+            selected_project_id=selection,
+            holiday_only=holiday_flag,
+        )
+
+        if interaction is not None:
+            if interaction.response.is_done():
+                await interaction.edit_original_response(embed=embed, view=view)
+            else:
+                await interaction.response.edit_message(embed=embed, view=view)
+            updated_message_id = interaction.message.id if interaction.message else None
+        else:
+            updated_message_id = None
+            if message is None and thread is not None:
+                try:
+                    message = await thread.send(embed=embed, view=view)
+                except (discord.HTTPException, discord.Forbidden):
+                    message = None
+            elif message is not None:
+                with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+                    await message.edit(embed=embed, view=view)
+            if message is not None:
+                updated_message_id = message.id
+
+        final_message_id = updated_message_id or message_id
+        if final_message_id is not None:
+            self.bot.add_view(view, message_id=final_message_id)
+
+    def _build_board_embed(
+        self, records: list[ProjectRecord], *, holiday_only: bool
+    ) -> discord.Embed:
+        description = "Pinned overview of active projects"
+        if holiday_only:
+            description = "Holiday projects view"
         embed = discord.Embed(
             title="Projects Board Index",
-            description="Pinned overview of active projects",
+            description=description,
             colour=discord.Colour.teal(),
         )
 
@@ -759,7 +1125,9 @@ class ProjectsBoard(commands.Cog):
                 extra_statuses.setdefault(status_key, []).append(record)
 
         if not records:
-            embed.description = "No active projects yet. Use /project create to add one."
+            embed.description = (
+                "No holiday projects right now." if holiday_only else "No active projects yet. Use /project create to add one."
+            )
 
         for status in ordered_statuses:
             display_name = self._status_display_name(status)
@@ -769,18 +1137,162 @@ class ProjectsBoard(commands.Cog):
                 inline=False,
             )
 
-        for status_key in sorted(extra_statuses, key=lambda key: self._status_display_name(key).casefold()):
+        for status_key in sorted(
+            extra_statuses, key=lambda key: self._status_display_name(key).casefold()
+        ):
             display_name = self._status_display_name(status_key)
             embed.add_field(
                 name=display_name,
                 value=self._format_status_bucket(extra_statuses[status_key]),
                 inline=False,
             )
-        thread = await self._locate_index_thread(channel)
-        if thread is None:
-            await self._create_index_thread(channel, embed)
+        if holiday_only:
+            embed.set_footer(text="Holiday filter enabled")
+        return embed
+
+    # ------------------------------------------------------------------
+    # Board interaction handlers
+    # ------------------------------------------------------------------
+    async def _handle_project_selection(
+        self, interaction: discord.Interaction, board_id: int, project_id: int
+    ) -> None:
+        await self._ready.wait()
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await self._respond_ephemeral(
+                interaction, "Projects forum channel is not configured."
+            )
             return
-        await self._edit_index_thread(thread, embed)
+        await self._update_index_embed(
+            channel,
+            interaction=interaction,
+            selected_project_id=project_id,
+        )
+
+    async def _handle_action_selection(
+        self,
+        interaction: discord.Interaction,
+        board_id: int,
+        project_id: int | None,
+        value: str,
+    ) -> None:
+        await self._ready.wait()
+        if project_id is None:
+            await self._respond_ephemeral(
+                interaction, "Select a project before choosing an action."
+            )
+            return
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await self._respond_ephemeral(
+                interaction, "Projects forum channel is not configured."
+            )
+            return
+
+        updated: ProjectRecord | None = None
+        response_message: str | None = None
+        new_selection: int | None = project_id
+
+        if value.startswith("status:"):
+            status_value = value.split(":", 1)[1]
+            async with self._lock:
+                updated = await self._update_project_record(
+                    project_id,
+                    channel=channel,
+                    name=None,
+                    summary=None,
+                    status=status_value,
+                    due_date=None,
+                    owner=None,
+                    tags=None,
+                    holiday=None,
+                    clear_due=False,
+                )
+            if updated:
+                response_message = f"Set status to {status_value.capitalize()}."
+        elif value.startswith("priority:"):
+            priority_value = value.split(":", 1)[1]
+            if priority_value == "none":
+                priority_choice: str | None = None
+            elif priority_value in PRIORITY_CANONICAL:
+                priority_choice = priority_value
+            else:
+                await self._respond_ephemeral(interaction, "Unknown priority selection.")
+                return
+            async with self._lock:
+                updated = await self._set_project_priority(project_id, priority_choice, channel)
+            if updated:
+                response_message = (
+                    "Cleared priority." if priority_choice is None else f"Set priority to {priority_choice.capitalize()}."
+                )
+        elif value == "archive":
+            async with self._lock:
+                updated = await self._archive_project(project_id, channel)
+            new_selection = None
+            if updated:
+                response_message = "Archived project."
+        else:
+            await self._respond_ephemeral(interaction, "Unsupported action selected.")
+            return
+
+        if updated is None:
+            await self._respond_ephemeral(interaction, "Project not found or could not be updated.")
+            return
+
+        await self._sync_due_date_reminder(updated, channel.guild if channel else None)
+        await self._update_index_embed(
+            channel,
+            interaction=interaction,
+            selected_project_id=new_selection,
+        )
+        if response_message:
+            await interaction.followup.send(response_message, ephemeral=True)
+
+    async def _handle_refresh(
+        self, interaction: discord.Interaction, board_id: int
+    ) -> None:
+        await self._ready.wait()
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await self._respond_ephemeral(
+                interaction, "Projects forum channel is not configured."
+            )
+            return
+        await self._update_index_embed(channel, interaction=interaction)
+
+    async def _handle_toggle_holiday(
+        self, interaction: discord.Interaction, board_id: int
+    ) -> None:
+        await self._ready.wait()
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await self._respond_ephemeral(
+                interaction, "Projects forum channel is not configured."
+            )
+            return
+        message_id = interaction.message.id if interaction.message else board_id
+        current = self._board_filters.get(message_id, False)
+        await self._update_index_embed(
+            channel,
+            interaction=interaction,
+            holiday_only=not current,
+        )
+
+    async def _handle_clear_selection(
+        self, interaction: discord.Interaction, board_id: int
+    ) -> None:
+        await self._ready.wait()
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await self._respond_ephemeral(
+                interaction, "Projects forum channel is not configured."
+            )
+            return
+        await self._update_index_embed(
+            channel,
+            interaction=interaction,
+            selected_project_id=None,
+        )
 
     def _format_status_bucket(self, records: Iterable[ProjectRecord]) -> str:
         lines = [self._format_index_entry(record) for record in records]
@@ -819,6 +1331,27 @@ class ProjectsBoard(commands.Cog):
                 if needle in lowered:
                     return indicator
         return ""
+
+    def _priority_from_tags(self, tags: Iterable[str]) -> str | None:
+        for tag in tags:
+            key = PRIORITY_ALIASES.get(tag.strip().casefold())
+            if key:
+                return key
+        return None
+
+    def _apply_priority_tags(self, tags: Iterable[str], priority: str | None) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for tag in tags:
+            if PRIORITY_ALIASES.get(tag.strip().casefold()):
+                continue
+            cleaned.append(tag)
+            seen.add(tag)
+        if priority and priority in PRIORITY_CANONICAL:
+            canonical = PRIORITY_CANONICAL[priority]
+            if canonical not in seen:
+                cleaned.append(canonical)
+        return cleaned
 
     def _format_due_label(self, due_date: datetime | None) -> str:
         if due_date is None:
@@ -887,43 +1420,49 @@ class ProjectsBoard(commands.Cog):
                 return thread
         return None
 
+    async def _ensure_index_message(
+        self, channel: discord.ForumChannel
+    ) -> tuple[discord.Thread | None, discord.Message | None]:
+        thread = await self._locate_index_thread(channel)
+        if thread is None:
+            thread = await self._create_index_thread(channel)
+        if thread is None:
+            return None, None
+        message = await self._fetch_index_message(thread)
+        if message is None:
+            with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+                message = await thread.send(content="Projects board index")
+        if thread.archived or not thread.pinned:
+            with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+                await thread.edit(pinned=True, archived=False)
+        return thread, message
+
+    async def _fetch_index_message(
+        self, thread: discord.Thread
+    ) -> discord.Message | None:
+        try:
+            return await thread.fetch_message(thread.id)
+        except (discord.NotFound, discord.HTTPException):
+            return None
+
     async def _create_index_thread(
-        self, channel: discord.ForumChannel, embed: discord.Embed
-    ) -> None:
+        self, channel: discord.ForumChannel
+    ) -> discord.Thread | None:
         try:
             thread = await channel.create_thread(
                 name=INDEX_THREAD_NAME,
                 content="Projects board index",
-                embed=embed,
                 applied_tags=[],
             )
         except discord.Forbidden:
             _LOG.warning("Missing permissions to create index thread")
-            return
+            return None
         except discord.HTTPException as exc:
             _LOG.warning("Failed to create index thread: %s", exc)
-            return
+            return None
         with contextlib.suppress(discord.HTTPException, discord.Forbidden):
             await thread.edit(pinned=True, archived=False)
-
-    async def _edit_index_thread(
-        self, thread: discord.Thread, embed: discord.Embed
-    ) -> None:
-        try:
-            message = await thread.fetch_message(thread.id)
-        except discord.NotFound:
-            message = None
-        except discord.HTTPException:
-            message = None
-        if message is None:
-            with contextlib.suppress(discord.HTTPException, discord.Forbidden):
-                await thread.send(embed=embed)
-            return
-        with contextlib.suppress(discord.HTTPException, discord.Forbidden):
-            await message.edit(embed=embed)
-        if not thread.pinned:
-            with contextlib.suppress(discord.HTTPException, discord.Forbidden):
-                await thread.edit(pinned=True)
+        return thread
 
     # ------------------------------------------------------------------
     # Due date reminders
@@ -1037,6 +1576,14 @@ class ProjectsBoard(commands.Cog):
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=UTC)
         return parsed
+
+    async def _respond_ephemeral(
+        self, interaction: discord.Interaction, message: str
+    ) -> None:
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
