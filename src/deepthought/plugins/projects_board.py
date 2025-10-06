@@ -26,9 +26,26 @@ __all__ = ["ProjectsBoard", "ProjectRecord"]
 _LOG = logging.getLogger(__name__)
 
 INDEX_THREAD_NAME = "Projects Index"
-DEFAULT_STATUS = "active"
+DEFAULT_STATUS = "to-do"
 DEFAULT_REMINDER_LEAD = timedelta(hours=1)
 HOLIDAY_MONTHS = {11, 12}
+
+BOARD_STATUS_META: dict[str, dict[str, str]] = {
+    "to-do": {"label": "To-Do", "tag": "Planning"},
+    "in-progress": {"label": "In-Progress", "tag": "Active"},
+    "blocked": {"label": "Blocked", "tag": "Blocked"},
+    "on-hold": {"label": "On-Hold", "tag": "On-Hold"},
+    "done": {"label": "Done", "tag": "Completed"},
+    "archived": {"label": "Archived", "tag": "Archived"},
+}
+
+BOARD_STATUS_ORDER: list[str] = [
+    "to-do",
+    "in-progress",
+    "blocked",
+    "on-hold",
+    "done",
+]
 
 REQUIRED_TAGS: dict[str, dict[str, str | None]] = {
     "Active": {"emoji": "🚧"},
@@ -37,25 +54,23 @@ REQUIRED_TAGS: dict[str, dict[str, str | None]] = {
     "Completed": {"emoji": "✅"},
     "Archived": {"emoji": "🗃️"},
     "Holiday": {"emoji": "🎄"},
+    "On-Hold": {"emoji": "⏸️"},
 }
 
 STATUS_TAGS: dict[str, str] = {
-    "active": "Active",
-    "planning": "Planning",
-    "blocked": "Blocked",
-    "completed": "Completed",
-    "archived": "Archived",
+    key: meta["tag"] for key, meta in BOARD_STATUS_META.items()
 }
+STATUS_TAGS.update(
+    {
+        "active": "Active",
+        "planning": "Planning",
+        "completed": "Completed",
+    }
+)
 
 STATUS_CHOICES: List[app_commands.Choice[str]] = [
-    app_commands.Choice(name=name, value=value)
-    for value, name in [
-        ("active", "Active"),
-        ("planning", "Planning"),
-        ("blocked", "Blocked"),
-        ("completed", "Completed"),
-        ("archived", "Archived"),
-    ]
+    app_commands.Choice(name=meta["label"], value=key)
+    for key, meta in BOARD_STATUS_META.items()
 ]
 
 
@@ -144,7 +159,8 @@ class ProjectsBoardView(discord.ui.View):
         options: list[discord.SelectOption] = []
         for record in self.records:
             due_label = self.board._format_due_label(record.due_date)
-            description = f"{record.status.capitalize()} · {due_label}"
+            status_label = self.board._status_display_name(record.status)
+            description = f"{status_label} · {due_label}"
             options.append(
                 discord.SelectOption(
                     label=f"#{record.project_id} · {record.name}",
@@ -179,18 +195,16 @@ class ProjectsBoardView(discord.ui.View):
                 )
             ]
 
+        current_status = self.board._normalise_status_key(record.status)
+
         options: list[discord.SelectOption] = []
-        for value, label in [
-            ("active", "Set status: Active"),
-            ("planning", "Set status: Planning"),
-            ("blocked", "Set status: Blocked"),
-            ("completed", "Set status: Completed"),
-        ]:
+        for status_key in BOARD_STATUS_ORDER:
+            label = self.board._status_display_name(status_key)
             options.append(
                 discord.SelectOption(
-                    label=label,
-                    value=f"status:{value}",
-                    default=record.status.lower() == value,
+                    label=f"Set status → {label}",
+                    value=f"status:{status_key}",
+                    default=current_status == status_key,
                 )
             )
 
@@ -1113,8 +1127,7 @@ class ProjectsBoard(commands.Cog):
             colour=discord.Colour.teal(),
         )
 
-        ordered_statuses = ["to-do", "in-progress", "blocked", "on-hold", "done"]
-        buckets: dict[str, list[ProjectRecord]] = {status: [] for status in ordered_statuses}
+        buckets: dict[str, list[ProjectRecord]] = {status: [] for status in BOARD_STATUS_ORDER}
         extra_statuses: dict[str, list[ProjectRecord]] = {}
 
         for record in records:
@@ -1129,12 +1142,12 @@ class ProjectsBoard(commands.Cog):
                 "No holiday projects right now." if holiday_only else "No active projects yet. Use /project create to add one."
             )
 
-        for status in ordered_statuses:
+        for status in BOARD_STATUS_ORDER:
             display_name = self._status_display_name(status)
             embed.add_field(
                 name=display_name,
                 value=self._format_status_bucket(buckets[status]),
-                inline=False,
+                inline=True,
             )
 
         for status_key in sorted(
@@ -1144,7 +1157,7 @@ class ProjectsBoard(commands.Cog):
             embed.add_field(
                 name=display_name,
                 value=self._format_status_bucket(extra_statuses[status_key]),
-                inline=False,
+                inline=True,
             )
         if holiday_only:
             embed.set_footer(text="Holiday filter enabled")
@@ -1209,7 +1222,8 @@ class ProjectsBoard(commands.Cog):
                     clear_due=False,
                 )
             if updated:
-                response_message = f"Set status to {status_value.capitalize()}."
+                status_label = self._status_display_name(status_value)
+                response_message = f"Set status to {status_label}."
         elif value.startswith("priority:"):
             priority_value = value.split(":", 1)[1]
             if priority_value == "none":
@@ -1388,16 +1402,11 @@ class ProjectsBoard(commands.Cog):
         return aliases.get(normalised, normalised)
 
     def _status_display_name(self, status_key: str) -> str:
-        display_map = {
-            "to-do": "To-Do",
-            "in-progress": "In-Progress",
-            "blocked": "Blocked",
-            "on-hold": "On-Hold",
-            "done": "Done",
-        }
-        if status_key in display_map:
-            return display_map[status_key]
-        return status_key.replace("-", " ").title()
+        canonical = self._normalise_status_key(status_key)
+        meta = BOARD_STATUS_META.get(canonical)
+        if meta:
+            return meta["label"]
+        return canonical.replace("-", " ").title()
 
     async def _locate_index_thread(
         self, channel: discord.ForumChannel
