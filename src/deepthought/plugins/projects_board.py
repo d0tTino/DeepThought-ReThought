@@ -746,20 +746,125 @@ class ProjectsBoard(commands.Cog):
             description="Pinned overview of active projects",
             colour=discord.Colour.teal(),
         )
-        if records:
-            for proj in records:
-                embed.add_field(
-                    name=f"#{proj.project_id} · {proj.name}",
-                    value="\n".join(proj.as_display_lines()),
-                    inline=False,
-                )
-        else:
+
+        ordered_statuses = ["to-do", "in-progress", "blocked", "on-hold", "done"]
+        buckets: dict[str, list[ProjectRecord]] = {status: [] for status in ordered_statuses}
+        extra_statuses: dict[str, list[ProjectRecord]] = {}
+
+        for record in records:
+            status_key = self._normalise_status_key(record.status)
+            if status_key in buckets:
+                buckets[status_key].append(record)
+            else:
+                extra_statuses.setdefault(status_key, []).append(record)
+
+        if not records:
             embed.description = "No active projects yet. Use /project create to add one."
+
+        for status in ordered_statuses:
+            display_name = self._status_display_name(status)
+            embed.add_field(
+                name=display_name,
+                value=self._format_status_bucket(buckets[status]),
+                inline=False,
+            )
+
+        for status_key in sorted(extra_statuses, key=lambda key: self._status_display_name(key).casefold()):
+            display_name = self._status_display_name(status_key)
+            embed.add_field(
+                name=display_name,
+                value=self._format_status_bucket(extra_statuses[status_key]),
+                inline=False,
+            )
         thread = await self._locate_index_thread(channel)
         if thread is None:
             await self._create_index_thread(channel, embed)
             return
         await self._edit_index_thread(thread, embed)
+
+    def _format_status_bucket(self, records: Iterable[ProjectRecord]) -> str:
+        lines = [self._format_index_entry(record) for record in records]
+        if not lines:
+            return "_No projects in this column._"
+        return "\n".join(lines)
+
+    def _format_index_entry(self, record: ProjectRecord) -> str:
+        indicators: list[str] = []
+        priority_indicator = self._priority_indicator_from_tags(record.tags)
+        if priority_indicator:
+            indicators.append(priority_indicator)
+        if record.holiday:
+            indicators.append("🎄")
+        indicator_text = f"{' '.join(indicators)} " if indicators else ""
+        due_label = self._format_due_label(record.due_date)
+        return f"• {indicator_text}[#{record.project_id}] {record.name} ({due_label})"
+
+    def _priority_indicator_from_tags(self, tags: Iterable[str]) -> str:
+        priority_map = [
+            ("urgent", "‼️"),
+            ("critical", "‼️"),
+            ("priority: high", "‼️"),
+            ("high priority", "‼️"),
+            ("priority-high", "‼️"),
+            ("priority: medium", "🔸"),
+            ("medium priority", "🔸"),
+            ("priority-medium", "🔸"),
+            ("priority: low", "🔻"),
+            ("low priority", "🔻"),
+            ("priority-low", "🔻"),
+        ]
+        for tag in tags:
+            lowered = tag.strip().lower()
+            for needle, indicator in priority_map:
+                if needle in lowered:
+                    return indicator
+        return ""
+
+    def _format_due_label(self, due_date: datetime | None) -> str:
+        if due_date is None:
+            return "no due date"
+        if due_date.tzinfo is None:
+            due_date = due_date.replace(tzinfo=UTC)
+        due_date = due_date.astimezone(UTC)
+        formatted = due_date.strftime("%b %d").replace(" 0", " ")
+        current_year = datetime.now(UTC).year
+        if due_date.year != current_year:
+            formatted += f" {due_date.year}"
+        return f"due {formatted}"
+
+    def _normalise_status_key(self, status: str) -> str:
+        if not status:
+            return "to-do"
+        normalised = status.strip().lower()
+        normalised = normalised.replace(" ", "-").replace("_", "-")
+        aliases = {
+            "todo": "to-do",
+            "to-do": "to-do",
+            "backlog": "to-do",
+            "planning": "to-do",
+            "inprogress": "in-progress",
+            "in-progress": "in-progress",
+            "active": "in-progress",
+            "ongoing": "in-progress",
+            "onhold": "on-hold",
+            "on-hold": "on-hold",
+            "completed": "done",
+            "complete": "done",
+            "finished": "done",
+        }
+        return aliases.get(normalised, normalised)
+
+    def _status_display_name(self, status_key: str) -> str:
+        display_map = {
+            "to-do": "To-Do",
+            "in-progress": "In-Progress",
+            "blocked": "Blocked",
+            "on-hold": "On-Hold",
+            "done": "Done",
+        }
+        if status_key in display_map:
+            return display_map[status_key]
+        return status_key.replace("-", " ").title()
 
     async def _locate_index_thread(
         self, channel: discord.ForumChannel
