@@ -1120,45 +1120,110 @@ class ProjectsBoard(commands.Cog):
     ) -> discord.Embed:
         description = "Pinned overview of active projects"
         if holiday_only:
-            description = "Holiday projects view"
+            description = "Holiday projects view — showing only holiday-tagged efforts"
         embed = discord.Embed(
             title="Projects Board Index",
             description=description,
             colour=discord.Colour.teal(),
         )
 
-        buckets: dict[str, list[ProjectRecord]] = {status: [] for status in BOARD_STATUS_ORDER}
-        extra_statuses: dict[str, list[ProjectRecord]] = {}
+        def to_utc(value: datetime | None) -> datetime | None:
+            if value is None:
+                return None
+            if value.tzinfo is None:
+                return value.replace(tzinfo=UTC)
+            return value.astimezone(UTC)
+
+        now = datetime.now(UTC)
+        soon_cutoff = now + timedelta(days=7)
+        recent_cutoff = now - timedelta(days=30)
+        far_future = datetime.max.replace(tzinfo=UTC)
+
+        now_bucket: list[ProjectRecord] = []
+        next_bucket: list[ProjectRecord] = []
+        holiday_bucket: list[ProjectRecord] = []
+        done_bucket: list[ProjectRecord] = []
 
         for record in records:
             status_key = self._normalise_status_key(record.status)
-            if status_key in buckets:
-                buckets[status_key].append(record)
+            priority = self._priority_from_tags(record.tags)
+            due_date = to_utc(record.due_date)
+            is_holiday = record.holiday or self._is_holiday_project(due_date, record.tags)
+            if is_holiday:
+                holiday_bucket.append(record)
+
+            if status_key == "done":
+                done_bucket.append(record)
+                continue
+
+            if priority == "high" or (due_date is not None and due_date <= soon_cutoff):
+                now_bucket.append(record)
             else:
-                extra_statuses.setdefault(status_key, []).append(record)
+                next_bucket.append(record)
+
+        def due_sort(record: ProjectRecord) -> tuple[int, datetime, int]:
+            due = to_utc(record.due_date)
+            return (0 if due else 1, due or far_future, record.project_id)
+
+        now_bucket.sort(key=due_sort)
+        next_bucket.sort(key=due_sort)
+
+        displayed_ids = {record.project_id for record in now_bucket + next_bucket}
+        holiday_unique = [
+            record for record in sorted(holiday_bucket, key=due_sort) if record.project_id not in displayed_ids
+        ]
+
+        done_bucket.sort(
+            key=lambda record: to_utc(record.updated_at) or datetime.min.replace(tzinfo=UTC),
+            reverse=True,
+        )
+        recent_done = [
+            record
+            for record in done_bucket
+            if (to_utc(record.updated_at) or datetime.min.replace(tzinfo=UTC)) >= recent_cutoff
+        ]
+        if recent_done:
+            done_bucket = recent_done[:5]
+        else:
+            done_bucket = done_bucket[:5]
+
+        def format_section(values: Iterable[ProjectRecord], empty: str) -> str:
+            lines = [self._format_index_entry(record) for record in values]
+            if not lines:
+                return empty
+            return "\n".join(lines)
 
         if not records:
             embed.description = (
-                "No holiday projects right now." if holiday_only else "No active projects yet. Use /project create to add one."
+                "No holiday projects right now."
+                if holiday_only
+                else "No active projects yet. Use /project create to add one."
             )
 
-        for status in BOARD_STATUS_ORDER:
-            display_name = self._status_display_name(status)
-            embed.add_field(
-                name=display_name,
-                value=self._format_status_bucket(buckets[status]),
-                inline=True,
-            )
+        embed.add_field(
+            name="🔥 Now",
+            value=format_section(now_bucket, "_Nothing marked as high priority right now._"),
+            inline=False,
+        )
+        embed.add_field(
+            name="🟠 Next",
+            value=format_section(next_bucket, "_No upcoming projects in the queue._"),
+            inline=False,
+        )
+        holiday_empty_message = "_No holiday projects on the radar._"
+        if holiday_only or (holiday_bucket and not holiday_unique):
+            holiday_empty_message = "_All holiday projects are listed above._"
+        embed.add_field(
+            name="🎁 Holiday Radar",
+            value=format_section(holiday_unique, holiday_empty_message),
+            inline=False,
+        )
+        embed.add_field(
+            name="✅ Recently Done",
+            value=format_section(done_bucket, "_Nothing completed recently._"),
+            inline=False,
+        )
 
-        for status_key in sorted(
-            extra_statuses, key=lambda key: self._status_display_name(key).casefold()
-        ):
-            display_name = self._status_display_name(status_key)
-            embed.add_field(
-                name=display_name,
-                value=self._format_status_bucket(extra_statuses[status_key]),
-                inline=True,
-            )
         if holiday_only:
             embed.set_footer(text="Holiday filter enabled")
         return embed
@@ -1410,29 +1475,49 @@ class ProjectsBoard(commands.Cog):
 
     async def _locate_index_thread(
         self, channel: discord.ForumChannel
-    ) -> discord.Thread | None:
+    ) -> tuple[discord.Thread | None, discord.TextChannel | None]:
         if self._index_channel_id is not None:
-            thread = self.bot.get_channel(self._index_channel_id)
-            if thread is None:
+            index_channel = self.bot.get_channel(self._index_channel_id)
+            if index_channel is None:
                 with contextlib.suppress(discord.HTTPException, discord.NotFound, discord.Forbidden):
-                    thread = await self.bot.fetch_channel(self._index_channel_id)
-            if isinstance(thread, discord.Thread):
-                return thread
-            if thread is not None:
-                _LOG.warning("Configured projects index channel %s is not a thread", thread)
+                    index_channel = await self.bot.fetch_channel(self._index_channel_id)
+            if isinstance(index_channel, discord.Thread):
+                return index_channel, None
+            if isinstance(index_channel, discord.TextChannel):
+                return None, index_channel
+            if index_channel is not None:
+                _LOG.warning(
+                    "Configured projects index channel %s is not a supported channel type",
+                    index_channel,
+                )
         for thread in channel.threads:
             if thread.name == INDEX_THREAD_NAME:
-                return thread
+                return thread, None
         # Attempt to load archived threads where the index might live
         async for thread in channel.archived_threads(limit=50, private=False):
             if thread.name == INDEX_THREAD_NAME:
-                return thread
-        return None
+                return thread, None
+        return None, None
 
     async def _ensure_index_message(
         self, channel: discord.ForumChannel
     ) -> tuple[discord.Thread | None, discord.Message | None]:
-        thread = await self._locate_index_thread(channel)
+        thread, message_channel = await self._locate_index_thread(channel)
+        if message_channel is not None:
+            message = await self._fetch_index_message(message_channel)
+            if message is None:
+                with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+                    message = await message_channel.send(content="Projects board index")
+            if message is not None and not message.pinned:
+                with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+                    await message.pin()
+            if message is not None:
+                return None, message
+            _LOG.warning(
+                "Failed to locate or create index message in configured channel %s; falling back to forum thread",
+                message_channel,
+            )
+
         if thread is None:
             thread = await self._create_index_thread(channel)
         if thread is None:
@@ -1447,12 +1532,39 @@ class ProjectsBoard(commands.Cog):
         return thread, message
 
     async def _fetch_index_message(
-        self, thread: discord.Thread
+        self, target: discord.Thread | discord.TextChannel
     ) -> discord.Message | None:
+        if isinstance(target, discord.Thread):
+            try:
+                return await target.fetch_message(target.id)
+            except (discord.NotFound, discord.HTTPException):
+                return None
+
+        pins: list[discord.Message] = []
+        with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+            pins = await target.pins()
+        for message in pins:
+            if self._is_index_message(message):
+                return message
         try:
-            return await thread.fetch_message(thread.id)
-        except (discord.NotFound, discord.HTTPException):
+            async for message in target.history(limit=25):
+                if self._is_index_message(message):
+                    return message
+        except (discord.Forbidden, discord.HTTPException):
             return None
+        return None
+
+    def _is_index_message(self, message: discord.Message) -> bool:
+        bot_user = self.bot.user
+        if bot_user is not None and message.author.id != bot_user.id:
+            return False
+        if message.content and message.content.strip().casefold() == "projects board index":
+            return True
+        for embed in message.embeds:
+            title = embed.title or ""
+            if title.strip().casefold() == "projects board index":
+                return True
+        return False
 
     async def _create_index_thread(
         self, channel: discord.ForumChannel
