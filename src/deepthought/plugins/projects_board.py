@@ -74,20 +74,92 @@ STATUS_CHOICES: List[app_commands.Choice[str]] = [
 ]
 
 
+PRIORITY_META: dict[str, dict[str, Any]] = {
+    "p0": {"label": "🔥 P0", "emoji": "🔥"},
+    "p1": {"label": "🟠 P1", "emoji": "🟠"},
+    "p2": {"label": "🟢 P2", "emoji": "🟢"},
+}
+
 PRIORITY_CANONICAL: dict[str, str] = {
-    "high": "Priority: High",
-    "medium": "Priority: Medium",
-    "low": "Priority: Low",
+    key: meta["label"] for key, meta in PRIORITY_META.items()
 }
 
 PRIORITY_ALIASES: dict[str, str] = {}
 for key, canonical in PRIORITY_CANONICAL.items():
-    PRIORITY_ALIASES[canonical.casefold()] = key
+    label_without_emoji = canonical.split(" ", 1)[-1]
     PRIORITY_ALIASES[key] = key
-    if ":" in canonical:
-        PRIORITY_ALIASES[canonical.replace(":", "").casefold()] = key
+    PRIORITY_ALIASES[canonical.casefold()] = key
+    PRIORITY_ALIASES[label_without_emoji.casefold()] = key
+    PRIORITY_ALIASES[label_without_emoji.replace(":", "").casefold()] = key
+    PRIORITY_ALIASES[label_without_emoji.replace(" ", "").casefold()] = key
+    PRIORITY_ALIASES[canonical.replace(" ", "").casefold()] = key
+    PRIORITY_ALIASES[canonical.replace(":", "").casefold()] = key
+legacy_priority_aliases = {
+    "high": "p0",
+    "priority: high": "p0",
+    "priority high": "p0",
+    "priority-high": "p0",
+    "medium": "p1",
+    "priority: medium": "p1",
+    "priority medium": "p1",
+    "priority-medium": "p1",
+    "low": "p2",
+    "priority: low": "p2",
+    "priority low": "p2",
+    "priority-low": "p2",
+    "p0": "p0",
+    "p1": "p1",
+    "p2": "p2",
+    "priority:high": "p0",
+    "priority:medium": "p1",
+    "priority:low": "p2",
+}
+PRIORITY_ALIASES.update({alias.casefold(): value for alias, value in legacy_priority_aliases.items()})
 for alias in ("urgent", "critical"):
-    PRIORITY_ALIASES[alias] = "high"
+    PRIORITY_ALIASES[alias] = "p0"
+
+PROJECT_TYPE_META: dict[str, dict[str, Any]] = {
+    "commission": {"label": "💼 Commission", "emoji": "💼", "aliases": ["commission", "client", "paid"]},
+    "personal": {"label": "🎨 Personal", "emoji": "🎨", "aliases": ["personal", "solo"]},
+    "collaboration": {"label": "🤝 Collaboration", "emoji": "🤝", "aliases": ["collaboration", "collab", "partner"]},
+    "community": {"label": "🌱 Community", "emoji": "🌱", "aliases": ["community", "open source", "open-source", "oss"]},
+    "internal": {"label": "🏢 Internal", "emoji": "🏢", "aliases": ["internal", "operations", "ops", "team"]},
+}
+
+PROJECT_TYPE_CANONICAL: dict[str, str] = {
+    key: meta["label"] for key, meta in PROJECT_TYPE_META.items()
+}
+
+PROJECT_TYPE_ALIASES: dict[str, str] = {}
+for key, meta in PROJECT_TYPE_META.items():
+    label = meta["label"]
+    without_emoji = label.split(" ", 1)[-1]
+    PROJECT_TYPE_ALIASES[key] = key
+    PROJECT_TYPE_ALIASES[label.casefold()] = key
+    PROJECT_TYPE_ALIASES[label.replace(" ", "").casefold()] = key
+    PROJECT_TYPE_ALIASES[without_emoji.casefold()] = key
+    PROJECT_TYPE_ALIASES[without_emoji.replace(" ", "").casefold()] = key
+    for alias in meta.get("aliases", []):
+        PROJECT_TYPE_ALIASES[alias.casefold()] = key
+
+for meta in PRIORITY_META.values():
+    REQUIRED_TAGS.setdefault(meta["label"], {"emoji": meta.get("emoji")})
+for meta in PROJECT_TYPE_META.values():
+    REQUIRED_TAGS.setdefault(meta["label"], {"emoji": meta.get("emoji")})
+
+PRIORITY_CHOICES: List[app_commands.Choice[str]] = [
+    app_commands.Choice(name=meta["label"], value=key)
+    for key, meta in PRIORITY_META.items()
+]
+PRIORITY_CHOICES.append(app_commands.Choice(name="Clear priority tag", value="clear"))
+
+PROJECT_TYPE_CHOICES: List[app_commands.Choice[str]] = [
+    app_commands.Choice(name=meta["label"], value=key)
+    for key, meta in PROJECT_TYPE_META.items()
+]
+PROJECT_TYPE_CHOICES.append(
+    app_commands.Choice(name="Clear project type tag", value="clear")
+)
 
 _MISSING = object()
 
@@ -209,33 +281,41 @@ class ProjectsBoardView(discord.ui.View):
             )
 
         priority = self.board._priority_from_tags(record.tags)
-        options.extend(
-            [
+        for key, meta in PRIORITY_META.items():
+            options.append(
                 discord.SelectOption(
-                    label="Priority: High",
-                    value="priority:high",
-                    emoji="‼️",
-                    default=priority == "high",
-                ),
+                    label=f"Priority → {meta['label']}",
+                    value=f"priority:{key}",
+                    emoji=meta.get("emoji"),
+                    default=priority == key,
+                )
+            )
+        options.append(
+            discord.SelectOption(
+                label="Clear priority",
+                value="priority:clear",
+                emoji="✖️",
+                default=priority is None,
+            )
+        )
+
+        project_type = self.board._project_type_from_tags(record.tags)
+        for key, meta in PROJECT_TYPE_META.items():
+            options.append(
                 discord.SelectOption(
-                    label="Priority: Medium",
-                    value="priority:medium",
-                    emoji="🔸",
-                    default=priority == "medium",
-                ),
-                discord.SelectOption(
-                    label="Priority: Low",
-                    value="priority:low",
-                    emoji="🔻",
-                    default=priority == "low",
-                ),
-                discord.SelectOption(
-                    label="Clear priority",
-                    value="priority:none",
-                    emoji="✖️",
-                    default=priority is None,
-                ),
-            ]
+                    label=f"Type → {meta['label']}",
+                    value=f"type:{key}",
+                    emoji=meta.get("emoji"),
+                    default=project_type == key,
+                )
+            )
+        options.append(
+            discord.SelectOption(
+                label="Clear project type",
+                value="type:clear",
+                emoji="✖️",
+                default=project_type is None,
+            )
         )
 
         options.append(
@@ -651,8 +731,14 @@ class ProjectsBoard(commands.Cog):
         owner="Assign the project to a member",
         tags="Comma separated additional forum tags",
         holiday="Mark the project as holiday related",
+        priority="Set the priority tag for the project",
+        project_type="Assign a project type tag",
     )
-    @app_commands.choices(status=STATUS_CHOICES)
+    @app_commands.choices(
+        status=STATUS_CHOICES,
+        priority=PRIORITY_CHOICES,
+        project_type=PROJECT_TYPE_CHOICES,
+    )
     async def create_project(
         self,
         interaction: discord.Interaction,
@@ -663,6 +749,8 @@ class ProjectsBoard(commands.Cog):
         owner: discord.Member | None = None,
         tags: str | None = None,
         holiday: bool = False,
+        priority: app_commands.Choice[str] | None = None,
+        project_type: app_commands.Choice[str] | None = None,
     ) -> None:
         await self._ready.wait()
         channel = await self._fetch_forum_channel()
@@ -679,6 +767,8 @@ class ProjectsBoard(commands.Cog):
             )
             return
         status_value = status.value if status else DEFAULT_STATUS
+        priority_value = self._resolve_priority_choice(priority)
+        project_type_value = self._resolve_project_type_choice(project_type)
         async with self._lock:
             record = await self._create_project_record(
                 channel=channel,
@@ -689,6 +779,8 @@ class ProjectsBoard(commands.Cog):
                 owner=owner,
                 tags=tags,
                 holiday=holiday,
+                priority=priority_value,
+                project_type=project_type_value,
             )
         await interaction.response.send_message(
             f"Created project #{record.project_id}: {record.name}", ephemeral=True
@@ -706,8 +798,14 @@ class ProjectsBoard(commands.Cog):
         owner="Reassign the project",
         tags="Comma separated tag names (replaces existing ones)",
         holiday="Mark project as holiday themed",
+        priority="Update the project's priority tag",
+        project_type="Update the project type tag",
     )
-    @app_commands.choices(status=STATUS_CHOICES)
+    @app_commands.choices(
+        status=STATUS_CHOICES,
+        priority=PRIORITY_CHOICES,
+        project_type=PROJECT_TYPE_CHOICES,
+    )
     async def update_project(
         self,
         interaction: discord.Interaction,
@@ -719,6 +817,8 @@ class ProjectsBoard(commands.Cog):
         owner: discord.Member | None = None,
         tags: str | None = None,
         holiday: bool | None = None,
+        priority: app_commands.Choice[str] | None = None,
+        project_type: app_commands.Choice[str] | None = None,
     ) -> None:
         await self._ready.wait()
         channel = await self._fetch_forum_channel()
@@ -734,6 +834,8 @@ class ProjectsBoard(commands.Cog):
                 ephemeral=True,
             )
             return
+        priority_value = self._resolve_priority_choice(priority)
+        project_type_value = self._resolve_project_type_choice(project_type)
         async with self._lock:
             record = await self._update_project_record(
                 project_id,
@@ -746,6 +848,8 @@ class ProjectsBoard(commands.Cog):
                 tags=tags,
                 holiday=holiday,
                 clear_due=due_date == "",
+                priority=priority_value,
+                project_type=project_type_value,
             )
         if record is None:
             await interaction.response.send_message(
@@ -793,8 +897,18 @@ class ProjectsBoard(commands.Cog):
         owner: discord.Member | None,
         tags: str | None,
         holiday: bool,
+        priority: str | None | object = _MISSING,
+        project_type: str | None | object = _MISSING,
     ) -> ProjectRecord:
-        applied_tags = await self._resolve_tags(channel, status, tags, holiday, due_date)
+        applied_tags = await self._resolve_tags(
+            channel,
+            status,
+            tags,
+            holiday,
+            due_date,
+            priority=priority,
+            project_type=project_type,
+        )
         content = summary or "Project created via /project create"
         thread = None
         try:
@@ -849,6 +963,8 @@ class ProjectsBoard(commands.Cog):
         tags: str | None,
         holiday: bool | None,
         clear_due: bool,
+        priority: str | None | object = _MISSING,
+        project_type: str | None | object = _MISSING,
     ) -> ProjectRecord | None:
         record = await self._fetch_project(project_id)
         if record is None:
@@ -866,6 +982,8 @@ class ProjectsBoard(commands.Cog):
             tags,
             new_holiday,
             new_due,
+            priority=priority,
+            project_type=project_type,
             existing=record.tags,
         )
         tag_names = [tag.name for tag in applied_tags]
@@ -943,6 +1061,41 @@ class ProjectsBoard(commands.Cog):
             None,
             record.holiday,
             record.due_date,
+            priority=priority,
+            existing=tag_names,
+        )
+        now = datetime.now(UTC)
+        await self._execute(
+            """
+            UPDATE projects
+            SET tags = ?, updated_at = ?
+            WHERE project_id = ?
+            """,
+            json.dumps([tag.name for tag in applied_tags]) if applied_tags else None,
+            self._serialize_datetime(now),
+            project_id,
+        )
+        await self._commit()
+        thread = await self._fetch_thread(channel, record.thread_id)
+        if thread:
+            with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+                await thread.edit(applied_tags=applied_tags)
+        return await self._fetch_project(project_id)
+
+    async def _set_project_type(
+        self, project_id: int, project_type: str | None, channel: discord.ForumChannel
+    ) -> ProjectRecord | None:
+        record = await self._fetch_project(project_id)
+        if record is None:
+            return None
+        tag_names = self._apply_project_type_tags(record.tags, project_type)
+        applied_tags = await self._resolve_tags(
+            channel,
+            record.status,
+            None,
+            record.holiday,
+            record.due_date,
+            project_type=project_type,
             existing=tag_names,
         )
         now = datetime.now(UTC)
@@ -1006,11 +1159,16 @@ class ProjectsBoard(commands.Cog):
         holiday: bool,
         due_date: datetime | None,
         *,
+        priority: str | None | object = _MISSING,
+        project_type: str | None | object = _MISSING,
         existing: Iterable[str] | None = None,
     ) -> list[discord.ForumTag]:
         await self._ensure_tags(channel)
         available = {tag.name: tag for tag in channel.available_tags}
-        tag_names = set(existing or [])
+        initial_tags = list(existing or [])
+        normalised = self._apply_priority_tags(initial_tags, priority)
+        normalised = self._apply_project_type_tags(normalised, project_type)
+        tag_names = set(normalised)
         status_tag = STATUS_TAGS.get(status.lower(), STATUS_TAGS[DEFAULT_STATUS])
         if status_tag in available:
             tag_names.discard("Archived")
@@ -1030,6 +1188,36 @@ class ProjectsBoard(commands.Cog):
             return []
         values = [tag.strip() for tag in tags.split(",")]
         return [tag for tag in values if tag]
+
+    def _resolve_priority_choice(
+        self, choice: app_commands.Choice[str] | None
+    ) -> str | None | object:
+        if choice is None:
+            return _MISSING
+        value = choice.value
+        if value == "clear":
+            return None
+        mapped = PRIORITY_ALIASES.get(str(value).casefold())
+        if mapped:
+            return mapped
+        if value in PRIORITY_CANONICAL:
+            return value
+        return _MISSING
+
+    def _resolve_project_type_choice(
+        self, choice: app_commands.Choice[str] | None
+    ) -> str | None | object:
+        if choice is None:
+            return _MISSING
+        value = choice.value
+        if value == "clear":
+            return None
+        mapped = PROJECT_TYPE_ALIASES.get(str(value).casefold())
+        if mapped:
+            return mapped
+        if value in PROJECT_TYPE_CANONICAL:
+            return value
+        return _MISSING
 
     def _is_holiday_project(
         self, due_date: datetime | None, tag_names: Iterable[str]
@@ -1291,7 +1479,7 @@ class ProjectsBoard(commands.Cog):
                 response_message = f"Set status to {status_label}."
         elif value.startswith("priority:"):
             priority_value = value.split(":", 1)[1]
-            if priority_value == "none":
+            if priority_value == "clear":
                 priority_choice: str | None = None
             elif priority_value in PRIORITY_CANONICAL:
                 priority_choice = priority_value
@@ -1302,7 +1490,26 @@ class ProjectsBoard(commands.Cog):
                 updated = await self._set_project_priority(project_id, priority_choice, channel)
             if updated:
                 response_message = (
-                    "Cleared priority." if priority_choice is None else f"Set priority to {priority_choice.capitalize()}."
+                    "Cleared priority."
+                    if priority_choice is None
+                    else f"Set priority to {PRIORITY_CANONICAL[priority_choice]}"
+                )
+        elif value.startswith("type:"):
+            type_value = value.split(":", 1)[1]
+            if type_value == "clear":
+                type_choice: str | None = None
+            elif type_value in PROJECT_TYPE_CANONICAL:
+                type_choice = type_value
+            else:
+                await self._respond_ephemeral(interaction, "Unknown project type selection.")
+                return
+            async with self._lock:
+                updated = await self._set_project_type(project_id, type_choice, channel)
+            if updated:
+                response_message = (
+                    "Cleared project type."
+                    if type_choice is None
+                    else f"Set project type to {PROJECT_TYPE_CANONICAL[type_choice]}"
                 )
         elif value == "archive":
             async with self._lock:
@@ -1384,6 +1591,9 @@ class ProjectsBoard(commands.Cog):
         priority_indicator = self._priority_indicator_from_tags(record.tags)
         if priority_indicator:
             indicators.append(priority_indicator)
+        type_indicator = self._project_type_indicator_from_tags(record.tags)
+        if type_indicator:
+            indicators.append(type_indicator)
         if record.holiday:
             indicators.append("🎄")
         indicator_text = f"{' '.join(indicators)} " if indicators else ""
@@ -1391,25 +1601,11 @@ class ProjectsBoard(commands.Cog):
         return f"• {indicator_text}[#{record.project_id}] {record.name} ({due_label})"
 
     def _priority_indicator_from_tags(self, tags: Iterable[str]) -> str:
-        priority_map = [
-            ("urgent", "‼️"),
-            ("critical", "‼️"),
-            ("priority: high", "‼️"),
-            ("high priority", "‼️"),
-            ("priority-high", "‼️"),
-            ("priority: medium", "🔸"),
-            ("medium priority", "🔸"),
-            ("priority-medium", "🔸"),
-            ("priority: low", "🔻"),
-            ("low priority", "🔻"),
-            ("priority-low", "🔻"),
-        ]
-        for tag in tags:
-            lowered = tag.strip().lower()
-            for needle, indicator in priority_map:
-                if needle in lowered:
-                    return indicator
-        return ""
+        priority_key = self._priority_from_tags(tags)
+        if not priority_key:
+            return ""
+        meta = PRIORITY_META.get(priority_key)
+        return meta.get("emoji", "") if meta else ""
 
     def _priority_from_tags(self, tags: Iterable[str]) -> str | None:
         for tag in tags:
@@ -1418,19 +1614,57 @@ class ProjectsBoard(commands.Cog):
                 return key
         return None
 
-    def _apply_priority_tags(self, tags: Iterable[str], priority: str | None) -> list[str]:
+    def _apply_priority_tags(
+        self, tags: Iterable[str], priority: str | None | object
+    ) -> list[str]:
         cleaned: list[str] = []
-        seen: set[str] = set()
         for tag in tags:
             if PRIORITY_ALIASES.get(tag.strip().casefold()):
                 continue
             cleaned.append(tag)
-            seen.add(tag)
-        if priority and priority in PRIORITY_CANONICAL:
-            canonical = PRIORITY_CANONICAL[priority]
-            if canonical not in seen:
+        current = self._priority_from_tags(tags)
+        if priority is _MISSING:
+            desired = current
+        else:
+            desired = priority
+        if desired and isinstance(desired, str):
+            canonical = PRIORITY_CANONICAL.get(desired)
+            if canonical and canonical not in cleaned:
                 cleaned.append(canonical)
         return cleaned
+
+    def _project_type_from_tags(self, tags: Iterable[str]) -> str | None:
+        for tag in tags:
+            key = PROJECT_TYPE_ALIASES.get(tag.strip().casefold())
+            if key:
+                return key
+        return None
+
+    def _apply_project_type_tags(
+        self, tags: Iterable[str], project_type: str | None | object
+    ) -> list[str]:
+        cleaned: list[str] = []
+        for tag in tags:
+            if PROJECT_TYPE_ALIASES.get(tag.strip().casefold()):
+                continue
+            cleaned.append(tag)
+        current = self._project_type_from_tags(tags)
+        if project_type is _MISSING:
+            desired = current
+        else:
+            desired = project_type
+        if desired and isinstance(desired, str):
+            canonical = PROJECT_TYPE_CANONICAL.get(desired)
+            if canonical and canonical not in cleaned:
+                cleaned.append(canonical)
+        return cleaned
+
+    def _project_type_indicator_from_tags(self, tags: Iterable[str]) -> str:
+        type_key = self._project_type_from_tags(tags)
+        if not type_key:
+            return ""
+        meta = PROJECT_TYPE_META.get(type_key)
+        return meta.get("emoji", "") if meta else ""
 
     def _format_due_label(self, due_date: datetime | None) -> str:
         if due_date is None:
