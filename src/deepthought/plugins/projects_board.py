@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Iterable, List
 
 import aiosqlite
@@ -28,7 +28,47 @@ _LOG = logging.getLogger(__name__)
 INDEX_THREAD_NAME = "Projects Index"
 DEFAULT_STATUS = "to-do"
 DEFAULT_REMINDER_LEAD = timedelta(hours=1)
-HOLIDAY_MONTHS = {11, 12}
+
+
+def _normalize_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _is_halloween_window(moment: datetime) -> bool:
+    day = _normalize_datetime(moment).date()
+    return day.month == 10
+
+
+def _fourth_thursday(year: int) -> date:
+    first_day = date(year, 11, 1)
+    offset = (3 - first_day.weekday()) % 7
+    return first_day + timedelta(days=offset + (4 - 1) * 7)
+
+
+def _is_thanksgiving_window(moment: datetime) -> bool:
+    day = _normalize_datetime(moment).date()
+    if day.month != 11:
+        return False
+    thanksgiving = _fourth_thursday(day.year)
+    window_start = thanksgiving - timedelta(days=3)
+    window_end = thanksgiving + timedelta(days=2)
+    return window_start <= day <= window_end
+
+
+def _is_christmas_new_year_window(moment: datetime) -> bool:
+    day = _normalize_datetime(moment).date()
+    if day.month == 12:
+        return True
+    if day.month == 1 and day.day <= 7:
+        return True
+    return False
+
+
+def _is_valentines_window(moment: datetime) -> bool:
+    day = _normalize_datetime(moment).date()
+    return day.month == 2 and 1 <= day.day <= 21
 
 BOARD_STATUS_META: dict[str, dict[str, str]] = {
     "to-do": {"label": "To-Do", "tag": "Planning"},
@@ -1222,7 +1262,12 @@ class ProjectsBoard(commands.Cog):
     def _is_holiday_project(
         self, due_date: datetime | None, tag_names: Iterable[str]
     ) -> bool:
-        if due_date and due_date.month in HOLIDAY_MONTHS:
+        if due_date and (
+            _is_halloween_window(due_date)
+            or _is_thanksgiving_window(due_date)
+            or _is_christmas_new_year_window(due_date)
+            or _is_valentines_window(due_date)
+        ):
             return True
         return any(tag.lower() == "holiday" for tag in tag_names)
 
@@ -1825,20 +1870,26 @@ class ProjectsBoard(commands.Cog):
     async def _sync_due_date_reminder(
         self, record: ProjectRecord, guild: discord.Guild | None
     ) -> None:
-        if guild is None or record is None:
+        if record is None:
             return
-        if not self._require_events:
+        if record.archived_at or record.due_date is None:
+            if guild is not None:
+                await self._cancel_scheduled_event(record, guild)
             return
-        if record.archived_at:
-            await self._cancel_scheduled_event(record, guild)
+
+        due_date = _normalize_datetime(record.due_date)
+        reminder_time = due_date - DEFAULT_REMINDER_LEAD
+        now = datetime.now(UTC)
+        if reminder_time < now:
+            reminder_time = now + timedelta(minutes=5)
+
+        if not self._require_events or guild is None:
+            if guild is not None:
+                await self._cancel_scheduled_event(record, guild)
+            self._queue_goal_scheduler_reminder(record, reminder_time)
             return
-        if record.due_date is None:
-            await self._cancel_scheduled_event(record, guild)
-            return
-        start_time = record.due_date - DEFAULT_REMINDER_LEAD
-        if start_time < datetime.now(UTC):
-            start_time = datetime.now(UTC) + timedelta(minutes=5)
-        await self._create_or_update_event(record, guild, start_time)
+
+        await self._create_or_update_event(record, guild, reminder_time)
 
     async def _create_or_update_event(
         self, record: ProjectRecord, guild: discord.Guild, start_time: datetime
@@ -1847,10 +1898,24 @@ class ProjectsBoard(commands.Cog):
         end_time = record.due_date
         if end_time is None:
             return
-        if start_time.tzinfo is None:
-            start_time = start_time.replace(tzinfo=UTC)
-        if end_time.tzinfo is None:
-            end_time = end_time.replace(tzinfo=UTC)
+        start_time = _normalize_datetime(start_time)
+        end_time = _normalize_datetime(end_time)
+        now = datetime.now(UTC)
+
+        if end_time <= now:
+            await self._cancel_scheduled_event(record, guild)
+            self._queue_goal_scheduler_reminder(record, now)
+            return
+
+        if start_time >= end_time:
+            adjusted_start = end_time - DEFAULT_REMINDER_LEAD
+            if adjusted_start <= now:
+                adjusted_start = now + timedelta(minutes=5)
+            if adjusted_start >= end_time:
+                await self._cancel_scheduled_event(record, guild)
+                self._queue_goal_scheduler_reminder(record, now)
+                return
+            start_time = adjusted_start
         try:
             if record.scheduled_event_id:
                 event = guild.get_scheduled_event(record.scheduled_event_id)
@@ -1873,16 +1938,31 @@ class ProjectsBoard(commands.Cog):
                 await self._set_scheduled_event_id(record.project_id, event.id)
         except discord.Forbidden:
             _LOG.warning("Missing permissions to manage scheduled events for %s", record.name)
-            self._scheduler.add_goal(
-                f"Reminder: project {record.name} is due {record.due_date.isoformat() if record.due_date else ''}",
-                priority=5,
-            )
+            self._queue_goal_scheduler_reminder(record, start_time)
         except discord.HTTPException as exc:
             _LOG.warning("Failed to manage scheduled event for %s: %s", record.name, exc)
-            self._scheduler.add_goal(
-                f"Reminder: project {record.name} is due {record.due_date.isoformat() if record.due_date else ''}",
-                priority=5,
-            )
+            self._queue_goal_scheduler_reminder(record, start_time)
+
+    def _queue_goal_scheduler_reminder(
+        self, record: ProjectRecord, reminder_time: datetime
+    ) -> None:
+        due_display = (
+            _normalize_datetime(record.due_date).isoformat()
+            if record.due_date is not None
+            else ""
+        )
+        reminder_at = _normalize_datetime(reminder_time)
+        now = datetime.now(UTC)
+        if reminder_at < now:
+            reminder_at = now
+        reminder_text = reminder_at.isoformat()
+        self._scheduler.add_goal(
+            (
+                f"Reminder: project {record.name} is due {due_display} "
+                f"(schedule at {reminder_text}, {DEFAULT_REMINDER_LEAD} ahead)"
+            ),
+            priority=5,
+        )
 
     async def _cancel_scheduled_event(
         self, record: ProjectRecord, guild: discord.Guild | None
