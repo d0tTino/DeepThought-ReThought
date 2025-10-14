@@ -476,6 +476,49 @@ Alternatively, launch the same bot using the helper script at the project root:
 python bot.py
 ```
 
+### Projects Board Plugin
+
+The bot can load the **Projects Board** plugin to curate forum threads into a
+Kanban-style dashboard. Grant the bot permissions to manage the forum: *Manage
+Channels* (for creating tags), *Manage Threads* and *Send Messages* (for
+creating the index thread and updating embeds), and *Read Message History*. If
+you enable deadline reminders, add *Manage Events* so the bot can create and
+update scheduled events in the guild.
+
+Configure the plugin with the following environment variables:
+
+```bash
+export PROJECTS_FORUM_CHANNEL=123456789012345678  # Forum that hosts project threads
+export PROJECTS_INDEX_CHANNEL=234567890123456789  # Optional text channel for the pinned index
+export PROJECTS_REQUIRE_EVENTS=true               # Optional; create scheduled events for due dates
+```
+
+`PROJECTS_FORUM_CHANNEL` must reference a Discord forum channel. When
+`PROJECTS_INDEX_CHANNEL` is supplied, the bot pins the board embed in that text
+channel instead of the forum index thread. Leave
+`PROJECTS_REQUIRE_EVENTS` unset or `false` if you do not need guild scheduled
+events for due date reminders.
+
+#### Commands and dashboard workflow
+
+All board controls live under the `/project` slash command group:
+
+* `/project seed_tags` — create the required forum tags if they are missing.
+* `/project list` — send a private embed listing active (and optionally archived)
+  projects.
+* `/project create` — open a thread with the requested metadata, set priority
+  and project-type tags, and populate the database.
+* `/project update` — adjust the tracked metadata for an existing project,
+  including due dates, owner, tags, and board filters.
+* `/project archive` — mark a project complete, tag the thread accordingly, and
+  hide it from the active dashboard.
+
+The dashboard embed is interactive: select a project from the dropdown to apply
+actions, toggle the holiday filter to focus on seasonal work, and press *Refresh*
+to resync the board after manual thread edits. Use *Clear Selection* to stop
+showing per-project actions in the selector. When scheduled events are enabled,
+updating a due date automatically reschedules the guild reminder.
+
 ### Running the Prism Server
 
 Prism integration now uses a small FastAPI server that requires an
