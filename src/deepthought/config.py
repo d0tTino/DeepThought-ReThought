@@ -13,6 +13,17 @@ from typing import Optional
 from pydantic import AnyUrl, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+try:  # Pydantic v2 helper; optional for environments using stubs in tests
+    from pydantic import AliasChoices, model_validator
+except (ImportError, AttributeError):  # pragma: no cover - exercised in stubbed tests
+    AliasChoices = None  # type: ignore[assignment]
+
+    def model_validator(*args: object, **kwargs: object):  # type: ignore[override]
+        def decorator(func):
+            return func
+
+        return decorator
+
 
 def _apply_env_aliases() -> None:
     """Map legacy environment variables to the expected ``DT_*`` names."""
@@ -246,21 +257,85 @@ def get_container_tag() -> str | None:
     return _first_non_empty("DT_CONTAINER_TAG", "CONTAINER_TAG", "IMAGE_TAG")
 
 
+def _alias_choices(*names: str) -> object:
+    """Return a ``validation_alias`` compatible value across environments."""
+
+    if AliasChoices is not None:  # pragma: no branch - trivial branch
+        return AliasChoices(*names)
+    # Fallback for stubbed pydantic used in unit tests. Returning the first
+    # name keeps type checking simple while ``load_bot_env`` injects aliases.
+    return names[0]
+
+
 class BotEnv(BaseSettings):
     """Environment variables required for running the Discord bot."""
 
     DISCORD_TOKEN: str
     MONITOR_CHANNEL: int
-    PROJECTS_FORUM_CHANNEL: int | None = None
-    PROJECTS_INDEX_CHANNEL: int | None = None
-    PROJECTS_REQUIRE_EVENTS: bool = False
+    PROJECT_FORUM_CHANNEL_ID: int | None = Field(
+        default=None,
+        validation_alias=_alias_choices("PROJECT_FORUM_CHANNEL_ID", "PROJECTS_FORUM_CHANNEL"),
+    )
+    PROJECT_INDEX_CHANNEL_ID: int | None = Field(
+        default=None,
+        validation_alias=_alias_choices("PROJECT_INDEX_CHANNEL_ID", "PROJECTS_INDEX_CHANNEL"),
+    )
+    PROJECT_REQUIRE_EVENTS: bool = Field(
+        default=False,
+        validation_alias=_alias_choices("PROJECT_REQUIRE_EVENTS", "PROJECTS_REQUIRE_EVENTS"),
+    )
     NATS_URL: AnyUrl = "nats://localhost:4222"
 
     model_config = SettingsConfigDict(env_prefix="")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _promote_legacy_fields(cls, data: object) -> object:
+        """Map legacy field names to their canonical counterparts."""
+
+        if not isinstance(data, dict):
+            return data
+
+        updated = dict(data)
+
+        def _copy_first(target: str, aliases: tuple[str, ...]) -> None:
+            if updated.get(target) is not None:
+                return
+            for alias in aliases:
+                value = updated.get(alias)
+                if value not in (None, ""):
+                    updated[target] = value
+                    break
+
+        _copy_first("PROJECT_FORUM_CHANNEL_ID", ("PROJECTS_FORUM_CHANNEL_ID", "PROJECTS_FORUM_CHANNEL"))
+        _copy_first("PROJECT_INDEX_CHANNEL_ID", ("PROJECTS_INDEX_CHANNEL_ID", "PROJECTS_INDEX_CHANNEL"))
+        _copy_first("PROJECT_REQUIRE_EVENTS", ("PROJECTS_REQUIRE_EVENTS",))
+
+        return updated
+
+    @property
+    def PROJECTS_FORUM_CHANNEL(self) -> int | None:  # pragma: no cover - compatibility shim
+        return self.PROJECT_FORUM_CHANNEL_ID
+
+    @property
+    def PROJECTS_INDEX_CHANNEL(self) -> int | None:  # pragma: no cover - compatibility shim
+        return self.PROJECT_INDEX_CHANNEL_ID
+
+    @property
+    def PROJECTS_REQUIRE_EVENTS(self) -> bool:  # pragma: no cover - compatibility shim
+        return self.PROJECT_REQUIRE_EVENTS
+
 
 def load_bot_env() -> BotEnv:
     """Return bot environment settings or exit with a clear error."""
+
+    for legacy, canonical in (
+        ("PROJECTS_FORUM_CHANNEL", "PROJECT_FORUM_CHANNEL_ID"),
+        ("PROJECTS_INDEX_CHANNEL", "PROJECT_INDEX_CHANNEL_ID"),
+        ("PROJECTS_REQUIRE_EVENTS", "PROJECT_REQUIRE_EVENTS"),
+    ):
+        if legacy in os.environ and canonical not in os.environ:
+            os.environ[canonical] = os.environ[legacy]
 
     try:
         return BotEnv()

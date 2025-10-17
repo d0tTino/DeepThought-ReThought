@@ -594,7 +594,14 @@ class ProjectsBoard(commands.Cog):
         setting_value = getattr(settings, "projects_forum_channel_id", None)
         if setting_value:
             return int(setting_value)
-        for env_name in ("PROJECTS_FORUM_CHANNEL_ID", "DT_PROJECTS_FORUM_CHANNEL_ID"):
+        for env_name in (
+            "PROJECT_FORUM_CHANNEL_ID",
+            "DT_PROJECT_FORUM_CHANNEL_ID",
+            "PROJECTS_FORUM_CHANNEL_ID",
+            "DT_PROJECTS_FORUM_CHANNEL_ID",
+            "PROJECTS_FORUM_CHANNEL",
+            "DT_PROJECTS_FORUM_CHANNEL",
+        ):
             value = os.getenv(env_name)
             if value:
                 with contextlib.suppress(ValueError):

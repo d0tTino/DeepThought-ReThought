@@ -176,7 +176,9 @@ def extract_windowed_features(
     else:
         num_windows = 1 + (n_samples - win_samples) // step_samples
 
-    memmap_path = cache_dir / f"{audio_path.stem}_{model}_ws{window_size}_ss{step_size}.dat"
+    model_name, _ = _parse_model_spec(model)
+    memmap_suffix = model_name or model
+    memmap_path = cache_dir / f"{audio_path.stem}_{memmap_suffix}_ws{window_size}_ss{step_size}.dat"
 
     if memmap_path.exists():
         file_size = memmap_path.stat().st_size
