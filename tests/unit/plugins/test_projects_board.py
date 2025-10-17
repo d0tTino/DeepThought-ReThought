@@ -255,6 +255,37 @@ async def test_build_board_embed_groups_records(
 
 
 @pytest.mark.asyncio
+async def test_build_board_embed_treats_canonical_p0_as_now(
+    projects_board_module: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = await create_board(projects_board_module, monkeypatch)
+    project_record_cls = projects_board_module.ProjectRecord
+
+    now = datetime.now(UTC)
+    high_priority = project_record_cls(
+        project_id=10,
+        thread_id=None,
+        name="Critical Initiative",
+        summary=None,
+        owner_id=None,
+        status="in-progress",
+        due_date=now + timedelta(days=45),
+        holiday=False,
+        tags=["🔥 P0"],
+        scheduled_event_id=None,
+        created_at=now - timedelta(days=3),
+        updated_at=now,
+        archived_at=None,
+    )
+
+    embed = board._build_board_embed([high_priority], holiday_only=False)
+
+    fields = {field.name: field.value for field in embed.fields}
+    assert high_priority.name in fields["🔥 Now"]
+    assert fields["🟠 Next"] == "_No upcoming projects in the queue._"
+
+
+@pytest.mark.asyncio
 async def test_sync_due_date_reminder_falls_back_to_scheduler(
     projects_board_module: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -304,7 +335,7 @@ async def test_is_holiday_project_helper(
 ) -> None:
     board = await create_board(projects_board_module, monkeypatch)
 
-    november_due = datetime(2025, 11, 5, tzinfo=UTC)
+    november_due = datetime(2025, 11, 27, tzinfo=UTC)
     october_due = datetime(2025, 10, 5, tzinfo=UTC)
 
     assert board._is_holiday_project(november_due, []) is True

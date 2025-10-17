@@ -1384,6 +1384,11 @@ class ProjectsBoard(commands.Cog):
         holiday_bucket: list[ProjectRecord] = []
         done_bucket: list[ProjectRecord] = []
 
+        high_priority_keys = {"p0"}
+        legacy_high_key = PRIORITY_ALIASES.get("high")
+        if legacy_high_key:
+            high_priority_keys.add(legacy_high_key)
+
         for record in records:
             status_key = self._normalise_status_key(record.status)
             priority = self._priority_from_tags(record.tags)
@@ -1396,7 +1401,10 @@ class ProjectsBoard(commands.Cog):
                 done_bucket.append(record)
                 continue
 
-            if priority == "high" or (due_date is not None and due_date <= soon_cutoff):
+            if (
+                (priority and priority in high_priority_keys)
+                or (due_date is not None and due_date <= soon_cutoff)
+            ):
                 now_bucket.append(record)
             else:
                 next_bucket.append(record)
