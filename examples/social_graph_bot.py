@@ -1202,8 +1202,8 @@ if __name__ == "__main__":
             run(
                 env.DISCORD_TOKEN,
                 env.MONITOR_CHANNEL,
-                forum_channel_id=env.PROJECTS_FORUM_CHANNEL,
-                index_channel_id=env.PROJECTS_INDEX_CHANNEL,
-                require_scheduled_events=env.PROJECTS_REQUIRE_EVENTS,
+                forum_channel_id=env.PROJECT_FORUM_CHANNEL_ID,
+                index_channel_id=env.PROJECT_INDEX_CHANNEL_ID,
+                require_scheduled_events=env.PROJECT_REQUIRE_EVENTS,
             )
         )

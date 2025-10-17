@@ -10,9 +10,34 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 
+import importlib.util
+import sys
+
 import numpy as np
-import torch
-from torch import nn
+
+
+def _load_real_torch() -> object:
+    """Return a fully featured ``torch`` module, bypassing lightweight stubs."""
+
+    sys.modules.pop("torch", None)
+    spec = importlib.util.find_spec("torch")
+    if spec is None or spec.loader is None:  # pragma: no cover - torch missing
+        raise ImportError("torch is required for training utilities")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    sys.modules["torch"] = module
+    return module
+
+
+try:  # pragma: no branch - executed at import time
+    import torch  # type: ignore
+except Exception:  # pragma: no cover - torch not importable
+    torch = _load_real_torch()  # type: ignore[assignment]
+else:
+    if not hasattr(torch, "Tensor"):
+        torch = _load_real_torch()  # type: ignore[assignment]
+
+import torch.nn as nn  # type: ignore
 from torch.utils.data import DataLoader, Dataset
 
 from deepthought.modules.fuser import ModalityFuser

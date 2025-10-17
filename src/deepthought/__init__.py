@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import sys
 import types
+from importlib import util as importlib_util
+from pathlib import Path
 
 
 def _ensure_torch_numpy_compat() -> None:
@@ -94,7 +96,26 @@ def _ensure_torch_numpy_compat() -> None:
         torch.Tensor.numpy = _tensor_numpy  # type: ignore[assignment]
 
 
+def _ensure_real_module(module_name: str, relative_path: str) -> None:
+    """Load ``module_name`` from ``relative_path`` if a stub was pre-inserted."""
+
+    module = sys.modules.get(module_name)
+    if module is not None and getattr(module, "__file__", None):
+        return
+    package_root = Path(__file__).resolve().parent
+    path = package_root / relative_path
+    spec = importlib_util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:  # pragma: no cover - unexpected
+        return
+    module = importlib_util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    sys.modules[module_name] = module
+
+
 _ensure_torch_numpy_compat()
+_ensure_real_module(__name__ + ".services", "services/__init__.py")
+_ensure_real_module(__name__ + ".services.perception", "services/perception/__init__.py")
+_ensure_real_module(__name__ + ".perception", "perception/__init__.py")
 
 try:  # Ensure prometheus_client is loaded before tests patch it
     import prometheus_client  # noqa: F401

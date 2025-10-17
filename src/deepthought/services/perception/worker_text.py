@@ -9,16 +9,37 @@ processing.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence, Tuple
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from deepthought.config import get_settings
 
 from .text_utils import Token, scrub_text
+
+try:  # pragma: no cover - optional dependency
+    from sentence_transformers import SentenceTransformer
+except Exception:  # pragma: no cover - sentence_transformers may be absent
+    SentenceTransformer = None  # type: ignore[assignment]
+
+
+class _DeterministicSentenceTransformer:
+    """Fallback encoder used when :mod:`sentence_transformers` is unavailable."""
+
+    def __init__(self, model_name: str, *, embedding_dim: int = 1) -> None:
+        self.model_name = model_name
+        self.embedding_dim = embedding_dim
+
+    def encode(self, text: str) -> np.ndarray:
+        """Return a deterministic embedding based on ``text``."""
+
+        digest = hashlib.sha1(f"{self.model_name}:{text}".encode("utf-8")).digest()
+        ints = np.frombuffer(digest, dtype=np.uint32, count=self.embedding_dim)
+        scale = np.iinfo(np.uint32).max
+        return (ints.astype(np.float32) / scale).reshape(self.embedding_dim)
 
 
 @dataclass
@@ -39,7 +60,10 @@ class TextPerceptionWorker:
     def __post_init__(self) -> None:  # pragma: no cover - simple validation
         if not 0.025 <= self.hop_seconds <= 0.05:
             raise ValueError("hop_seconds must be between 0.025 and 0.05 seconds")
-        self._model = SentenceTransformer(self.model_name)
+        if SentenceTransformer is not None:
+            self._model = SentenceTransformer(self.model_name)
+        else:  # Fallback for environments without sentence-transformers
+            self._model = _DeterministicSentenceTransformer(self.model_name)
 
     def __call__(self, tokens: Sequence[Token], memmap_path: str | Path) -> Tuple[np.memmap, np.ndarray]:
         """Process ``tokens`` and write embeddings and timestamps to ``memmap_path``.
