@@ -89,8 +89,28 @@ async def test_seed_tags_creates_missing_tags(
     projects_board_module: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     board = await create_board(projects_board_module, monkeypatch)
+    holiday_tag = projects_board_module.HOLIDAY_TAG_NAME
     required_tags = projects_board_module.REQUIRED_TAGS
-    existing_names = {"Active", "Planning"}
+    expected_taxonomy = {
+        "⏳ To-Do",
+        "🚧 In-Progress",
+        "🧱 Blocked",
+        "💤 On-Hold",
+        "✅ Done",
+        "📦 Archived",
+        "🔥 Now",
+        "🟠 Next",
+        "🟢 Later",
+        "💼 Commission",
+        "🎨 Personal",
+        "🤝 Collaboration",
+        "🌱 Community",
+        "🏢 Internal",
+        "🧪 Study",
+        holiday_tag,
+    }
+    assert set(required_tags) == expected_taxonomy
+    existing_names = {"🚧 In-Progress", "⏳ To-Do"}
     channel = SimpleNamespace(
         available_tags=[SimpleNamespace(name=name) for name in existing_names],
         create_tag=AsyncMock(side_effect=lambda **kwargs: SimpleNamespace(name=kwargs["name"])),
@@ -119,8 +139,8 @@ async def test_create_project_uses_resolved_arguments(
 
     due_text = "2025-12-24"
     due_date = datetime.fromisoformat(f"{due_text}T00:00:00+00:00")
-    priority_choice = app_commands.Choice(name="🔥 P0", value="🔥 P0")
-    project_type_choice = app_commands.Choice(name="Commission", value="Commission")
+    priority_choice = app_commands.Choice(name="🔥 Now", value="🔥 Now")
+    project_type_choice = app_commands.Choice(name="💼 Commission", value="💼 Commission")
 
     record = project_record_cls(
         project_id=7,
@@ -189,7 +209,7 @@ async def test_build_board_embed_groups_records(
         status="in-progress",
         due_date=now + timedelta(days=1),
         holiday=False,
-        tags=["🔥 P0"],
+        tags=["🔥 Now"],
         scheduled_event_id=None,
         created_at=now - timedelta(days=5),
         updated_at=now,
@@ -219,7 +239,7 @@ async def test_build_board_embed_groups_records(
         status="done",
         due_date=now + timedelta(days=40),
         holiday=True,
-        tags=["Holiday"],
+        tags=["🎁 Holiday"],
         scheduled_event_id=None,
         created_at=now - timedelta(days=10),
         updated_at=now,
@@ -271,7 +291,7 @@ async def test_build_board_embed_treats_canonical_p0_as_now(
         status="in-progress",
         due_date=now + timedelta(days=45),
         holiday=False,
-        tags=["🔥 P0"],
+        tags=["🔥 Now"],
         scheduled_event_id=None,
         created_at=now - timedelta(days=3),
         updated_at=now,
@@ -339,5 +359,5 @@ async def test_is_holiday_project_helper(
     october_due = datetime(2025, 10, 5, tzinfo=UTC)
 
     assert board._is_holiday_project(november_due, []) is True
-    assert board._is_holiday_project(october_due, ["Holiday"]) is True
+    assert board._is_holiday_project(october_due, ["🎁 Holiday"]) is True
     assert board._is_holiday_project(None, []) is False

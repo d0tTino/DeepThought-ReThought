@@ -519,6 +519,23 @@ to resync the board after manual thread edits. Use *Clear Selection* to stop
 showing per-project actions in the selector. When scheduled events are enabled,
 updating a due date automatically reschedules the guild reminder.
 
+#### Tag taxonomy
+
+The forum requires a consistent set of tags so the bot can triage work across
+statuses, priorities, and project types. When you run `/project seed_tags`, the
+bot ensures the forum exposes the following canonical tags (including their
+emoji prefixes):
+
+* **Status** — ⏳ To-Do, 🚧 In-Progress, 🧱 Blocked, 💤 On-Hold, ✅ Done, 📦 Archived
+* **Priority** — 🔥 Now, 🟠 Next, 🟢 Later
+* **Project type** — 💼 Commission, 🎨 Personal, 🤝 Collaboration, 🌱 Community,
+  🏢 Internal, 🧪 Study, 🎁 Holiday
+
+Legacy tags such as “Planning”, “Active”, or “🔥 P0” remain recognised as input
+aliases, but new projects and automated syncs always apply the emoji-prefixed
+tags listed above. Ensure moderators keep the tag names intact; otherwise the
+bot will recreate the expected variants to preserve the dashboard layout.
+
 ### Running the Prism Server
 
 Prism integration now uses a small FastAPI server that requires an
