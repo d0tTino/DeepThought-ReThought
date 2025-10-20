@@ -255,6 +255,7 @@ class ProjectRecord:
     """Representation of a project stored in SQLite."""
 
     project_id: int
+    guild_id: int | None
     thread_id: int | None
     name: str
     summary: str | None
@@ -263,6 +264,8 @@ class ProjectRecord:
     due_date: datetime | None
     holiday: bool
     tags: list[str]
+    priority: str | None
+    project_type: str | None
     scheduled_event_id: int | None
     created_at: datetime
     updated_at: datetime
@@ -376,7 +379,7 @@ class ProjectsBoardView(discord.ui.View):
                 )
             )
 
-        priority = self.board._priority_from_tags(record.tags)
+        priority = self.board._priority_for_record(record)
         for key, meta in PRIORITY_META.items():
             options.append(
                 discord.SelectOption(
@@ -395,7 +398,7 @@ class ProjectsBoardView(discord.ui.View):
             )
         )
 
-        project_type = self.board._project_type_from_tags(record.tags)
+        project_type = self.board._project_type_for_record(record)
         for key, meta in PROJECT_TYPE_META.items():
             options.append(
                 discord.SelectOption(
@@ -611,10 +614,17 @@ class ProjectsBoard(commands.Cog):
             return
         self._conn = await aiosqlite.connect(self._db_path)
         self._conn.row_factory = aiosqlite.Row
+        await self._ensure_schema()
+        await self._conn.commit()
+
+    async def _ensure_schema(self) -> None:
+        if self._conn is None:
+            raise RuntimeError("Database connection not initialized")
         await self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS projects (
                 project_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER,
                 thread_id INTEGER UNIQUE,
                 name TEXT NOT NULL,
                 summary TEXT,
@@ -623,6 +633,8 @@ class ProjectsBoard(commands.Cog):
                 due_date TEXT,
                 holiday INTEGER DEFAULT 0,
                 tags TEXT,
+                priority TEXT,
+                project_type TEXT,
                 scheduled_event_id INTEGER,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -635,7 +647,89 @@ class ProjectsBoard(commands.Cog):
             CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)
             """
         )
+        await self._conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_projects_guild ON projects(guild_id)
+            """
+        )
+        columns = await self._get_table_columns("projects")
+        alterations: list[str] = []
+        if "guild_id" not in columns:
+            alterations.append("ALTER TABLE projects ADD COLUMN guild_id INTEGER")
+        if "priority" not in columns:
+            alterations.append("ALTER TABLE projects ADD COLUMN priority TEXT")
+        if "project_type" not in columns:
+            alterations.append("ALTER TABLE projects ADD COLUMN project_type TEXT")
+        for statement in alterations:
+            await self._conn.execute(statement)
+        await self._backfill_project_metadata()
+
+    async def _get_table_columns(self, table: str) -> set[str]:
+        if self._conn is None:
+            raise RuntimeError("Database connection not initialized")
+        cursor = await self._conn.execute(f"PRAGMA table_info({table})")
+        rows = await cursor.fetchall()
+        await cursor.close()
+        return {row["name"] for row in rows}
+
+    async def _backfill_project_metadata(self, default_guild_id: int | None = None) -> None:
+        if self._conn is None:
+            raise RuntimeError("Database connection not initialized")
+        cursor = await self._conn.execute(
+            """
+            SELECT project_id, guild_id, priority, project_type, tags
+            FROM projects
+            """
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        if not rows:
+            return
+        guild_id = default_guild_id or self._infer_default_guild_id()
+        updates: list[tuple[Any, ...]] = []
+        for row in rows:
+            tags = json.loads(row["tags"]) if row["tags"] else []
+            priority = self._priority_from_tags(tags)
+            project_type = self._project_type_from_tags(tags)
+            desired_guild_id = row["guild_id"] if row["guild_id"] else guild_id
+            needs_update = False
+            current_priority = row["priority"]
+            current_project_type = row["project_type"]
+            current_guild_id = row["guild_id"]
+            if priority != current_priority:
+                needs_update = True
+            if project_type != current_project_type:
+                needs_update = True
+            if desired_guild_id is not None and desired_guild_id != current_guild_id:
+                needs_update = True
+            if not needs_update:
+                continue
+            updates.append((priority, project_type, desired_guild_id, row["project_id"]))
+        if not updates:
+            return
+        await self._conn.executemany(
+            """
+            UPDATE projects
+            SET priority = ?, project_type = ?, guild_id = COALESCE(?, guild_id)
+            WHERE project_id = ?
+            """,
+            updates,
+        )
         await self._conn.commit()
+
+    def _infer_default_guild_id(self) -> int | None:
+        channel_ids = [self._forum_channel_id, self._index_channel_id, self._monitor_channel_id]
+        for channel_id in channel_ids:
+            if not channel_id:
+                continue
+            channel = self.bot.get_channel(channel_id)
+            if channel and getattr(channel, "guild", None):
+                return channel.guild.id
+        if getattr(self.bot, "guilds", None):
+            guilds = getattr(self.bot, "guilds")
+            if isinstance(guilds, list) and len(guilds) == 1 and getattr(guilds[0], "id", None):
+                return guilds[0].id
+        return None
 
     async def _close_db(self) -> None:
         if self._conn is not None:
@@ -682,6 +776,7 @@ class ProjectsBoard(commands.Cog):
         channel = await self._fetch_forum_channel()
         if channel is None:
             return
+        await self._backfill_project_metadata(channel.guild.id)
         created = await self._ensure_tags(channel)
         if created:
             _LOG.info("Created %d missing project tags", len(created))
@@ -718,12 +813,27 @@ class ProjectsBoard(commands.Cog):
         if self._conn is not None:
             await self._conn.commit()
 
-    async def _fetch_projects(self, *, include_archived: bool = False) -> list[ProjectRecord]:
+    async def _fetch_projects(
+        self, *, include_archived: bool = False, guild_id: int | None = None
+    ) -> list[ProjectRecord]:
         query = "SELECT * FROM projects"
+        clauses: list[str] = []
+        params: list[Any] = []
+        if guild_id is not None:
+            clauses.append("(guild_id = ? OR guild_id IS NULL)")
+            params.append(guild_id)
         if not include_archived:
-            query += " WHERE archived_at IS NULL"
-        query += " ORDER BY COALESCE(due_date, created_at) ASC"
-        cursor = await self._execute(query)
+            clauses.append("archived_at IS NULL")
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += (
+            " ORDER BY CASE priority"
+            " WHEN 'p0' THEN 0"
+            " WHEN 'p1' THEN 1"
+            " WHEN 'p2' THEN 2"
+            " ELSE 3 END, COALESCE(due_date, created_at) ASC, project_id ASC"
+        )
+        cursor = await self._execute(query, *params)
         rows = await cursor.fetchall()
         await cursor.close()
         return [self._row_to_project(row) for row in rows]
@@ -748,6 +858,7 @@ class ProjectsBoard(commands.Cog):
         tags = json.loads(row["tags"]) if row["tags"] else []
         return ProjectRecord(
             project_id=row["project_id"],
+            guild_id=row["guild_id"],
             thread_id=row["thread_id"],
             name=row["name"],
             summary=row["summary"],
@@ -756,6 +867,8 @@ class ProjectsBoard(commands.Cog):
             due_date=due,
             holiday=bool(row["holiday"]),
             tags=list(tags),
+            priority=row["priority"],
+            project_type=row["project_type"],
             scheduled_event_id=row["scheduled_event_id"],
             created_at=created,
             updated_at=updated,
@@ -812,7 +925,9 @@ class ProjectsBoard(commands.Cog):
     @app_commands.describe(include_archived="Include archived projects in the listing")
     async def list_projects(self, interaction: discord.Interaction, include_archived: bool = False) -> None:
         await self._ready.wait()
-        records = await self._fetch_projects(include_archived=include_archived)
+        records = await self._fetch_projects(
+            include_archived=include_archived, guild_id=interaction.guild_id
+        )
         embed = discord.Embed(title="Projects", colour=discord.Colour.blurple())
         if not records:
             embed.description = "No projects recorded yet."
@@ -1028,11 +1143,36 @@ class ProjectsBoard(commands.Cog):
         due_serialized = self._serialize_datetime(due_date)
         owner_id = owner.id if owner else None
         now = datetime.now(UTC)
+        guild_id = getattr(channel.guild, "id", None)
+        canonical_priority = (
+            priority if priority is not _MISSING else self._priority_from_tags(tag_names)
+        )
+        canonical_project_type = (
+            project_type
+            if project_type is not _MISSING
+            else self._project_type_from_tags(tag_names)
+        )
         cursor = await self._execute(
             """
-            INSERT INTO projects (thread_id, name, summary, owner_id, status, due_date, holiday, tags, scheduled_event_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+            INSERT INTO projects (
+                guild_id,
+                thread_id,
+                name,
+                summary,
+                owner_id,
+                status,
+                due_date,
+                holiday,
+                tags,
+                priority,
+                project_type,
+                scheduled_event_id,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
             """,
+            guild_id,
             thread.id if thread else None,
             name,
             summary,
@@ -1041,6 +1181,8 @@ class ProjectsBoard(commands.Cog):
             due_serialized,
             int(holiday or self._is_holiday_project(due_date, tag_names)),
             json.dumps(tag_names) if tag_names else None,
+            canonical_priority,
+            canonical_project_type,
             self._serialize_datetime(now),
             self._serialize_datetime(now),
         )
@@ -1094,12 +1236,16 @@ class ProjectsBoard(commands.Cog):
             await self._update_thread(thread, new_name, new_summary, applied_tags, owner)
         now = datetime.now(UTC)
         due_serialized = self._serialize_datetime(new_due)
+        resolved_guild_id = record.guild_id or getattr(channel.guild, "id", None)
+        canonical_priority = self._priority_from_tags(tag_names)
+        canonical_project_type = self._project_type_from_tags(tag_names)
         await self._execute(
             """
             UPDATE projects
-            SET name = ?, summary = ?, owner_id = ?, status = ?, due_date = ?, holiday = ?, tags = ?, updated_at = ?
+            SET guild_id = COALESCE(?, guild_id), name = ?, summary = ?, owner_id = ?, status = ?, due_date = ?, holiday = ?, tags = ?, priority = ?, project_type = ?, updated_at = ?
             WHERE project_id = ?
             """,
+            resolved_guild_id,
             new_name,
             new_summary,
             new_owner_id,
@@ -1107,6 +1253,8 @@ class ProjectsBoard(commands.Cog):
             due_serialized,
             int(new_holiday or self._is_holiday_project(new_due, tag_names)),
             json.dumps(tag_names) if tag_names else None,
+            canonical_priority,
+            canonical_project_type,
             self._serialize_datetime(now),
             project_id,
         )
@@ -1168,13 +1316,16 @@ class ProjectsBoard(commands.Cog):
             existing=tag_names,
         )
         now = datetime.now(UTC)
+        new_tag_names = [tag.name for tag in applied_tags]
+        canonical_priority = self._priority_from_tags(new_tag_names)
         await self._execute(
             """
             UPDATE projects
-            SET tags = ?, updated_at = ?
+            SET tags = ?, priority = ?, updated_at = ?
             WHERE project_id = ?
             """,
-            json.dumps([tag.name for tag in applied_tags]) if applied_tags else None,
+            json.dumps(new_tag_names) if applied_tags else None,
+            canonical_priority,
             self._serialize_datetime(now),
             project_id,
         )
@@ -1202,13 +1353,16 @@ class ProjectsBoard(commands.Cog):
             existing=tag_names,
         )
         now = datetime.now(UTC)
+        new_tag_names = [tag.name for tag in applied_tags]
+        canonical_project_type = self._project_type_from_tags(new_tag_names)
         await self._execute(
             """
             UPDATE projects
-            SET tags = ?, updated_at = ?
+            SET tags = ?, project_type = ?, updated_at = ?
             WHERE project_id = ?
             """,
-            json.dumps([tag.name for tag in applied_tags]) if applied_tags else None,
+            json.dumps(new_tag_names) if applied_tags else None,
+            canonical_project_type,
             self._serialize_datetime(now),
             project_id,
         )
@@ -1352,7 +1506,9 @@ class ProjectsBoard(commands.Cog):
         selected_project_id: int | None | object = _MISSING,
         holiday_only: bool | None = None,
     ) -> None:
-        records = await self._fetch_projects(include_archived=False)
+        records = await self._fetch_projects(
+            include_archived=False, guild_id=getattr(channel.guild, "id", None)
+        )
         thread, message = await self._ensure_index_message(channel)
         if thread is None and interaction is None:
             return
@@ -1454,7 +1610,7 @@ class ProjectsBoard(commands.Cog):
 
         for record in records:
             status_key = self._normalise_status_key(record.status)
-            priority = self._priority_from_tags(record.tags)
+            priority = self._priority_for_record(record)
             due_date = to_utc(record.due_date)
             is_holiday = record.holiday or self._is_holiday_project(due_date, record.tags)
             if is_holiday:
@@ -1711,10 +1867,10 @@ class ProjectsBoard(commands.Cog):
 
     def _format_index_entry(self, record: ProjectRecord) -> str:
         indicators: list[str] = []
-        priority_indicator = self._priority_indicator_from_tags(record.tags)
+        priority_indicator = self._priority_indicator_for_record(record)
         if priority_indicator:
             indicators.append(priority_indicator)
-        type_indicator = self._project_type_indicator_from_tags(record.tags)
+        type_indicator = self._project_type_indicator_for_record(record)
         if type_indicator:
             indicators.append(type_indicator)
         if record.holiday:
@@ -1722,6 +1878,16 @@ class ProjectsBoard(commands.Cog):
         indicator_text = f"{' '.join(indicators)} " if indicators else ""
         due_label = self._format_due_label(record.due_date)
         return f"• {indicator_text}[#{record.project_id}] {record.name} ({due_label})"
+
+    def _priority_for_record(self, record: ProjectRecord) -> str | None:
+        return record.priority or self._priority_from_tags(record.tags)
+
+    def _priority_indicator_for_record(self, record: ProjectRecord) -> str:
+        priority_key = self._priority_for_record(record)
+        if not priority_key:
+            return ""
+        meta = PRIORITY_META.get(priority_key)
+        return meta.get("emoji", "") if meta else ""
 
     def _priority_indicator_from_tags(self, tags: Iterable[str]) -> str:
         priority_key = self._priority_from_tags(tags)
@@ -1756,6 +1922,9 @@ class ProjectsBoard(commands.Cog):
                 cleaned.append(canonical)
         return cleaned
 
+    def _project_type_for_record(self, record: ProjectRecord) -> str | None:
+        return record.project_type or self._project_type_from_tags(record.tags)
+
     def _project_type_from_tags(self, tags: Iterable[str]) -> str | None:
         for tag in tags:
             key = PROJECT_TYPE_ALIASES.get(tag.strip().casefold())
@@ -1781,6 +1950,13 @@ class ProjectsBoard(commands.Cog):
             if canonical and canonical not in cleaned:
                 cleaned.append(canonical)
         return cleaned
+
+    def _project_type_indicator_for_record(self, record: ProjectRecord) -> str:
+        type_key = self._project_type_for_record(record)
+        if not type_key:
+            return ""
+        meta = PROJECT_TYPE_META.get(type_key)
+        return meta.get("emoji", "") if meta else ""
 
     def _project_type_indicator_from_tags(self, tags: Iterable[str]) -> str:
         type_key = self._project_type_from_tags(tags)

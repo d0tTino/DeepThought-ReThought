@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -144,6 +145,7 @@ async def test_create_project_uses_resolved_arguments(
 
     record = project_record_cls(
         project_id=7,
+        guild_id=123,
         thread_id=None,
         name="Winter Launch",
         summary="Test summary",
@@ -152,6 +154,8 @@ async def test_create_project_uses_resolved_arguments(
         due_date=due_date,
         holiday=False,
         tags=[],
+        priority="p0",
+        project_type="commission",
         scheduled_event_id=None,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -202,6 +206,7 @@ async def test_build_board_embed_groups_records(
     now = datetime.now(UTC)
     urgent = project_record_cls(
         project_id=1,
+        guild_id=42,
         thread_id=None,
         name="Urgent",
         summary=None,
@@ -210,6 +215,8 @@ async def test_build_board_embed_groups_records(
         due_date=now + timedelta(days=1),
         holiday=False,
         tags=["🔥 Now"],
+        priority="p0",
+        project_type=None,
         scheduled_event_id=None,
         created_at=now - timedelta(days=5),
         updated_at=now,
@@ -217,6 +224,7 @@ async def test_build_board_embed_groups_records(
     )
     upcoming = project_record_cls(
         project_id=2,
+        guild_id=42,
         thread_id=None,
         name="Upcoming",
         summary=None,
@@ -225,6 +233,8 @@ async def test_build_board_embed_groups_records(
         due_date=now + timedelta(days=14),
         holiday=False,
         tags=[],
+        priority="p1",
+        project_type=None,
         scheduled_event_id=None,
         created_at=now - timedelta(days=4),
         updated_at=now - timedelta(days=1),
@@ -232,6 +242,7 @@ async def test_build_board_embed_groups_records(
     )
     holiday_done = project_record_cls(
         project_id=3,
+        guild_id=42,
         thread_id=None,
         name="Holiday Wrap-Up",
         summary=None,
@@ -240,6 +251,8 @@ async def test_build_board_embed_groups_records(
         due_date=now + timedelta(days=40),
         holiday=True,
         tags=["🎁 Holiday"],
+        priority=None,
+        project_type="holiday",
         scheduled_event_id=None,
         created_at=now - timedelta(days=10),
         updated_at=now,
@@ -247,6 +260,7 @@ async def test_build_board_embed_groups_records(
     )
     recently_done = project_record_cls(
         project_id=4,
+        guild_id=42,
         thread_id=None,
         name="Shipped",
         summary=None,
@@ -255,6 +269,8 @@ async def test_build_board_embed_groups_records(
         due_date=None,
         holiday=False,
         tags=[],
+        priority=None,
+        project_type=None,
         scheduled_event_id=None,
         created_at=now - timedelta(days=8),
         updated_at=now - timedelta(days=2),
@@ -284,6 +300,7 @@ async def test_build_board_embed_treats_canonical_p0_as_now(
     now = datetime.now(UTC)
     high_priority = project_record_cls(
         project_id=10,
+        guild_id=43,
         thread_id=None,
         name="Critical Initiative",
         summary=None,
@@ -292,6 +309,8 @@ async def test_build_board_embed_treats_canonical_p0_as_now(
         due_date=now + timedelta(days=45),
         holiday=False,
         tags=["🔥 Now"],
+        priority="p0",
+        project_type=None,
         scheduled_event_id=None,
         created_at=now - timedelta(days=3),
         updated_at=now,
@@ -318,6 +337,7 @@ async def test_sync_due_date_reminder_falls_back_to_scheduler(
     due_date = datetime.now(UTC) + timedelta(days=2)
     record = project_record_cls(
         project_id=9,
+        guild_id=44,
         thread_id=None,
         name="Release",
         summary="Release prep",
@@ -326,6 +346,8 @@ async def test_sync_due_date_reminder_falls_back_to_scheduler(
         due_date=due_date,
         holiday=False,
         tags=[],
+        priority=None,
+        project_type=None,
         scheduled_event_id=None,
         created_at=datetime.now(UTC) - timedelta(days=1),
         updated_at=datetime.now(UTC),
@@ -361,3 +383,121 @@ async def test_is_holiday_project_helper(
     assert board._is_holiday_project(november_due, []) is True
     assert board._is_holiday_project(october_due, ["🎁 Holiday"]) is True
     assert board._is_holiday_project(None, []) is False
+
+
+@pytest.mark.asyncio
+async def test_project_persistence_tracks_priority_type_and_guild(
+    tmp_path: Path,
+    projects_board_module: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "board.db"
+    settings_stub = SimpleNamespace(social_graph_db=str(db_path))
+    monkeypatch.setattr(projects_board_module, "get_settings", lambda: settings_stub)
+
+    board = await create_board(projects_board_module, monkeypatch)
+    await board._init_db()
+
+    class DummyChannel:
+        def __init__(self, guild_id: int) -> None:
+            self.guild = SimpleNamespace(id=guild_id)
+            self.available_tags: list[SimpleNamespace] = []
+            self._thread_id = guild_id * 100
+
+        async def create_tag(self, name: str, emoji: str | None = None) -> SimpleNamespace:
+            tag = SimpleNamespace(name=name, emoji=emoji)
+            self.available_tags.append(tag)
+            return tag
+
+        async def create_thread(
+            self, *, name: str, content: str, applied_tags: list[SimpleNamespace]
+        ) -> SimpleNamespace:
+            self._thread_id += 1
+            return SimpleNamespace(id=self._thread_id, add_user=AsyncMock())
+
+        def get_thread(self, thread_id: int) -> None:
+            return None
+
+        async def fetch_thread(self, thread_id: int) -> None:
+            return None
+
+    primary_channel = DummyChannel(777)
+    secondary_channel = DummyChannel(888)
+
+    record_later = await board._create_project_record(
+        channel=primary_channel,
+        name="Later Work",
+        summary="",
+        status="in-progress",
+        due_date=None,
+        owner=None,
+        tags=None,
+        holiday=False,
+        priority="p2",
+        project_type="personal",
+    )
+    record_now = await board._create_project_record(
+        channel=primary_channel,
+        name="Critical Work",
+        summary="",
+        status="in-progress",
+        due_date=None,
+        owner=None,
+        tags=None,
+        holiday=False,
+        priority="p0",
+        project_type="commission",
+    )
+    record_other = await board._create_project_record(
+        channel=secondary_channel,
+        name="Other Guild",
+        summary="",
+        status="in-progress",
+        due_date=None,
+        owner=None,
+        tags=None,
+        holiday=False,
+        priority="p1",
+        project_type="collaboration",
+    )
+
+    assert record_later.guild_id == primary_channel.guild.id
+    assert record_later.priority == "p2"
+    assert record_later.project_type == "personal"
+    assert "🟢 Later" in record_later.tags
+    assert "🎨 Personal" in record_later.tags
+
+    assert record_now.guild_id == primary_channel.guild.id
+    assert record_now.priority == "p0"
+    assert record_now.project_type == "commission"
+    assert "🔥 Now" in record_now.tags
+    assert "💼 Commission" in record_now.tags
+
+    assert record_other.guild_id == secondary_channel.guild.id
+    assert record_other.priority == "p1"
+    assert record_other.project_type == "collaboration"
+
+    primary_records = await board._fetch_projects(guild_id=primary_channel.guild.id)
+    assert [proj.project_id for proj in primary_records] == [
+        record_now.project_id,
+        record_later.project_id,
+    ]
+
+    secondary_records = await board._fetch_projects(guild_id=secondary_channel.guild.id)
+    assert [proj.project_id for proj in secondary_records] == [record_other.project_id]
+
+    updated_priority = await board._set_project_priority(
+        record_later.project_id, "p0", primary_channel
+    )
+    assert updated_priority is not None
+    assert updated_priority.priority == "p0"
+    assert "🔥 Now" in updated_priority.tags
+
+    updated_type = await board._set_project_type(
+        record_now.project_id, "collaboration", primary_channel
+    )
+    assert updated_type is not None
+    assert updated_type.project_type == "collaboration"
+    assert "🤝 Collaboration" in updated_type.tags
+
+    await board._close_db()
