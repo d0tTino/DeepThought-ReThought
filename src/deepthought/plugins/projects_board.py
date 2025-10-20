@@ -71,12 +71,12 @@ def _is_valentines_window(moment: datetime) -> bool:
     return day.month == 2 and 1 <= day.day <= 21
 
 BOARD_STATUS_META: dict[str, dict[str, str]] = {
-    "to-do": {"label": "To-Do", "tag": "Planning"},
-    "in-progress": {"label": "In-Progress", "tag": "Active"},
-    "blocked": {"label": "Blocked", "tag": "Blocked"},
-    "on-hold": {"label": "On-Hold", "tag": "On-Hold"},
-    "done": {"label": "Done", "tag": "Completed"},
-    "archived": {"label": "Archived", "tag": "Archived"},
+    "to-do": {"label": "⏳ To-Do", "tag": "⏳ To-Do"},
+    "in-progress": {"label": "🚧 In-Progress", "tag": "🚧 In-Progress"},
+    "blocked": {"label": "🧱 Blocked", "tag": "🧱 Blocked"},
+    "on-hold": {"label": "💤 On-Hold", "tag": "💤 On-Hold"},
+    "done": {"label": "✅ Done", "tag": "✅ Done"},
+    "archived": {"label": "📦 Archived", "tag": "📦 Archived"},
 }
 
 BOARD_STATUS_ORDER: list[str] = [
@@ -87,26 +87,56 @@ BOARD_STATUS_ORDER: list[str] = [
     "done",
 ]
 
+HOLIDAY_TAG_NAME = "🎁 Holiday"
+HOLIDAY_TAG_ALIASES = {HOLIDAY_TAG_NAME.casefold(), "holiday"}
+
 REQUIRED_TAGS: dict[str, dict[str, str | None]] = {
-    "Active": {"emoji": "🚧"},
-    "Planning": {"emoji": "🧠"},
-    "Blocked": {"emoji": "⛔"},
-    "Completed": {"emoji": "✅"},
-    "Archived": {"emoji": "🗃️"},
-    "Holiday": {"emoji": "🎄"},
-    "On-Hold": {"emoji": "⏸️"},
+    "⏳ To-Do": {"emoji": "⏳"},
+    "🚧 In-Progress": {"emoji": "🚧"},
+    "🧱 Blocked": {"emoji": "🧱"},
+    "💤 On-Hold": {"emoji": "💤"},
+    "✅ Done": {"emoji": "✅"},
+    "📦 Archived": {"emoji": "📦"},
+    HOLIDAY_TAG_NAME: {"emoji": "🎁"},
 }
 
 STATUS_TAGS: dict[str, str] = {
     key: meta["tag"] for key, meta in BOARD_STATUS_META.items()
 }
+for meta in BOARD_STATUS_META.values():
+    label = meta["label"]
+    tag = meta["tag"]
+    STATUS_TAGS[label.casefold()] = tag
+    STATUS_TAGS[tag.casefold()] = tag
+    text = label.split(" ", 1)[-1]
+    STATUS_TAGS[text.casefold()] = tag
+    STATUS_TAGS[text.replace("-", " ").casefold()] = tag
+
 STATUS_TAGS.update(
     {
-        "active": "Active",
-        "planning": "Planning",
-        "completed": "Completed",
+        "active": "🚧 In-Progress",
+        "planning": "⏳ To-Do",
+        "completed": "✅ Done",
+        "complete": "✅ Done",
+        "todo": "⏳ To-Do",
+        "to do": "⏳ To-Do",
+        "in progress": "🚧 In-Progress",
+        "on hold": "💤 On-Hold",
+        "blocked": "🧱 Blocked",
+        "archived": "📦 Archived",
     }
 )
+
+LEGACY_STATUS_TAG_NAMES: dict[str, tuple[str, ...]] = {
+    "⏳ To-Do": ("Planning",),
+    "🚧 In-Progress": ("Active",),
+    "🧱 Blocked": ("Blocked",),
+    "💤 On-Hold": ("On-Hold",),
+    "✅ Done": ("Completed",),
+    "📦 Archived": ("Archived",),
+}
+
+ARCHIVED_TAG_NAMES: tuple[str, ...] = ("📦 Archived", "Archived")
 
 STATUS_CHOICES: List[app_commands.Choice[str]] = [
     app_commands.Choice(name=meta["label"], value=key)
@@ -115,9 +145,9 @@ STATUS_CHOICES: List[app_commands.Choice[str]] = [
 
 
 PRIORITY_META: dict[str, dict[str, Any]] = {
-    "p0": {"label": "🔥 P0", "emoji": "🔥"},
-    "p1": {"label": "🟠 P1", "emoji": "🟠"},
-    "p2": {"label": "🟢 P2", "emoji": "🟢"},
+    "p0": {"label": "🔥 Now", "emoji": "🔥"},
+    "p1": {"label": "🟠 Next", "emoji": "🟠"},
+    "p2": {"label": "🟢 Later", "emoji": "🟢"},
 }
 
 PRIORITY_CANONICAL: dict[str, str] = {
@@ -153,6 +183,12 @@ legacy_priority_aliases = {
     "priority:high": "p0",
     "priority:medium": "p1",
     "priority:low": "p2",
+    "🔥 p0": "p0",
+    "🟠 p1": "p1",
+    "🟢 p2": "p2",
+    "now": "p0",
+    "next": "p1",
+    "later": "p2",
 }
 PRIORITY_ALIASES.update({alias.casefold(): value for alias, value in legacy_priority_aliases.items()})
 for alias in ("urgent", "critical"):
@@ -162,8 +198,18 @@ PROJECT_TYPE_META: dict[str, dict[str, Any]] = {
     "commission": {"label": "💼 Commission", "emoji": "💼", "aliases": ["commission", "client", "paid"]},
     "personal": {"label": "🎨 Personal", "emoji": "🎨", "aliases": ["personal", "solo"]},
     "collaboration": {"label": "🤝 Collaboration", "emoji": "🤝", "aliases": ["collaboration", "collab", "partner"]},
-    "community": {"label": "🌱 Community", "emoji": "🌱", "aliases": ["community", "open source", "open-source", "oss"]},
+    "community": {
+        "label": "🌱 Community",
+        "emoji": "🌱",
+        "aliases": ["community", "open source", "open-source", "oss"],
+    },
     "internal": {"label": "🏢 Internal", "emoji": "🏢", "aliases": ["internal", "operations", "ops", "team"]},
+    "study": {"label": "🧪 Study", "emoji": "🧪", "aliases": ["study", "research", "learning"]},
+    "holiday": {
+        "label": HOLIDAY_TAG_NAME,
+        "emoji": "🎁",
+        "aliases": ["holiday", "seasonal"],
+    },
 }
 
 PROJECT_TYPE_CANONICAL: dict[str, str] = {
@@ -226,10 +272,20 @@ class ProjectRecord:
         """Return a list of human readable lines for embeds."""
 
         due = self.due_date.isoformat() if self.due_date else "No due date"
-        status = self.status.capitalize()
+        status_key = self.status.lower()
+        status_meta = BOARD_STATUS_META.get(status_key)
+        status_label = (
+            status_meta["label"]
+            if status_meta
+            else self.status.replace("-", " ").title()
+        )
         owner = f"<@{self.owner_id}>" if self.owner_id else "Unassigned"
         tags = ", ".join(self.tags) if self.tags else "None"
-        state = "Archived" if self.archived_at else status
+        state = (
+            BOARD_STATUS_META["archived"]["label"]
+            if self.archived_at
+            else status_label
+        )
         return [
             f"**{self.name}**",
             f"• Status: {state}",
@@ -1217,16 +1273,22 @@ class ProjectsBoard(commands.Cog):
         normalised = self._apply_project_type_tags(normalised, project_type)
         tag_names = set(normalised)
         status_tag = STATUS_TAGS.get(status.lower(), STATUS_TAGS[DEFAULT_STATUS])
-        if status_tag in available:
-            tag_names.discard("Archived")
-            tag_names.add(status_tag)
+        status_candidates = (status_tag,) + LEGACY_STATUS_TAG_NAMES.get(status_tag, ())
+        for candidate in status_candidates:
+            if candidate in available:
+                for archived_name in ARCHIVED_TAG_NAMES:
+                    tag_names.discard(archived_name)
+                tag_names.add(candidate)
+                break
         additional = self._parse_tags(tags)
         for extra in additional:
             if extra in available:
                 tag_names.add(extra)
         if holiday or self._is_holiday_project(due_date, tag_names):
-            if "Holiday" in available:
-                tag_names.add("Holiday")
+            for candidate in (HOLIDAY_TAG_NAME, "Holiday"):
+                if candidate in available:
+                    tag_names.add(candidate)
+                    break
         resolved = [available[name] for name in tag_names if name in available]
         return resolved
 
@@ -1276,7 +1338,8 @@ class ProjectsBoard(commands.Cog):
             or _is_valentines_window(due_date)
         ):
             return True
-        return any(tag.lower() == "holiday" for tag in tag_names)
+        normalized = {tag.strip().casefold() for tag in tag_names}
+        return any(alias in normalized for alias in HOLIDAY_TAG_ALIASES)
 
     # ------------------------------------------------------------------
     # Index embed management
