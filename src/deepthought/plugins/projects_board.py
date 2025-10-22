@@ -2182,7 +2182,6 @@ class ProjectsBoard(commands.Cog):
                     description=description,
                     start_time=start_time,
                     end_time=end_time,
-                    location=DEFAULT_EVENT_LOCATION,
                     entity_type=discord.EntityType.external,
                     location=SCHEDULED_EVENT_LOCATION,
                 )
@@ -2194,7 +2193,6 @@ class ProjectsBoard(commands.Cog):
                     description=description,
                     privacy_level=discord.PrivacyLevel.guild_only,
                     entity_type=discord.EntityType.external,
-                    location=DEFAULT_EVENT_LOCATION,
                     location=SCHEDULED_EVENT_LOCATION,
                 )
                 await self._set_scheduled_event_id(record.project_id, event.id)
@@ -2211,20 +2209,26 @@ class ProjectsBoard(commands.Cog):
         due_display = (
             _normalize_datetime(record.due_date).isoformat()
             if record.due_date is not None
-            else ""
+            else "unspecified"
         )
         reminder_at = _normalize_datetime(reminder_time)
         now = datetime.now(UTC)
-        if reminder_at < now:
+        delay_seconds = max(0, (reminder_at - now).total_seconds())
+        delay = int(delay_seconds)
+        if delay == 0:
             reminder_at = now
         reminder_text = reminder_at.isoformat()
-        self._scheduler.add_goal(
-            (
-                f"Reminder: project {record.name} is due {due_display} "
-                f"(schedule at {reminder_text}, {DEFAULT_REMINDER_LEAD} ahead)"
-            ),
-            priority=5,
+        message = (
+            f"Reminder: project {record.name} (ID #{record.project_id}) is due {due_display} "
+            f"(schedule at {reminder_text}, {DEFAULT_REMINDER_LEAD} ahead)."
         )
+        if record.thread_id:
+            message = f"{message} Discuss in <#{record.thread_id}>."
+        else:
+            message = (
+                f"{message} Follow up via the projects board for project #{record.project_id}."
+            )
+        self._scheduler.add_goal(f"{delay}:{message}", priority=5)
 
     async def _cancel_scheduled_event(
         self, record: ProjectRecord, guild: discord.Guild | None
