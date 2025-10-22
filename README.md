@@ -527,7 +527,7 @@ bot ensures the forum exposes the following canonical tags (including their
 emoji prefixes):
 
 * **Status** — ⏳ To-Do, 🚧 In-Progress, 🧱 Blocked, 💤 On-Hold, ✅ Done, 📦 Archived
-* **Priority** — 🔥 Now, 🟠 Next, 🟢 Later
+* **Priority** — 🔥 P0, 🟠 P1, 🟢 P2
 * **Project type** — 💼 Commission, 🎨 Personal, 🤝 Collaboration, 🌱 Community,
   🏢 Internal, 🧪 Study, 🎁 Holiday
 

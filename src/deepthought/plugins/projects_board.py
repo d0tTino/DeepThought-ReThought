@@ -148,9 +148,9 @@ STATUS_CHOICES: List[app_commands.Choice[str]] = [
 
 
 PRIORITY_META: dict[str, dict[str, Any]] = {
-    "p0": {"label": "🔥 Now", "emoji": "🔥"},
-    "p1": {"label": "🟠 Next", "emoji": "🟠"},
-    "p2": {"label": "🟢 Later", "emoji": "🟢"},
+    "p0": {"label": "🔥 P0", "emoji": "🔥"},
+    "p1": {"label": "🟠 P1", "emoji": "🟠"},
+    "p2": {"label": "🟢 P2", "emoji": "🟢"},
 }
 
 PRIORITY_CANONICAL: dict[str, str] = {
@@ -189,6 +189,9 @@ legacy_priority_aliases = {
     "🔥 p0": "p0",
     "🟠 p1": "p1",
     "🟢 p2": "p2",
+    "🔥 now": "p0",
+    "🟠 next": "p1",
+    "🟢 later": "p2",
     "now": "p0",
     "next": "p1",
     "later": "p2",
@@ -550,6 +553,12 @@ class ProjectsBoard(commands.Cog):
         name="project",
         description="Manage collaborative projects",
         guild_only=True,
+    )
+    tag = app_commands.Group(
+        name="tag",
+        description="Manage project tags",
+        guild_only=True,
+        parent=project,
     )
 
     def __init__(
@@ -1083,6 +1092,260 @@ class ProjectsBoard(commands.Cog):
         await self._update_index_embed(channel)
         await self._sync_due_date_reminder(record, channel.guild if channel else None)
 
+    @project.command(name="status", description="Update a project's status")
+    @app_commands.describe(
+        project_id="Identifier of the project to update",
+        status="Select the new status",
+    )
+    @app_commands.choices(status=STATUS_CHOICES)
+    async def set_project_status(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        status: app_commands.Choice[str],
+    ) -> None:
+        await self._ready.wait()
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await interaction.response.send_message(
+                "Projects forum channel is not configured.", ephemeral=True
+            )
+            return
+        async with self._lock:
+            record = await self._update_project_record(
+                project_id,
+                channel=channel,
+                name=None,
+                summary=None,
+                status=status.value,
+                due_date=None,
+                owner=None,
+                tags=None,
+                holiday=None,
+                clear_due=False,
+            )
+        if record is None:
+            await interaction.response.send_message("Project not found.", ephemeral=True)
+            return
+        status_label = self._status_display_name(status.value)
+        await interaction.response.send_message(
+            f"Set project #{record.project_id} status to {status_label}.", ephemeral=True
+        )
+        await self._update_index_embed(channel)
+
+    @project.command(name="priority", description="Update a project's priority tag")
+    @app_commands.describe(
+        project_id="Identifier of the project to update",
+        priority="Select a priority or clear the current tag",
+    )
+    @app_commands.choices(priority=PRIORITY_CHOICES)
+    async def set_project_priority_command(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        priority: app_commands.Choice[str],
+    ) -> None:
+        await self._ready.wait()
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await interaction.response.send_message(
+                "Projects forum channel is not configured.", ephemeral=True
+            )
+            return
+        resolved = self._resolve_priority_choice(priority)
+        if resolved is _MISSING:
+            await interaction.response.send_message(
+                "Unknown priority selection.", ephemeral=True
+            )
+            return
+        async with self._lock:
+            record = await self._set_project_priority(project_id, resolved, channel)
+        if record is None:
+            await interaction.response.send_message("Project not found.", ephemeral=True)
+            return
+        if resolved is None:
+            message = f"Cleared priority for project #{project_id}."
+        else:
+            message = (
+                f"Set project #{project_id} priority to {PRIORITY_CANONICAL[resolved]}."
+            )
+        await interaction.response.send_message(message, ephemeral=True)
+        await self._update_index_embed(channel)
+
+    @project.command(name="due", description="Update or clear a project's due date")
+    @app_commands.describe(
+        project_id="Identifier of the project to update",
+        due_date="Due date in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM)",
+        clear="Clear the existing due date",
+    )
+    async def set_project_due(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        due_date: str | None = None,
+        clear: bool = False,
+    ) -> None:
+        await self._ready.wait()
+        if clear and due_date:
+            await interaction.response.send_message(
+                "Provide either a due date or choose clear, not both.",
+                ephemeral=True,
+            )
+            return
+        if not clear and not due_date:
+            await interaction.response.send_message(
+                "Provide a due date or choose clear to remove it.", ephemeral=True
+            )
+            return
+        parsed_due = self._parse_due_date_input(due_date) if due_date else None
+        if due_date and parsed_due is None:
+            await interaction.response.send_message(
+                "Unable to parse due date. Use YYYY-MM-DD or ISO 8601 format.",
+                ephemeral=True,
+            )
+            return
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await interaction.response.send_message(
+                "Projects forum channel is not configured.", ephemeral=True
+            )
+            return
+        async with self._lock:
+            record = await self._update_project_record(
+                project_id,
+                channel=channel,
+                name=None,
+                summary=None,
+                status=None,
+                due_date=parsed_due if due_date else None,
+                owner=None,
+                tags=None,
+                holiday=None,
+                clear_due=clear,
+            )
+        if record is None:
+            await interaction.response.send_message("Project not found.", ephemeral=True)
+            return
+        if clear:
+            message = f"Cleared due date for project #{project_id}."
+        else:
+            message = (
+                f"Set project #{project_id} due date to {self._format_due_label(parsed_due)}."
+            )
+        await interaction.response.send_message(message, ephemeral=True)
+        await self._update_index_embed(channel)
+        await self._sync_due_date_reminder(record, channel.guild if channel else None)
+
+    @tag.command(name="add", description="Add additional forum tags to a project")
+    @app_commands.describe(
+        project_id="Identifier of the project to update",
+        tags="Comma separated tag names to add",
+    )
+    async def add_project_tags(
+        self, interaction: discord.Interaction, project_id: int, tags: str
+    ) -> None:
+        await self._ready.wait()
+        parsed_tags = self._parse_tags(tags)
+        if not parsed_tags:
+            await interaction.response.send_message(
+                "Provide at least one tag name to add.", ephemeral=True
+            )
+            return
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await interaction.response.send_message(
+                "Projects forum channel is not configured.", ephemeral=True
+            )
+            return
+        available_names = {tag.name for tag in channel.available_tags}
+        missing = [tag for tag in parsed_tags if tag not in available_names]
+        if missing:
+            await interaction.response.send_message(
+                f"Unknown tags: {', '.join(missing)}. Seed missing tags first.",
+                ephemeral=True,
+            )
+            return
+        async with self._lock:
+            record = await self._fetch_project(project_id)
+            if record is None:
+                updated = None
+            else:
+                applied_tags = await self._resolve_tags(
+                    channel,
+                    record.status,
+                    ", ".join(parsed_tags),
+                    record.holiday,
+                    record.due_date,
+                    existing=record.tags,
+                )
+                updated = await self._persist_tag_update(record, channel, applied_tags)
+        if updated is None:
+            await interaction.response.send_message("Project not found.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"Added tags to project #{project_id}: {', '.join(parsed_tags)}.",
+            ephemeral=True,
+        )
+        await self._update_index_embed(channel)
+
+    @tag.command(name="remove", description="Remove forum tags from a project")
+    @app_commands.describe(
+        project_id="Identifier of the project to update",
+        tags="Comma separated tag names to remove",
+    )
+    async def remove_project_tags(
+        self, interaction: discord.Interaction, project_id: int, tags: str
+    ) -> None:
+        await self._ready.wait()
+        parsed_tags = self._parse_tags(tags)
+        if not parsed_tags:
+            await interaction.response.send_message(
+                "Provide at least one tag name to remove.", ephemeral=True
+            )
+            return
+        channel = await self._fetch_forum_channel()
+        if channel is None:
+            await interaction.response.send_message(
+                "Projects forum channel is not configured.", ephemeral=True
+            )
+            return
+        removal_set = {tag.casefold() for tag in parsed_tags}
+        async with self._lock:
+            record = await self._fetch_project(project_id)
+            if record is None:
+                updated = None
+                removed_any = False
+            else:
+                existing = [
+                    tag_name
+                    for tag_name in record.tags
+                    if tag_name.casefold() not in removal_set
+                ]
+                removed_any = len(existing) != len(record.tags)
+                applied_tags = await self._resolve_tags(
+                    channel,
+                    record.status,
+                    None,
+                    record.holiday,
+                    record.due_date,
+                    existing=existing,
+                )
+                updated = await self._persist_tag_update(record, channel, applied_tags)
+        if updated is None:
+            await interaction.response.send_message("Project not found.", ephemeral=True)
+            return
+        if not removed_any:
+            await interaction.response.send_message(
+                "None of the specified tags were applied to the project.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            f"Removed tags from project #{project_id}: {', '.join(parsed_tags)}.",
+            ephemeral=True,
+        )
+        await self._update_index_embed(channel)
+
     @project.command(name="archive", description="Archive a project and mark its thread")
     @app_commands.describe(project_id="Identifier of the project to archive")
     async def archive_project(self, interaction: discord.Interaction, project_id: int) -> None:
@@ -1375,6 +1638,35 @@ class ProjectsBoard(commands.Cog):
             with contextlib.suppress(discord.HTTPException, discord.Forbidden):
                 await thread.edit(applied_tags=applied_tags)
         return await self._fetch_project(project_id)
+
+    async def _persist_tag_update(
+        self,
+        record: ProjectRecord,
+        channel: discord.ForumChannel,
+        applied_tags: list[discord.ForumTag],
+    ) -> ProjectRecord | None:
+        new_tag_names = [tag.name for tag in applied_tags]
+        now = datetime.now(UTC)
+        canonical_priority = self._priority_from_tags(new_tag_names)
+        canonical_project_type = self._project_type_from_tags(new_tag_names)
+        await self._execute(
+            """
+            UPDATE projects
+            SET tags = ?, priority = ?, project_type = ?, updated_at = ?
+            WHERE project_id = ?
+            """,
+            json.dumps(new_tag_names) if applied_tags else None,
+            canonical_priority,
+            canonical_project_type,
+            self._serialize_datetime(now),
+            record.project_id,
+        )
+        await self._commit()
+        thread = await self._fetch_thread(channel, record.thread_id)
+        if thread:
+            with contextlib.suppress(discord.HTTPException, discord.Forbidden):
+                await thread.edit(applied_tags=applied_tags)
+        return await self._fetch_project(record.project_id)
 
     async def _fetch_thread(
         self, channel: discord.ForumChannel, thread_id: int | None
@@ -1671,12 +1963,12 @@ class ProjectsBoard(commands.Cog):
             )
 
         embed.add_field(
-            name="🔥 Now",
+            name="🔥 P0",
             value=format_section(now_bucket, "_Nothing marked as high priority right now._"),
             inline=False,
         )
         embed.add_field(
-            name="🟠 Next",
+            name="🟠 P1",
             value=format_section(next_bucket, "_No upcoming projects in the queue._"),
             inline=False,
         )
@@ -2222,6 +2514,7 @@ class ProjectsBoard(commands.Cog):
         message = (
             f"Reminder: project {record.name} (ID #{record.project_id}) is due {due_display} "
             f"(schedule at {reminder_text}, {DEFAULT_REMINDER_LEAD} ahead)."
+        )
         delay_seconds = max(0, math.ceil((reminder_at - now).total_seconds()))
         reminder_message = (
             f"Reminder: project {record.name} is due {due_display} "
