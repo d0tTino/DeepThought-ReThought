@@ -28,6 +28,7 @@ _LOG = logging.getLogger(__name__)
 INDEX_THREAD_NAME = "Projects Index"
 DEFAULT_STATUS = "to-do"
 DEFAULT_REMINDER_LEAD = timedelta(hours=1)
+DEFAULT_EVENT_LOCATION = "Projects board reminder"
 
 
 def _normalize_datetime(value: datetime) -> datetime:
@@ -2180,6 +2181,7 @@ class ProjectsBoard(commands.Cog):
                     description=description,
                     start_time=start_time,
                     end_time=end_time,
+                    location=DEFAULT_EVENT_LOCATION,
                 )
             else:
                 event = await guild.create_scheduled_event(
@@ -2188,6 +2190,8 @@ class ProjectsBoard(commands.Cog):
                     end_time=end_time,
                     description=description,
                     privacy_level=discord.PrivacyLevel.guild_only,
+                    entity_type=discord.EntityType.external,
+                    location=DEFAULT_EVENT_LOCATION,
                 )
                 await self._set_scheduled_event_id(record.project_id, event.id)
         except discord.Forbidden:
