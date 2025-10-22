@@ -372,6 +372,51 @@ async def test_sync_due_date_reminder_falls_back_to_scheduler(
 
 
 @pytest.mark.asyncio
+async def test_create_or_update_event_uses_external_entity_type(
+    projects_board_module: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = await create_board(projects_board_module, monkeypatch, require_events=True)
+    project_record_cls = projects_board_module.ProjectRecord
+
+    due_date = datetime.now(UTC) + timedelta(days=2)
+    start_time = due_date - projects_board_module.DEFAULT_REMINDER_LEAD
+
+    record = project_record_cls(
+        project_id=11,
+        guild_id=44,
+        thread_id=None,
+        name="Deadline",
+        summary="Finish milestone",
+        owner_id=None,
+        status="in-progress",
+        due_date=due_date,
+        holiday=False,
+        tags=[],
+        priority=None,
+        project_type=None,
+        scheduled_event_id=None,
+        created_at=datetime.now(UTC) - timedelta(days=1),
+        updated_at=datetime.now(UTC),
+        archived_at=None,
+    )
+
+    event = SimpleNamespace(id=9876)
+    guild = SimpleNamespace(
+        create_scheduled_event=AsyncMock(return_value=event),
+        get_scheduled_event=MagicMock(return_value=None),
+        fetch_scheduled_event=AsyncMock(return_value=None),
+    )
+    board._set_scheduled_event_id = AsyncMock()
+
+    await board._create_or_update_event(record, guild, start_time)  # type: ignore[arg-type]
+
+    guild.create_scheduled_event.assert_awaited_once()
+    kwargs = guild.create_scheduled_event.await_args.kwargs
+    assert kwargs["entity_type"] is discord.EntityType.external
+    assert kwargs["location"]
+
+
+@pytest.mark.asyncio
 async def test_is_holiday_project_helper(
     projects_board_module: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
