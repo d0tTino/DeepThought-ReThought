@@ -559,10 +559,6 @@ async def process_goals(bot: "SocialGraphBot") -> None:
     await bot.wait_until_ready()
     while not bot.is_closed():
         try:
-            if bot.scheduler_service is None:
-                await asyncio.sleep(1)
-                continue
-
             goal = bot.goal_scheduler.next_goal()
             if goal:
                 try:
@@ -572,9 +568,14 @@ async def process_goals(bot: "SocialGraphBot") -> None:
                     logger.warning("Invalid goal format: %s", goal)
                     await publish_plan_requested(goal)
                 else:
-                    when = discord.utils.utcnow().replace(tzinfo=timezone.utc) + timedelta(seconds=delay)
-                    bot.scheduler_service.schedule_reminder(message, when, str(uuid.uuid4()))
-                    await publish_plan_requested(message)
+                    if bot.scheduler_service is not None:
+                        when = discord.utils.utcnow().replace(tzinfo=timezone.utc) + timedelta(seconds=delay)
+                        bot.scheduler_service.schedule_reminder(message, when, str(uuid.uuid4()))
+                        await publish_plan_requested(message)
+                    else:
+                        # When the scheduler service is unavailable we still emit the reminder
+                        # immediately so the project thread continues to receive updates.
+                        await publish_plan_requested(message)
             await asyncio.sleep(1)
         except asyncio.CancelledError:
             logger.info("process_goals cancelled")

@@ -2214,22 +2214,13 @@ class ProjectsBoard(commands.Cog):
         )
         reminder_at = _normalize_datetime(reminder_time)
         now = datetime.now(UTC)
-        delay_seconds = max(0, (reminder_at - now).total_seconds())
-        delay = int(delay_seconds)
-        if delay == 0:
+        delay_seconds = max(0, math.ceil((reminder_at - now).total_seconds()))
+        if delay_seconds == 0:
             reminder_at = now
         reminder_text = reminder_at.isoformat()
         message = (
             f"Reminder: project {record.name} (ID #{record.project_id}) is due {due_display} "
             f"(schedule at {reminder_text}, {DEFAULT_REMINDER_LEAD} ahead)."
-        delay_seconds = max(0, math.ceil((reminder_at - now).total_seconds()))
-        reminder_message = (
-            f"Reminder: project {record.name} is due {due_display} "
-            f"(schedule at {reminder_text}, {DEFAULT_REMINDER_LEAD} ahead)"
-        )
-        self._scheduler.add_goal(
-            f"{delay_seconds}:{reminder_message}",
-            priority=5,
         )
         if record.thread_id:
             message = f"{message} Discuss in <#{record.thread_id}>."
@@ -2237,7 +2228,10 @@ class ProjectsBoard(commands.Cog):
             message = (
                 f"{message} Follow up via the projects board for project #{record.project_id}."
             )
-        self._scheduler.add_goal(f"{delay}:{message}", priority=5)
+        self._scheduler.add_goal(
+            f"{delay_seconds}:{message}",
+            priority=5,
+        )
 
     async def _cancel_scheduled_event(
         self, record: ProjectRecord, guild: discord.Guild | None

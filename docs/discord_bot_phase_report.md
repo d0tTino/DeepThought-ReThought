@@ -73,6 +73,11 @@ sched.start(publisher, interval=5.0)  # seconds
 await sched.stop()
 ```
 
+Projects board reminders now enqueue a single message that already points back to
+the project thread when one exists. If the downstream scheduler service is
+unavailable, the bot immediately publishes the reminder payload instead of
+dropping it so project discussions still receive timely nudges.
+
 ## Additional Safety Features
 
 Recent iterations introduced several controls to moderate conversations:
