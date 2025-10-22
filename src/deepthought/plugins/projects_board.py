@@ -2506,9 +2506,8 @@ class ProjectsBoard(commands.Cog):
         )
         reminder_at = _normalize_datetime(reminder_time)
         now = datetime.now(UTC)
-        delay_seconds = max(0, (reminder_at - now).total_seconds())
-        delay = int(delay_seconds)
-        if delay == 0:
+        delay_seconds = max(0, math.ceil((reminder_at - now).total_seconds()))
+        if delay_seconds == 0:
             reminder_at = now
         reminder_text = reminder_at.isoformat()
         message = (
@@ -2530,7 +2529,10 @@ class ProjectsBoard(commands.Cog):
             message = (
                 f"{message} Follow up via the projects board for project #{record.project_id}."
             )
-        self._scheduler.add_goal(f"{delay}:{message}", priority=5)
+        self._scheduler.add_goal(
+            f"{delay_seconds}:{message}",
+            priority=5,
+        )
 
     async def _cancel_scheduled_event(
         self, record: ProjectRecord, guild: discord.Guild | None
