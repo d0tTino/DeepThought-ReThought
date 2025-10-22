@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import math
 import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -2218,11 +2219,13 @@ class ProjectsBoard(commands.Cog):
         if reminder_at < now:
             reminder_at = now
         reminder_text = reminder_at.isoformat()
+        delay_seconds = max(0, math.ceil((reminder_at - now).total_seconds()))
+        reminder_message = (
+            f"Reminder: project {record.name} is due {due_display} "
+            f"(schedule at {reminder_text}, {DEFAULT_REMINDER_LEAD} ahead)"
+        )
         self._scheduler.add_goal(
-            (
-                f"Reminder: project {record.name} is due {due_display} "
-                f"(schedule at {reminder_text}, {DEFAULT_REMINDER_LEAD} ahead)"
-            ),
+            f"{delay_seconds}:{reminder_message}",
             priority=5,
         )
 
