@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import re
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -369,6 +370,64 @@ async def test_sync_due_date_reminder_falls_back_to_scheduler(
     scheduler_mock.assert_called_once()
     message = scheduler_mock.call_args.args[0]
     assert record.name in message
+
+
+@pytest.mark.asyncio
+async def test_queue_goal_scheduler_reminder_formats_goal_for_scheduler(
+    projects_board_module: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = await create_board(projects_board_module, monkeypatch)
+    project_record_cls = projects_board_module.ProjectRecord
+
+    now = datetime.now(UTC)
+    record = project_record_cls(
+        project_id=101,
+        guild_id=55,
+        thread_id=None,
+        name="Scheduler Check",
+        summary="Ensure reminders are queued correctly",
+        owner_id=None,
+        status="in-progress",
+        due_date=now + timedelta(days=3),
+        holiday=False,
+        tags=[],
+        priority=None,
+        project_type=None,
+        scheduled_event_id=None,
+        created_at=now - timedelta(days=2),
+        updated_at=now,
+        archived_at=None,
+    )
+
+    scheduler_mock = board._scheduler.add_goal
+    scheduler_mock.reset_mock()
+
+    reminder_time = now + timedelta(minutes=45)
+    board._queue_goal_scheduler_reminder(record, reminder_time)
+
+    scheduler_mock.assert_called_once()
+    goal_argument = scheduler_mock.call_args.args[0]
+    priority = scheduler_mock.call_args.kwargs["priority"]
+    assert priority == 5
+
+    match = re.match(r"^(\d+):(.*)$", goal_argument)
+    assert match is not None
+    delay = int(match.group(1))
+    assert delay >= 45 * 60
+    message = match.group(2)
+    assert record.name in message
+    assert reminder_time.isoformat() in message
+
+    scheduler_mock.reset_mock()
+
+    past_time = now - timedelta(minutes=5)
+    board._queue_goal_scheduler_reminder(record, past_time)
+
+    scheduler_mock.assert_called_once()
+    past_goal_argument = scheduler_mock.call_args.args[0]
+    past_match = re.match(r"^(\d+):(.*)$", past_goal_argument)
+    assert past_match is not None
+    assert int(past_match.group(1)) == 0
 
 
 @pytest.mark.asyncio
