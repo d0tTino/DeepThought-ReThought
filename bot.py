@@ -6,7 +6,13 @@ from examples.social_graph_bot import run
 
 def main() -> None:
     env = load_bot_env()
-    asyncio.run(run(env.DISCORD_TOKEN, env.MONITOR_CHANNEL))
+    asyncio.run(
+        run(
+            env.DISCORD_TOKEN,
+            env.MONITOR_CHANNEL,
+            holiday_locale=env.PROJECT_HOLIDAY_LOCALE,
+        )
+    )
 
 
 if __name__ == "__main__":

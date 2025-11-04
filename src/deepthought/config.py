@@ -45,6 +45,107 @@ def _apply_env_aliases() -> None:
             os.environ[new] = os.environ[old]
 
 
+def _assign_settings(obj: object, values: dict[str, object]) -> None:
+    """Recursively assign ``values`` onto ``obj`` for stubbed settings classes."""
+
+    for key, val in values.items():
+        if isinstance(obj, dict):
+            if isinstance(val, dict):
+                sub = obj.get(key)
+                if not isinstance(sub, dict):
+                    sub = {}
+                    obj[key] = sub
+                _assign_settings(sub, val)
+            else:
+                obj[key] = val
+            continue
+        if isinstance(val, dict):
+            sub = getattr(obj, key, None)
+            if sub is None:
+                setattr(obj, key, type("Sub", (), {})())
+                sub = getattr(obj, key)
+            _assign_settings(sub, val)
+        else:
+            setattr(obj, key, val)
+
+
+def _build_env_overrides() -> dict[str, object]:
+    """Collect environment overrides when Pydantic settings are stubbed."""
+
+    overrides: dict[str, object] = {}
+
+    def _set(path: tuple[str, ...], value: object | None) -> None:
+        if value in (None, ""):
+            return
+        target: dict[str, object] = overrides
+        for key in path[:-1]:
+            target = target.setdefault(key, {})  # type: ignore[assignment]
+        target[path[-1]] = value
+
+    def _coerce_int(value: str | None) -> int | None:
+        if value in (None, ""):
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            return None
+
+    def _coerce_float(value: str | None) -> float | None:
+        if value in (None, ""):
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            return None
+
+    def _coerce_bool(value: str | None) -> bool | None:
+        if value in (None, ""):
+            return None
+        lowered = value.strip().lower()
+        truthy = {"1", "true", "yes", "on"}
+        falsy = {"0", "false", "no", "off"}
+        if lowered in truthy:
+            return True
+        if lowered in falsy:
+            return False
+        return None
+
+    _set(("nats_url",), os.getenv("DT_NATS_URL"))
+    _set(("model_path",), os.getenv("DT_MODEL_PATH"))
+    _set(("memory_file",), os.getenv("DT_MEMORY_FILE"))
+    _set(("vector_backend",), os.getenv("DT_VECTOR_BACKEND"))
+    vector_gpu = _coerce_bool(os.getenv("DT_VECTOR_USE_GPU"))
+    if vector_gpu is not None:
+        _set(("vector_use_gpu",), vector_gpu)
+    _set(("graph_backend",), os.getenv("DT_GRAPH_BACKEND"))
+
+    _set(("db", "host"), os.getenv("DT_DB__HOST"))
+    db_port = _coerce_int(os.getenv("DT_DB__PORT"))
+    if db_port is not None:
+        _set(("db", "port"), db_port)
+    _set(("db", "user"), os.getenv("DT_DB__USER"))
+    _set(("db", "password"), os.getenv("DT_DB__PASSWORD"))
+    _set(("db", "name"), os.getenv("DT_DB__NAME"))
+
+    reward_paths = {
+        "DT_REWARD__NOVELTY_THRESHOLD": ("reward", "novelty_threshold"),
+        "DT_REWARD__SOCIAL_AFFINITY_THRESHOLD": ("reward", "social_affinity_threshold"),
+        "DT_REWARD__WINDOW_SIZE": ("reward", "window_size"),
+        "DT_REWARD__NOVELTY_WEIGHT": ("reward", "novelty_weight"),
+        "DT_REWARD__SOCIAL_WEIGHT": ("reward", "social_weight"),
+        "DT_REWARD__BUFFER_SIZE": ("reward", "buffer_size"),
+    }
+    for env_name, path in reward_paths.items():
+        raw = os.getenv(env_name)
+        if path[-1] in {"novelty_threshold", "novelty_weight", "social_weight"}:
+            coerced = _coerce_float(raw)
+        else:
+            coerced = _coerce_int(raw)
+        if coerced is not None:
+            _set(path, coerced)
+
+    return overrides
+
 try:  # YAML support is optional
     import yaml  # type: ignore
 except Exception:  # pragma: no cover - yaml may not be installed
@@ -161,21 +262,15 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
 
         # Fallback for environments where pydantic is stubbed during tests.
         inst = Settings()  # pragma: no cover
-
-        def _assign(obj: object, values: dict[str, object]) -> None:  # pragma: no cover
-            for key, val in values.items():
-                if isinstance(val, dict):
-                    sub = getattr(obj, key, None)
-                    if sub is None:
-                        setattr(obj, key, type("Sub", (), {})())
-                        sub = getattr(obj, key)
-                    _assign(sub, val)
-                else:
-                    setattr(obj, key, val)
-
-        _assign(inst, data)  # pragma: no cover
+        _assign_settings(inst, data)  # pragma: no cover
         return inst  # pragma: no cover
-    return Settings()
+    if hasattr(Settings, "model_validate"):
+        return Settings()
+    inst = Settings()  # pragma: no cover - executed with stubbed settings
+    env_overrides = _build_env_overrides()
+    if env_overrides:
+        _assign_settings(inst, env_overrides)
+    return inst
 
 
 _settings_cache: Optional[Settings] = None
@@ -284,6 +379,12 @@ class BotEnv(BaseSettings):
         default=False,
         validation_alias=_alias_choices("PROJECT_REQUIRE_EVENTS", "PROJECTS_REQUIRE_EVENTS"),
     )
+    PROJECT_HOLIDAY_LOCALE: str = Field(
+        default="US",
+        validation_alias=_alias_choices(
+            "PROJECT_HOLIDAY_LOCALE", "PROJECTS_HOLIDAY_LOCALE"
+        ),
+    )
     NATS_URL: AnyUrl = "nats://localhost:4222"
 
     model_config = SettingsConfigDict(env_prefix="")
@@ -310,6 +411,7 @@ class BotEnv(BaseSettings):
         _copy_first("PROJECT_FORUM_CHANNEL_ID", ("PROJECTS_FORUM_CHANNEL_ID", "PROJECTS_FORUM_CHANNEL"))
         _copy_first("PROJECT_INDEX_CHANNEL_ID", ("PROJECTS_INDEX_CHANNEL_ID", "PROJECTS_INDEX_CHANNEL"))
         _copy_first("PROJECT_REQUIRE_EVENTS", ("PROJECTS_REQUIRE_EVENTS",))
+        _copy_first("PROJECT_HOLIDAY_LOCALE", ("PROJECTS_HOLIDAY_LOCALE",))
 
         return updated
 
@@ -326,6 +428,7 @@ class BotEnv(BaseSettings):
         return self.PROJECT_REQUIRE_EVENTS
 
 
+
 def load_bot_env() -> BotEnv:
     """Return bot environment settings or exit with a clear error."""
 
@@ -338,7 +441,75 @@ def load_bot_env() -> BotEnv:
             os.environ[canonical] = os.environ[legacy]
 
     try:
-        return BotEnv()
+        env = BotEnv()
     except ValidationError as exc:  # pragma: no cover - runtime validation
         missing = ", ".join(err["loc"][0] for err in exc.errors())
         raise SystemExit(f"Missing or invalid environment variables: {missing}") from exc
+
+    is_stub = BotEnv.__mro__ == (BotEnv, object)
+    if is_stub:
+        missing: list[str] = []
+        invalid: list[str] = []
+
+        token = os.getenv("DISCORD_TOKEN")
+        if not token:
+            missing.append("DISCORD_TOKEN")
+
+        monitor_raw = os.getenv("MONITOR_CHANNEL")
+        monitor: int | None = None
+        if monitor_raw in (None, ""):
+            missing.append("MONITOR_CHANNEL")
+        else:
+            try:
+                monitor = int(monitor_raw)
+            except ValueError:
+                invalid.append("MONITOR_CHANNEL")
+
+        def _optional_int(name: str) -> int | None:
+            raw = os.getenv(name)
+            if raw in (None, ""):
+                return None
+            try:
+                return int(raw)
+            except ValueError:
+                invalid.append(name)
+                return None
+
+        def _coerce_bool(name: str, default: bool = False) -> bool:
+            raw = os.getenv(name)
+            if raw in (None, ""):
+                return default
+            lowered = raw.strip().lower()
+            if lowered in {"1", "true", "yes", "on"}:
+                return True
+            if lowered in {"0", "false", "no", "off"}:
+                return False
+            invalid.append(name)
+            return default
+
+        forum_id = _optional_int("PROJECT_FORUM_CHANNEL_ID")
+        index_id = _optional_int("PROJECT_INDEX_CHANNEL_ID")
+        require_events = _coerce_bool("PROJECT_REQUIRE_EVENTS")
+        locale = os.getenv("PROJECT_HOLIDAY_LOCALE", "US") or "US"
+        nats_url = os.getenv("NATS_URL", "nats://localhost:4222")
+
+        if missing or invalid:
+            problems = sorted({*missing, *invalid})
+            raise SystemExit(
+                f"Missing or invalid environment variables: {', '.join(problems)}"
+            )
+
+        setattr(env, "DISCORD_TOKEN", token)
+        setattr(env, "MONITOR_CHANNEL", monitor)
+        setattr(env, "PROJECT_FORUM_CHANNEL_ID", forum_id)
+        setattr(env, "PROJECT_INDEX_CHANNEL_ID", index_id)
+        setattr(env, "PROJECT_REQUIRE_EVENTS", require_events)
+        setattr(env, "PROJECT_HOLIDAY_LOCALE", locale.upper())
+        setattr(env, "NATS_URL", nats_url)
+        return env
+
+    locale = getattr(env, "PROJECT_HOLIDAY_LOCALE", "US")
+    normalized = str(locale).upper()
+    if normalized != locale:
+        setattr(env, "PROJECT_HOLIDAY_LOCALE", normalized)
+    return env
