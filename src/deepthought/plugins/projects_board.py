@@ -10,7 +10,7 @@ import math
 import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Iterable, List
+from typing import Any, Callable, Iterable, List
 
 import aiosqlite
 import discord
@@ -25,6 +25,39 @@ __all__ = ["ProjectsBoard", "ProjectRecord"]
 
 
 _LOG = logging.getLogger(__name__)
+
+DEFAULT_HOLIDAY_LOCALE = "US"
+
+
+class HolidayCalendar:
+    """Strategy encapsulating holiday classification rules for a locale."""
+
+    def __init__(
+        self,
+        locale: str,
+        *,
+        tag_aliases: Iterable[str],
+        date_predicates: Iterable[Callable[[datetime], bool]] | None = None,
+    ) -> None:
+        self.locale = locale.upper()
+        self._tag_aliases = frozenset(alias.casefold() for alias in tag_aliases)
+        self._date_predicates = tuple(date_predicates or ())
+
+    @property
+    def tag_aliases(self) -> frozenset[str]:
+        return self._tag_aliases
+
+    def is_holiday_window(self, moment: datetime) -> bool:
+        return any(predicate(moment) for predicate in self._date_predicates)
+
+    def is_holiday_project(
+        self, due_date: datetime | None, tag_names: Iterable[str]
+    ) -> bool:
+        if due_date and self.is_holiday_window(due_date):
+            return True
+        normalized = {tag.strip().casefold() for tag in tag_names}
+        return any(alias in normalized for alias in self._tag_aliases)
+
 
 INDEX_THREAD_NAME = "Projects Index"
 DEFAULT_STATUS = "to-do"
@@ -73,6 +106,47 @@ def _is_valentines_window(moment: datetime) -> bool:
     day = _normalize_datetime(moment).date()
     return day.month == 2 and 1 <= day.day <= 21
 
+
+HOLIDAY_TAG_NAME = "🎁 Holiday"
+_DEFAULT_HOLIDAY_TAG_ALIASES = {HOLIDAY_TAG_NAME.casefold(), "holiday"}
+HOLIDAY_TAG_ALIASES = set(_DEFAULT_HOLIDAY_TAG_ALIASES)
+
+_US_HOLIDAY_PREDICATES: tuple[Callable[[datetime], bool], ...] = (
+    _is_halloween_window,
+    _is_thanksgiving_window,
+    _is_christmas_new_year_window,
+    _is_valentines_window,
+)
+
+_HOLIDAY_CALENDARS: dict[str, HolidayCalendar] = {
+    "US": HolidayCalendar(
+        DEFAULT_HOLIDAY_LOCALE,
+        tag_aliases=_DEFAULT_HOLIDAY_TAG_ALIASES,
+        date_predicates=_US_HOLIDAY_PREDICATES,
+    ),
+    "GB": HolidayCalendar(
+        "GB",
+        tag_aliases=_DEFAULT_HOLIDAY_TAG_ALIASES,
+        date_predicates=_US_HOLIDAY_PREDICATES,
+    ),
+}
+
+
+def resolve_holiday_calendar(locale: str) -> HolidayCalendar:
+    """Return the configured holiday calendar, defaulting to the US rules."""
+
+    key = locale.upper() if locale else DEFAULT_HOLIDAY_LOCALE
+    calendar = _HOLIDAY_CALENDARS.get(key)
+    if calendar is None:
+        if key != DEFAULT_HOLIDAY_LOCALE:
+            _LOG.warning(
+                "Unknown holiday locale '%s'; defaulting to %s",
+                key,
+                DEFAULT_HOLIDAY_LOCALE,
+            )
+        calendar = _HOLIDAY_CALENDARS[DEFAULT_HOLIDAY_LOCALE]
+    return calendar
+
 BOARD_STATUS_META: dict[str, dict[str, str]] = {
     "to-do": {"label": "⏳ To-Do", "tag": "⏳ To-Do"},
     "in-progress": {"label": "🚧 In-Progress", "tag": "🚧 In-Progress"},
@@ -89,9 +163,6 @@ BOARD_STATUS_ORDER: list[str] = [
     "on-hold",
     "done",
 ]
-
-HOLIDAY_TAG_NAME = "🎁 Holiday"
-HOLIDAY_TAG_ALIASES = {HOLIDAY_TAG_NAME.casefold(), "holiday"}
 
 REQUIRED_TAGS: dict[str, dict[str, str | None]] = {
     "⏳ To-Do": {"emoji": "⏳"},
@@ -571,6 +642,7 @@ class ProjectsBoard(commands.Cog):
         index_channel_id: int | None = None,
         monitor_channel_id: int | None = None,
         require_events: bool = False,
+        holiday_locale: str = DEFAULT_HOLIDAY_LOCALE,
     ) -> None:
         self.bot = bot
         self._db_manager = db_manager
@@ -590,6 +662,8 @@ class ProjectsBoard(commands.Cog):
         self._ready = asyncio.Event()
         self._board_filters: dict[int, bool] = {}
         self._board_selection: dict[int, int | None] = {}
+        self._holiday_calendar = resolve_holiday_calendar(holiday_locale)
+        self._holiday_locale = self._holiday_calendar.locale
         if self.bot.loop.is_running():
             self._startup_task = self.bot.loop.create_task(self._startup())
         else:  # pragma: no cover - only triggered in sync setup paths
@@ -1780,15 +1854,7 @@ class ProjectsBoard(commands.Cog):
     def _is_holiday_project(
         self, due_date: datetime | None, tag_names: Iterable[str]
     ) -> bool:
-        if due_date and (
-            _is_halloween_window(due_date)
-            or _is_thanksgiving_window(due_date)
-            or _is_christmas_new_year_window(due_date)
-            or _is_valentines_window(due_date)
-        ):
-            return True
-        normalized = {tag.strip().casefold() for tag in tag_names}
-        return any(alias in normalized for alias in HOLIDAY_TAG_ALIASES)
+        return self._holiday_calendar.is_holiday_project(due_date, tag_names)
 
     # ------------------------------------------------------------------
     # Index embed management

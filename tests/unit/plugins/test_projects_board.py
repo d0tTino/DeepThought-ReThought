@@ -62,6 +62,7 @@ async def create_board(
     monkeypatch: pytest.MonkeyPatch,
     *,
     require_events: bool = False,
+    holiday_locale: str | None = None,
 ):
     ProjectsBoard = module.ProjectsBoard
     loop = asyncio.get_running_loop()
@@ -75,11 +76,15 @@ async def create_board(
     )
     scheduler = StubScheduler()
     monkeypatch.setattr(ProjectsBoard, "_startup", AsyncMock())
+    kwargs: dict[str, object] = {}
+    if holiday_locale is not None:
+        kwargs["holiday_locale"] = holiday_locale
     board = ProjectsBoard(
         bot,
         scheduler=scheduler,
         forum_channel_id=123,
         require_events=require_events,
+        **kwargs,
     )
     board._ready.set()
     board._startup_task = None

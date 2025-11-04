@@ -59,7 +59,7 @@ DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.perception.emotion_detection import detect_emotions
 from deepthought.perception.social_perception import analyze as analyze_social
-from deepthought.plugins.projects_board import ProjectsBoard
+from deepthought.plugins.projects_board import DEFAULT_HOLIDAY_LOCALE, ProjectsBoard
 from deepthought.services import PersonaManager, TrustService
 from deepthought.services.db_manager import DBManager
 from deepthought.services.manipulative_detection import manipulation_score
@@ -838,6 +838,7 @@ class SocialGraphBot(commands.Bot):
         forum_channel_id: int | None = None,
         index_channel_id: int | None = None,
         require_scheduled_events: bool = False,
+        holiday_locale: str = DEFAULT_HOLIDAY_LOCALE,
         command_prefix: str = "!",
         **kwargs,
     ):
@@ -852,6 +853,7 @@ class SocialGraphBot(commands.Bot):
         self.forum_channel_id = forum_channel_id
         self.index_channel_id = index_channel_id
         self.require_scheduled_events = require_scheduled_events
+        self.holiday_locale = holiday_locale
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler(db_manager)
         self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
@@ -892,6 +894,7 @@ class SocialGraphBot(commands.Bot):
             index_channel_id=self.index_channel_id,
             monitor_channel_id=self.monitor_channel_id,
             require_events=self.require_scheduled_events,
+            holiday_locale=self.holiday_locale,
         )
         await self.add_cog(self._projects_board)
 
@@ -1165,6 +1168,7 @@ async def run(
     forum_channel_id: int | None = None,
     index_channel_id: int | None = None,
     require_scheduled_events: bool = False,
+    holiday_locale: str = DEFAULT_HOLIDAY_LOCALE,
 ) -> None:
     """Run the SocialGraphBot."""
     bot = SocialGraphBot(
@@ -1172,6 +1176,7 @@ async def run(
         forum_channel_id=forum_channel_id,
         index_channel_id=index_channel_id,
         require_scheduled_events=require_scheduled_events,
+        holiday_locale=holiday_locale,
     )
     try:
         await bot.start(token)
@@ -1206,5 +1211,6 @@ if __name__ == "__main__":
                 forum_channel_id=env.PROJECT_FORUM_CHANNEL_ID,
                 index_channel_id=env.PROJECT_INDEX_CHANNEL_ID,
                 require_scheduled_events=env.PROJECT_REQUIRE_EVENTS,
+                holiday_locale=env.PROJECT_HOLIDAY_LOCALE,
             )
         )

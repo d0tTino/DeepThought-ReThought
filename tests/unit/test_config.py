@@ -166,6 +166,17 @@ def test_load_bot_env_success(monkeypatch):
     assert isinstance(env, BotEnv)
     assert env.DISCORD_TOKEN == "abc"
     assert env.MONITOR_CHANNEL == 42
+    assert env.PROJECT_HOLIDAY_LOCALE == "US"
+
+
+def test_load_bot_env_custom_locale(monkeypatch):
+    monkeypatch.setenv("DISCORD_TOKEN", "abc")
+    monkeypatch.setenv("MONITOR_CHANNEL", "42")
+    monkeypatch.setenv("PROJECT_HOLIDAY_LOCALE", "gb")
+
+    env = load_bot_env()
+
+    assert env.PROJECT_HOLIDAY_LOCALE == "GB"
 
 
 def test_load_bot_env_missing(monkeypatch):
