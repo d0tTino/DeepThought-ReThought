@@ -3,6 +3,7 @@ import importlib
 import re
 import sys
 from datetime import UTC, datetime, timedelta
+import json
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -620,5 +621,47 @@ async def test_project_persistence_tracks_priority_type_and_guild(
     assert updated_type is not None
     assert updated_type.project_type == "collaboration"
     assert "🤝 Collaboration" in updated_type.tags
+
+    await board._close_db()
+
+
+@pytest.mark.asyncio
+async def test_backfill_project_metadata_normalises_priority_tags(
+    tmp_path: Path,
+    projects_board_module: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "board.db"
+    settings_stub = SimpleNamespace(social_graph_db=str(db_path))
+    monkeypatch.setattr(projects_board_module, "get_settings", lambda: settings_stub)
+
+    board = await create_board(projects_board_module, monkeypatch)
+    await board._init_db()
+
+    assert board._conn is not None
+    now_iso = datetime.now(UTC).isoformat()
+    legacy_tags = json.dumps(["🔥 Now", "Feature"])
+    await board._conn.execute(
+        """
+        INSERT INTO projects (guild_id, name, status, holiday, tags, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (123, "Legacy Priority", "to-do", 0, legacy_tags, now_iso, now_iso),
+    )
+    await board._conn.commit()
+
+    await board._backfill_project_metadata()
+
+    cursor = await board._conn.execute(
+        "SELECT priority, tags FROM projects WHERE name = ?", ("Legacy Priority",)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+
+    assert row is not None
+    assert row["priority"] == "p0"
+    updated_tags = json.loads(row["tags"])
+    assert updated_tags[-1] == "🔥 P0"
+    assert "Feature" in updated_tags
 
     await board._close_db()

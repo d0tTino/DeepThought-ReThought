@@ -25,6 +25,12 @@ async def test_command_registration(projects_board_module) -> None:
     assert tag_group.get_command("add") is not None
     assert tag_group.get_command("remove") is not None
 
+    assert priority_cmd is not None
+    priority_param = priority_cmd._params.get("priority")  # type: ignore[attr-defined]
+    assert priority_param is not None
+    choice_names = {choice.name for choice in priority_param.choices}
+    assert {"🔥 P0", "🟠 P1", "🟢 P2"} <= choice_names
+
 
 @pytest.mark.asyncio
 async def test_status_command_updates_record(
