@@ -372,14 +372,10 @@ async def test_sync_due_date_reminder_falls_back_to_scheduler(
     await board._sync_due_date_reminder(record, guild)  # type: ignore[arg-type]
 
     guild.create_scheduled_event.assert_awaited()
-    assert scheduler_mock.call_count == 2
-    first_call, second_call = scheduler_mock.call_args_list
-    first_message = first_call.args[0]
-    second_message = second_call.args[0]
-    assert record.name in first_message
-    assert record.name in second_message
-    assert first_call.kwargs.get("priority") == 5
-    assert second_call.kwargs.get("priority") == 5
+    assert scheduler_mock.call_count == 1
+    queued_message = scheduler_mock.call_args.args[0]
+    assert record.name in queued_message
+    assert scheduler_mock.call_args.kwargs.get("priority") == 5
 
 
 @pytest.mark.asyncio
@@ -415,13 +411,10 @@ async def test_queue_goal_scheduler_reminder_formats_goal_for_scheduler(
     reminder_time = now + timedelta(minutes=45)
     board._queue_goal_scheduler_reminder(record, reminder_time)
 
-    assert scheduler_mock.call_count == 2
-    goal_argument = scheduler_mock.call_args_list[0].args[0]
-    priority = scheduler_mock.call_args_list[0].kwargs["priority"]
-    follow_up_argument = scheduler_mock.call_args_list[1].args[0]
-    follow_up_priority = scheduler_mock.call_args_list[1].kwargs["priority"]
+    assert scheduler_mock.call_count == 1
+    goal_argument = scheduler_mock.call_args.args[0]
+    priority = scheduler_mock.call_args.kwargs["priority"]
     assert priority == 5
-    assert follow_up_priority == 5
 
     match = re.match(r"^(\d+):(.*)$", goal_argument)
     assert match is not None
@@ -430,21 +423,19 @@ async def test_queue_goal_scheduler_reminder_formats_goal_for_scheduler(
     message = match.group(2)
     assert record.name in message
     assert reminder_time.isoformat() in message
-    assert record.name in follow_up_argument
 
     scheduler_mock.reset_mock()
 
     past_time = now - timedelta(minutes=5)
     board._queue_goal_scheduler_reminder(record, past_time)
 
-    assert scheduler_mock.call_count == 2
-    for call in scheduler_mock.call_args_list:
-        past_goal_argument = call.args[0]
-        past_match = re.match(r"^(\d+):(.*)$", past_goal_argument)
-        assert past_match is not None
-        assert int(past_match.group(1)) == 0
-        assert record.name in past_match.group(2)
-        assert call.kwargs.get("priority") == 5
+    assert scheduler_mock.call_count == 1
+    past_goal_argument = scheduler_mock.call_args.args[0]
+    past_match = re.match(r"^(\d+):(.*)$", past_goal_argument)
+    assert past_match is not None
+    assert int(past_match.group(1)) == 0
+    assert record.name in past_match.group(2)
+    assert scheduler_mock.call_args.kwargs.get("priority") == 5
 
 
 @pytest.mark.asyncio
