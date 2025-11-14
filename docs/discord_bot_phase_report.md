@@ -76,7 +76,9 @@ await sched.stop()
 Projects board reminders now enqueue a single message that already points back to
 the project thread when one exists. If the downstream scheduler service is
 unavailable, the bot immediately publishes the reminder payload instead of
-dropping it so project discussions still receive timely nudges.
+dropping it so project discussions still receive timely nudges. When a thread
+mention is included, the fallback path also attempts to post the reminder
+directly into that thread so Discord users still see the update in context.
 
 ## Additional Safety Features
 

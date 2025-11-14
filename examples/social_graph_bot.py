@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import random
+import re
 import uuid
 from collections import deque
 from datetime import timedelta, timezone
@@ -217,6 +218,8 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 logger = logging.getLogger(__name__)
+
+_CHANNEL_MENTION_RE = re.compile(r"<#(\d+)>")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 DB_PATH = get_settings().social_graph_db
@@ -554,6 +557,40 @@ async def process_deep_reflections(bot: discord.Client) -> None:
             break
 
 
+async def _maybe_post_reminder_to_thread(bot: "SocialGraphBot", message: str) -> None:
+    """Attempt to echo reminder ``message`` to a referenced project thread."""
+
+    match = _CHANNEL_MENTION_RE.search(message)
+    if match is None:
+        return
+
+    try:
+        thread_id = int(match.group(1))
+    except (TypeError, ValueError):
+        return
+
+    channel = None
+    get_channel = getattr(bot, "get_channel", None)
+    if callable(get_channel):
+        channel = get_channel(thread_id)
+
+    if channel is None:
+        fetch_channel = getattr(bot, "fetch_channel", None)
+        if callable(fetch_channel):
+            try:
+                channel = await fetch_channel(thread_id)
+            except Exception:
+                channel = None
+
+    if channel is None or not hasattr(channel, "send"):
+        return
+
+    try:
+        await channel.send(message)
+    except Exception:
+        logger.debug("Failed to post reminder to thread %s", thread_id)
+
+
 async def process_goals(bot: "SocialGraphBot") -> None:
     """Background task that schedules reminders for queued goals."""
     await bot.wait_until_ready()
@@ -576,6 +613,7 @@ async def process_goals(bot: "SocialGraphBot") -> None:
                         # When the scheduler service is unavailable we still emit the reminder
                         # immediately so the project thread continues to receive updates.
                         await publish_plan_requested(message)
+                        await _maybe_post_reminder_to_thread(bot, message)
             await asyncio.sleep(1)
         except asyncio.CancelledError:
             logger.info("process_goals cancelled")
