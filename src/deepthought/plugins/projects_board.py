@@ -775,8 +775,12 @@ class ProjectsBoard(commands.Cog):
         updates: list[tuple[Any, ...]] = []
         for row in rows:
             tags = json.loads(row["tags"]) if row["tags"] else []
-            priority = self._priority_from_tags(tags)
-            project_type = self._project_type_from_tags(tags)
+            normalised_tags = self._apply_priority_tags(tags, _MISSING)
+            tags_json: str | None = None
+            if normalised_tags != tags:
+                tags_json = json.dumps(normalised_tags)
+            priority = self._priority_from_tags(normalised_tags)
+            project_type = self._project_type_from_tags(normalised_tags)
             desired_guild_id = row["guild_id"] if row["guild_id"] else guild_id
             needs_update = False
             current_priority = row["priority"]
@@ -788,15 +792,28 @@ class ProjectsBoard(commands.Cog):
                 needs_update = True
             if desired_guild_id is not None and desired_guild_id != current_guild_id:
                 needs_update = True
+            if tags_json is not None:
+                needs_update = True
             if not needs_update:
                 continue
-            updates.append((priority, project_type, desired_guild_id, row["project_id"]))
+            updates.append(
+                (
+                    priority,
+                    project_type,
+                    desired_guild_id,
+                    tags_json,
+                    row["project_id"],
+                )
+            )
         if not updates:
             return
         await self._conn.executemany(
             """
             UPDATE projects
-            SET priority = ?, project_type = ?, guild_id = COALESCE(?, guild_id)
+            SET priority = ?,
+                project_type = ?,
+                guild_id = COALESCE(?, guild_id),
+                tags = COALESCE(?, tags)
             WHERE project_id = ?
             """,
             updates,
