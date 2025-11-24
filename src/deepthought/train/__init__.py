@@ -60,6 +60,9 @@ class TrainingConfig:
     batch_size: int = 2
     lr: float = 2e-4
     resume: bool = False
+    evaluation_strategy: str = "steps"
+    eval_steps: int = 100
+    logging_steps: int = 10
 
 
 def _resolve_plugin(group: str, name: str) -> Callable:
@@ -206,6 +209,9 @@ def create_trainer(
     epochs: float = 1,
     batch_size: int = 2,
     lr: float = 2e-4,
+    evaluation_strategy: str = "steps",
+    eval_steps: int | None = None,
+    logging_steps: int = 10,
 ) -> Tuple[Trainer, TrainingArguments]:
     """Create the Trainer instance used for fine-tuning."""
     os.makedirs(output_dir, exist_ok=True)
@@ -226,7 +232,7 @@ def create_trainer(
         gradient_accumulation_steps=8,
         per_device_eval_batch_size=batch_size,
         logging_dir=f"{output_dir}/logs",
-        logging_steps=10,
+        logging_steps=logging_steps,
         save_steps=100,
         save_total_limit=3,
         learning_rate=lr,
@@ -234,14 +240,39 @@ def create_trainer(
         warmup_steps=50,
         fp16=False,
         optim="adamw_torch",
+        evaluation_strategy=evaluation_strategy,
+        eval_steps=eval_steps,
     )
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+    def compute_metrics(eval_pred):
+        import torch.nn.functional as F
+
+        logits, labels = eval_pred
+        if isinstance(logits, tuple):
+            logits = logits[0]
+        logits = torch.from_numpy(logits) if not torch.is_tensor(logits) else logits
+        labels = torch.from_numpy(labels) if not torch.is_tensor(labels) else labels
+
+        with torch.no_grad():
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = F.cross_entropy(
+                shift_logits.view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1),
+                ignore_index=-100,
+                reduction="mean",
+            )
+        perplexity = torch.exp(loss).item()
+        return {"eval_loss": loss.item(), "perplexity": perplexity}
+
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         data_collator=data_collator,
+        compute_metrics=compute_metrics,
     )
     return trainer, training_args
 
@@ -280,8 +311,19 @@ def run_training(config: TrainingConfig) -> int:
         epochs=config.epochs,
         batch_size=config.batch_size,
         lr=config.lr,
+        evaluation_strategy=config.evaluation_strategy,
+        eval_steps=config.eval_steps,
+        logging_steps=config.logging_steps,
     )
-    trainer.train(resume_from_checkpoint=config.resume)
+    train_result = trainer.train(resume_from_checkpoint=config.resume)
+    trainer.save_metrics("train", train_result.metrics)
+    train_metrics_path = os.path.join(config.output_dir, "train_results.json")
+    logger.info("Training metrics saved to %s", train_metrics_path)
+    if config.evaluation_strategy != "no":
+        eval_metrics = trainer.evaluate()
+        trainer.save_metrics("eval", eval_metrics)
+        eval_metrics_path = os.path.join(config.output_dir, "eval_results.json")
+        logger.info("Evaluation metrics saved to %s", eval_metrics_path)
     trainer.save_model()
     trainer.save_state()
     return 0
@@ -302,6 +344,9 @@ def run(args: argparse.Namespace) -> int:
         batch_size=args.batch_size,
         lr=args.lr,
         resume=args.resume,
+        evaluation_strategy=args.evaluation_strategy,
+        eval_steps=args.eval_steps,
+        logging_steps=args.logging_steps,
     )
     return run_training(cfg)
 
@@ -378,6 +423,24 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Print VRAM estimate before training",
     )
     parser.add_argument("--resume", action="store_true", help="Resume training from the last checkpoint")
+    parser.add_argument(
+        "--evaluation-strategy",
+        choices=["no", "steps", "epoch"],
+        default="steps",
+        help="Frequency for evaluation during training",
+    )
+    parser.add_argument(
+        "--eval-steps",
+        type=int,
+        default=100,
+        help="Number of update steps between evaluations when using step-based evaluation",
+    )
+    parser.add_argument(
+        "--logging-steps",
+        type=int,
+        default=10,
+        help="Number of update steps between logging events",
+    )
     return parser.parse_args(args)
 
 
@@ -408,6 +471,9 @@ def main(argv: list[str] | None = None) -> int:
         batch_size=args.batch_size,
         lr=args.lr,
         resume=args.resume,
+        evaluation_strategy=args.evaluation_strategy,
+        eval_steps=args.eval_steps,
+        logging_steps=args.logging_steps,
     )
     return run_training(cfg)
 
