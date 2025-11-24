@@ -80,6 +80,11 @@ dropping it so project discussions still receive timely nudges. When a thread
 mention is included, the fallback path also attempts to post the reminder
 directly into that thread so Discord users still see the update in context.
 
+Holiday tagging follows the same flow: when `PROJECT_HOLIDAY_LOCALE` (or its
+`PROJECTS_HOLIDAY_LOCALE` alias) is set, the board looks up regional holidays
+for due dates, toggles the 🎁 tag automatically, and exposes a dashboard button
+that filters the Kanban columns down to only those seasonal projects.
+
 ## Additional Safety Features
 
 Recent iterations introduced several controls to moderate conversations:
