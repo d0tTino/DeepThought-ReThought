@@ -485,19 +485,24 @@ creating the index thread and updating embeds), and *Read Message History*. If
 you enable deadline reminders, add *Manage Events* so the bot can create and
 update scheduled events in the guild.
 
-Configure the plugin with the following environment variables:
+Configure the plugin with the following environment variables (canonical names
+shown first; the bot still accepts the listed legacy aliases):
 
-```bash
-export PROJECTS_FORUM_CHANNEL=123456789012345678  # Forum that hosts project threads
-export PROJECTS_INDEX_CHANNEL=234567890123456789  # Optional text channel for the pinned index
-export PROJECTS_REQUIRE_EVENTS=true               # Optional; create scheduled events for due dates
-```
+| Variable | Legacy aliases | Required? | Purpose |
+| --- | --- | --- | --- |
+| `PROJECT_FORUM_CHANNEL_ID` | `PROJECTS_FORUM_CHANNEL`, `PROJECTS_FORUM_CHANNEL_ID`, `DT_PROJECT_FORUM_CHANNEL_ID`, `DT_PROJECTS_FORUM_CHANNEL` | ✅ | Discord forum channel that hosts project threads. |
+| `PROJECT_INDEX_CHANNEL_ID` | `PROJECTS_INDEX_CHANNEL`, `PROJECTS_INDEX_CHANNEL_ID` | ➖ | Optional text channel where the bot pins the dashboard embed instead of keeping it inside the forum. |
+| `PROJECT_REQUIRE_EVENTS` | `PROJECTS_REQUIRE_EVENTS` | ➖ | When `true`, create and update guild scheduled events that mirror each due date. Leave unset to skip event management. |
+| `PROJECT_HOLIDAY_LOCALE` | `PROJECTS_HOLIDAY_LOCALE` | ➖ | ISO 3166-1 alpha-2 locale (defaults to `US`) that selects which country's public holidays are used for seasonal tagging. |
 
-`PROJECTS_FORUM_CHANNEL` must reference a Discord forum channel. When
-`PROJECTS_INDEX_CHANNEL` is supplied, the bot pins the board embed in that text
-channel instead of the forum index thread. Leave
-`PROJECTS_REQUIRE_EVENTS` unset or `false` if you do not need guild scheduled
-events for due date reminders.
+For compatibility with older deployments you may still export the
+`PROJECTS_*` variants shown above; they map to the canonical settings at
+startup. At minimum you must provide a valid `PROJECT_FORUM_CHANNEL_ID`. When
+`PROJECT_INDEX_CHANNEL_ID` is supplied, the bot pins the board embed in that
+text channel instead of the forum index thread. Leave
+`PROJECT_REQUIRE_EVENTS` unset or `false` if you do not need guild scheduled
+events for due date reminders. Set `PROJECT_HOLIDAY_LOCALE=GB`, `CA`, etc. to
+adapt seasonal workflows to your region.
 
 #### Commands and dashboard workflow
 
@@ -510,8 +515,30 @@ All board controls live under the `/project` slash command group:
   and project-type tags, and populate the database.
 * `/project update` — adjust the tracked metadata for an existing project,
   including due dates, owner, tags, and board filters.
+* `/project status` — quickly move a project between ⏳ To-Do, 🚧 In-Progress,
+  🧱 Blocked, 💤 On-Hold, ✅ Done, or 📦 Archived columns without touching other
+  metadata.
+* `/project priority` — set or clear the 🔥/🟠/🟢 priority tags so the dashboard
+  indicators and filters remain canonical.
+* `/project due` — set a due date (ISO-8601 or YYYY-MM-DD) or clear it, which
+  also reschedules the associated guild event when reminders are enabled.
+* `/project tag add` and `/project tag remove` — apply or remove arbitrary forum
+  tags (beyond the canonical status/priority/type set) from a tracked project.
 * `/project archive` — mark a project complete, tag the thread accordingly, and
   hide it from the active dashboard.
+
+#### Locale-aware holiday tagging
+
+When `PROJECT_HOLIDAY_LOCALE` is configured, the board loads the corresponding
+public-holiday calendar and automatically toggles the 🎁 Holiday tag whenever a
+due date overlaps a recognised seasonal break (e.g., US Thanksgiving when
+`PROJECT_HOLIDAY_LOCALE=US`). You can still apply the tag manually for ad-hoc
+celebrations. The dashboard embed exposes a *Holiday Filter* button; when
+enabled it limits every status column to only the projects carrying the holiday
+flag so seasonal work stays visible even in large backlogs. Toggling the filter
+does not modify the threads themselves—it simply flips the view stored for that
+dashboard message, and refreshing the board preserves whatever focus mode was
+last chosen.
 
 The dashboard embed is interactive: select a project from the dropdown to apply
 actions, toggle the holiday filter to focus on seasonal work, and press *Refresh*
