@@ -3,6 +3,7 @@ from __future__ import annotations
 """Training utilities for fine-tuning language models."""
 
 import argparse
+import inspect
 import logging
 import os
 from dataclasses import dataclass
@@ -152,13 +153,18 @@ def load_model(
 ) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
     """Load a model using the specified loader plugin."""
     fn = _resolve_plugin(_MODEL_GROUP, loader)
-    return fn(
-        model_path,
-        bits,
-        use_nf4=use_nf4,
-        use_double_quant=use_double_quant,
-        compute_dtype=compute_dtype,
-    )
+    signature = inspect.signature(fn)
+    kwargs = {
+        "use_nf4": use_nf4,
+        "use_double_quant": use_double_quant,
+        "compute_dtype": compute_dtype,
+    }
+
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+        return fn(model_path, bits, **kwargs)
+
+    supported_kwargs = {k: v for k, v in kwargs.items() if k in signature.parameters}
+    return fn(model_path, bits, **supported_kwargs)
 
 
 def _hf_dataset_loader(
