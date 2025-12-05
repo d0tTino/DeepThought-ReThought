@@ -110,6 +110,18 @@ The `auto` mode samples a small portion of the dataset and enables packing when
 the average sequence length is under 70% of the maximum, mirroring the
 heuristics used by Predibase.
 
+Tune LoRA adapter hyperparameters:
+
+```bash
+dtrt finetune --lora-r 16 --lora-alpha 32 --lora-target-modules q_proj k_proj v_proj o_proj
+```
+
+Adjust 4-bit quantization behaviour (bits must be either 4 or 8):
+
+```bash
+dtrt finetune --bits 4 --no-use-nf4 --use-double-quant --compute-dtype float16
+```
+
 Run ``dtrt finetune --help`` to see all available options.
 
 The CLI is also available as ``dtrt-finetune`` for convenience.
