@@ -30,6 +30,7 @@ __all__ = [
     "_hf_model_loader",
     "_hf_dataset_loader",
     "create_trainer",
+    "compute_metrics",
     "run_training",
     "run",
     "estimate_vram",
@@ -251,6 +252,28 @@ def load_dataset(
     return fn(dataset_path, tokenizer, max_seq_length=max_seq_length, pack_sequences=pack_sequences)
 
 
+def compute_metrics(eval_pred) -> dict[str, float]:
+    """Compute perplexity for language modeling evaluations."""
+
+    import torch.nn.functional as F
+
+    predictions, labels = eval_pred
+    logits = predictions[0] if isinstance(predictions, tuple) else predictions
+    logits = torch.from_numpy(logits) if not torch.is_tensor(logits) else logits
+    labels = torch.from_numpy(labels) if not torch.is_tensor(labels) else labels
+
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+    loss = F.cross_entropy(
+        shift_logits.view(-1, shift_logits.size(-1)),
+        shift_labels.view(-1),
+        ignore_index=-100,
+        reduction="mean",
+    )
+    perplexity = torch.exp(loss).item()
+    return {"perplexity": perplexity}
+
+
 def create_trainer(
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
@@ -435,7 +458,7 @@ def run_training(config: TrainingConfig) -> int:
     trainer.save_metrics("train", train_metrics)
     train_metrics_path = os.path.join(config.output_dir, "train_results.json")
     logger.info("Training metrics saved to %s", train_metrics_path)
-    eval_metrics = None
+    eval_metrics: dict[str, float] | None = None
     if config.evaluation_strategy != "no":
         eval_metrics = _prepare_metrics(trainer.evaluate())
         trainer.save_metrics("eval", eval_metrics)
@@ -446,10 +469,20 @@ def run_training(config: TrainingConfig) -> int:
         logger.info("Final evaluation metrics written to %s", final_eval_metrics_path)
     trainer.save_model()
     trainer.save_state()
+    summary = {
+        "output_dir": config.output_dir,
+        "train_loss": train_result.metrics.get("train_loss"),
+    }
+    if eval_metrics:
+        summary["eval_loss"] = eval_metrics.get("eval_loss")
+        summary["eval_perplexity"] = eval_metrics.get("eval_perplexity")
     summary_path = os.path.join(config.output_dir, "metrics_summary.json")
-    _save_json(summary_path, {"train": train_metrics, "eval": eval_metrics, "output_dir": config.output_dir})
-    logger.info("Metrics summary saved to %s", summary_path)
-    _print_summary(config.output_dir, train_metrics or {}, eval_metrics)
+    with open(summary_path, "w", encoding="utf-8") as fh:
+        json.dump(summary, fh, indent=2)
+    logger.info("Training summary saved to %s", summary_path)
+    logger.info("Training summary:\n%s", json.dumps(summary, indent=2))
+    print("Training summary:")
+    print(json.dumps(summary, indent=2))
     return 0
 
 
