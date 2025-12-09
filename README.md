@@ -552,6 +552,17 @@ does not modify the threads themselves—it simply flips the view stored for tha
 dashboard message, and refreshing the board preserves whatever focus mode was
 last chosen.
 
+Supported calendars and their detection windows:
+
+* **US (default)** — Halloween (entire October), Thanksgiving week (Tuesday
+  through Sunday surrounding the fourth Thursday in November), winter break
+  (all of December plus January 1–7), and a Valentine’s ramp-up (February 1–21).
+* **GB** — Winter break (all of December plus January 1–7) and observed bank
+  holidays: New Year’s Day, Good Friday, Easter Monday, Early May (first Monday
+  in May), Spring (last Monday in May), Summer (last Monday in August),
+  Christmas Day, and Boxing Day. Weekend bank holidays shift to the observed
+  Monday.
+
 The dashboard embed is interactive: select a project from the dropdown to apply
 actions, toggle the holiday filter to focus on seasonal work, and press *Refresh*
 to resync the board after manual thread edits. Use *Clear Selection* to stop
