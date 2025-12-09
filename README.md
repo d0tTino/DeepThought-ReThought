@@ -81,6 +81,17 @@ After installing the project (`pip install dist/*.whl`), you can launch fine-tun
 ```bash
 dtrt finetune --model-path <model-id>
 ```
+During training the CLI prints a summary of the saved artifacts and metrics (loss
+and perplexity when evaluation is enabled). The output directory contains the
+LoRA adapter weights plus JSON reports:
+
+* `train_results.json` and `eval_results.json` from the Hugging Face trainer
+  helpers.
+* `final_eval_metrics.json` with the latest evaluation metrics including
+  perplexity.
+* `metrics_summary.json` combining the train/eval metrics with the artifact
+  location for quick inspection or scripting.
+
 You can also estimate the VRAM requirement before launching training:
 
 ```bash

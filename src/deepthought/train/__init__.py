@@ -3,12 +3,13 @@ from __future__ import annotations
 """Training utilities for fine-tuning language models."""
 
 import argparse
-import inspect
+import json
 import logging
 import os
+from pathlib import Path
 from dataclasses import dataclass
 from importlib import metadata
-from typing import Callable, Tuple
+from typing import Callable, Dict, Tuple
 
 import torch
 from datasets import Dataset
@@ -32,6 +33,7 @@ __all__ = [
     "run_training",
     "run",
     "estimate_vram",
+    "compute_metrics",
     "parse_args",
     "main",
     "TrainingConfig",
@@ -304,27 +306,6 @@ def create_trainer(
     )
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-    def compute_metrics(eval_pred):
-        import torch.nn.functional as F
-
-        logits, labels = eval_pred
-        if isinstance(logits, tuple):
-            logits = logits[0]
-        logits = torch.from_numpy(logits) if not torch.is_tensor(logits) else logits
-        labels = torch.from_numpy(labels) if not torch.is_tensor(labels) else labels
-
-        with torch.no_grad():
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            loss = F.cross_entropy(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1),
-                ignore_index=-100,
-                reduction="mean",
-            )
-        perplexity = torch.exp(loss).item()
-        return {"eval_loss": loss.item(), "perplexity": perplexity}
-
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -334,6 +315,41 @@ def create_trainer(
         compute_metrics=compute_metrics,
     )
     return trainer, training_args
+
+
+def compute_metrics(eval_pred) -> Dict[str, float]:
+    """Compute evaluation metrics for causal language modeling.
+
+    The callback mirrors Hugging Face expectations so it can be passed directly to
+    ``Trainer``. It returns both the mean loss and its exponentiated perplexity.
+    """
+
+    import torch.nn.functional as F
+
+    logits, labels = eval_pred
+    if isinstance(logits, tuple):
+        logits = logits[0]
+    logits = torch.from_numpy(logits) if not torch.is_tensor(logits) else logits
+    labels = torch.from_numpy(labels) if not torch.is_tensor(labels) else labels
+
+    with torch.no_grad():
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        loss = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            ignore_index=-100,
+            reduction="mean",
+        )
+    perplexity = torch.exp(loss).item()
+    return {"eval_loss": loss.item(), "perplexity": perplexity}
+
+
+def _save_json(path: str | Path, payload: dict) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fp:
+        json.dump(payload, fp, indent=2, sort_keys=True)
 
 
 def estimate_vram(
@@ -349,6 +365,35 @@ def estimate_vram(
     hidden_size = getattr(model.config, "hidden_size", 0)
     activation_bytes = batch_size * gradient_accumulation_steps * seq_length * hidden_size * 2
     return (param_bytes + activation_bytes) / (1024**3)
+
+
+def _prepare_metrics(metrics: dict | None) -> dict:
+    if metrics is None:
+        return {}
+    prepared = {}
+    for key, value in metrics.items():
+        if isinstance(value, (int, float, str, bool)) or value is None:
+            prepared[key] = value
+        else:
+            try:
+                prepared[key] = float(value)
+            except Exception:
+                prepared[key] = str(value)
+    return prepared
+
+
+def _print_summary(output_dir: str, train_metrics: dict, eval_metrics: dict | None) -> None:
+    header = "\n=== Training Summary ==="
+    lines = [header, f"Model artifacts: {output_dir}"]
+    if train_metrics:
+        lines.append("Train metrics:")
+        for key, value in train_metrics.items():
+            lines.append(f"  - {key}: {value}")
+    if eval_metrics:
+        lines.append("Eval metrics:")
+        for key, value in eval_metrics.items():
+            lines.append(f"  - {key}: {value}")
+    print("\n".join(lines))
 
 
 def run_training(config: TrainingConfig) -> int:
@@ -386,16 +431,25 @@ def run_training(config: TrainingConfig) -> int:
         lora_target_modules=config.lora_target_modules,
     )
     train_result = trainer.train(resume_from_checkpoint=config.resume)
-    trainer.save_metrics("train", train_result.metrics)
+    train_metrics = _prepare_metrics(train_result.metrics)
+    trainer.save_metrics("train", train_metrics)
     train_metrics_path = os.path.join(config.output_dir, "train_results.json")
     logger.info("Training metrics saved to %s", train_metrics_path)
+    eval_metrics = None
     if config.evaluation_strategy != "no":
-        eval_metrics = trainer.evaluate()
+        eval_metrics = _prepare_metrics(trainer.evaluate())
         trainer.save_metrics("eval", eval_metrics)
         eval_metrics_path = os.path.join(config.output_dir, "eval_results.json")
         logger.info("Evaluation metrics saved to %s", eval_metrics_path)
+        final_eval_metrics_path = os.path.join(config.output_dir, "final_eval_metrics.json")
+        _save_json(final_eval_metrics_path, eval_metrics)
+        logger.info("Final evaluation metrics written to %s", final_eval_metrics_path)
     trainer.save_model()
     trainer.save_state()
+    summary_path = os.path.join(config.output_dir, "metrics_summary.json")
+    _save_json(summary_path, {"train": train_metrics, "eval": eval_metrics, "output_dir": config.output_dir})
+    logger.info("Metrics summary saved to %s", summary_path)
+    _print_summary(config.output_dir, train_metrics or {}, eval_metrics)
     return 0
 
 
