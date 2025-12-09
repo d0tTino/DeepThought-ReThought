@@ -66,6 +66,19 @@ dtrt finetune \
 These options map directly to `TrainingArguments.num_train_epochs`,
 `per_device_train_batch_size` and `learning_rate` respectively.
 
+You can also customize LoRA and quantization behaviour (4-bit or 8-bit only):
+
+```bash
+dtrt finetune \
+    --lora-r 8 \
+    --lora-alpha 16 \
+    --lora-dropout 0.05 \
+    --compute-dtype bfloat16
+```
+
+Switch between NF4 and FP4 or disable double quantization as needed using
+`--use-nf4/--no-use-nf4` and `--use-double-quant/--no-use-double-quant`.
+
 ## Registering custom loaders
 
 `deepthought.train` discovers model and dataset loaders through entry point

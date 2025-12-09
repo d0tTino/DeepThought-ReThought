@@ -81,6 +81,17 @@ After installing the project (`pip install dist/*.whl`), you can launch fine-tun
 ```bash
 dtrt finetune --model-path <model-id>
 ```
+During training the CLI prints a summary of the saved artifacts and metrics (loss
+and perplexity when evaluation is enabled). The output directory contains the
+LoRA adapter weights plus JSON reports:
+
+* `train_results.json` and `eval_results.json` from the Hugging Face trainer
+  helpers.
+* `final_eval_metrics.json` with the latest evaluation metrics including
+  perplexity.
+* `metrics_summary.json` combining the train/eval metrics with the artifact
+  location for quick inspection or scripting.
+
 You can also estimate the VRAM requirement before launching training:
 
 ```bash
@@ -110,13 +121,17 @@ The `auto` mode samples a small portion of the dataset and enables packing when
 the average sequence length is under 70% of the maximum, mirroring the
 heuristics used by Predibase.
 
-Fine-tuning artifacts are written to the `--output-dir` (default:
-`./results/lora-adapter`). Training saves the adapter weights, checkpoints, and
-`train_results.json`, while evaluation adds `eval_results.json` that includes
-perplexity from the `compute_metrics` callback. A consolidated
-`metrics_summary.json` is emitted next to the saved model and echoed to the
-console so you can quickly see the train loss and eval perplexity after the
-run completes.
+Tune LoRA adapter hyperparameters:
+
+```bash
+dtrt finetune --lora-r 16 --lora-alpha 32 --lora-target-modules q_proj k_proj v_proj o_proj
+```
+
+Adjust 4-bit quantization behaviour (bits must be either 4 or 8):
+
+```bash
+dtrt finetune --bits 4 --no-use-nf4 --use-double-quant --compute-dtype float16
+```
 
 Run ``dtrt finetune --help`` to see all available options.
 
@@ -547,6 +562,17 @@ flag so seasonal work stays visible even in large backlogs. Toggling the filter
 does not modify the threads themselves—it simply flips the view stored for that
 dashboard message, and refreshing the board preserves whatever focus mode was
 last chosen.
+
+Supported calendars and their detection windows:
+
+* **US (default)** — Halloween (entire October), Thanksgiving week (Tuesday
+  through Sunday surrounding the fourth Thursday in November), winter break
+  (all of December plus January 1–7), and a Valentine’s ramp-up (February 1–21).
+* **GB** — Winter break (all of December plus January 1–7) and observed bank
+  holidays: New Year’s Day, Good Friday, Easter Monday, Early May (first Monday
+  in May), Spring (last Monday in May), Summer (last Monday in August),
+  Christmas Day, and Boxing Day. Weekend bank holidays shift to the observed
+  Monday.
 
 The dashboard embed is interactive: select a project from the dropdown to apply
 actions, toggle the holiday filter to focus on seasonal work, and press *Refresh*

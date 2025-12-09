@@ -178,10 +178,24 @@ def _cmd_finetune(args: argparse.Namespace) -> int:
         batch_size=args.batch_size,
         lr=args.lr,
         resume=args.resume,
+        lora_r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        lora_target_modules=tuple(args.lora_target_modules),
+        use_nf4=args.use_nf4,
+        use_double_quant=args.use_double_quant,
+        compute_dtype=args.compute_dtype,
     )
 
     if args.estimate_vram or args.estimate_only:
-        model, _ = training.load_model(cfg.model_path, cfg.bits, loader=cfg.model_loader)
+        model, _ = training.load_model(
+            cfg.model_path,
+            cfg.bits,
+            loader=cfg.model_loader,
+            use_nf4=cfg.use_nf4,
+            use_double_quant=cfg.use_double_quant,
+            compute_dtype=cfg.compute_dtype,
+        )
         vram = training.estimate_vram(
             model,
             batch_size=cfg.batch_size,
@@ -293,6 +307,38 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=2e-4,
         help="Learning rate",
+    )
+    finetune_p.add_argument("--lora-r", type=int, default=32, help="LoRA rank")
+    finetune_p.add_argument("--lora-alpha", type=int, default=64, help="LoRA scaling")
+    finetune_p.add_argument(
+        "--lora-dropout",
+        type=float,
+        default=0.1,
+        help="Dropout probability for LoRA layers",
+    )
+    finetune_p.add_argument(
+        "--lora-target-modules",
+        nargs="+",
+        default=["q_proj", "k_proj", "v_proj", "o_proj"],
+        help="List of module names to wrap with LoRA adapters",
+    )
+    finetune_p.add_argument(
+        "--use-nf4",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable NF4 quantization (disable to use FP4)",
+    )
+    finetune_p.add_argument(
+        "--use-double-quant",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable nested quantization for 4-bit weights",
+    )
+    finetune_p.add_argument(
+        "--compute-dtype",
+        choices=["bfloat16", "float16", "float32"],
+        default="bfloat16",
+        help="Computation dtype for 4-bit layers",
     )
     finetune_p.add_argument(
         "--estimate-only",
