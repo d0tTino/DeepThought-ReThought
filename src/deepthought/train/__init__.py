@@ -1,15 +1,16 @@
-from __future__ import annotations
-
 """Training utilities for fine-tuning language models."""
 
+from __future__ import annotations
+
 import argparse
+import inspect
 import json
 import logging
 import os
 from pathlib import Path
 from dataclasses import dataclass
-from importlib import metadata
 from typing import Callable, Dict, Tuple
+from importlib import metadata
 
 import torch
 from datasets import Dataset
@@ -34,7 +35,6 @@ __all__ = [
     "run_training",
     "run",
     "estimate_vram",
-    "compute_metrics",
     "parse_args",
     "main",
     "TrainingConfig",
@@ -60,6 +60,7 @@ class TrainingConfig:
     output_dir: str = "./results/lora-adapter"
     max_seq_length: int = 2048
     pack_sequences: str | bool = "off"
+    use_provided_splits: bool = True
     epochs: float = 1.0
     batch_size: int = 2
     lr: float = 2e-4
@@ -175,6 +176,8 @@ def _hf_dataset_loader(
     tokenizer: AutoTokenizer,
     max_seq_length: int = 2048,
     pack_sequences: str | bool = "off",
+    *,
+    use_provided_splits: bool = True,
 ) -> Tuple[Dataset, Dataset]:
     """Default Hugging Face dataset loader."""
     raw_dataset = hf_load_dataset(dataset_path)
@@ -196,10 +199,10 @@ def _hf_dataset_loader(
             )
         return {"text": prompt}
 
-    formatted_dataset = raw_dataset["train"].map(format_prompt)
+    formatted_train = raw_dataset["train"].map(format_prompt)
 
     if pack_sequences == "auto":
-        sample = formatted_dataset.select(range(min(1000, len(formatted_dataset))))
+        sample = formatted_train.select(range(min(1000, len(formatted_train))))
         tokenized = tokenizer(sample["text"])
         avg_len = sum(len(ids) for ids in tokenized["input_ids"]) / len(tokenized["input_ids"])
         pack_sequences = avg_len < 0.7 * max_seq_length
@@ -214,28 +217,43 @@ def _hf_dataset_loader(
             padding="max_length",
         )
 
-    tokenized_dataset = formatted_dataset.map(tokenize_function, batched=True, remove_columns=["text"])
+    def process_split(ds: Dataset) -> Dataset:
+        tokenized = ds.map(tokenize_function, batched=True, remove_columns=["text"])
+        if pack_sequences:
 
-    if pack_sequences:
+            def _pack(split: Dataset) -> Dataset:
+                flat_ids = [tid for ids in split["input_ids"] for tid in ids]
+                flat_mask = [m for mask in split["attention_mask"] for m in mask]
+                total = len(flat_ids) // max_seq_length
+                input_ids = [flat_ids[i * max_seq_length : (i + 1) * max_seq_length] for i in range(total)]  # noqa: E203
+                attention_mask = [
+                    flat_mask[i * max_seq_length : (i + 1) * max_seq_length]
+                    for i in range(total)
+                ]
+                return Dataset.from_dict({"input_ids": input_ids, "attention_mask": attention_mask})
 
-        def _pack(ds: Dataset) -> Dataset:
-            flat_ids = [tid for ids in ds["input_ids"] for tid in ids]
-            flat_mask = [m for mask in ds["attention_mask"] for m in mask]
-            total = len(flat_ids) // max_seq_length
-            input_ids = [flat_ids[i * max_seq_length : (i + 1) * max_seq_length] for i in range(total)]  # noqa: E203
-            attention_mask = [
-                flat_mask[i * max_seq_length : (i + 1) * max_seq_length] for i in range(total)  # noqa: E203
-            ]
-            return Dataset.from_dict({"input_ids": input_ids, "attention_mask": attention_mask})
+            return _pack(tokenized)
 
-        split_dataset = tokenized_dataset.train_test_split(test_size=0.05, seed=42)
-        train_ds = _pack(split_dataset["train"])
-        eval_ds = _pack(split_dataset["test"])
-    else:
-        filtered_dataset = tokenized_dataset.filter(lambda ex: len(ex["input_ids"]) <= max_seq_length)
-        split_dataset = filtered_dataset.train_test_split(test_size=0.05, seed=42)
-        train_ds, eval_ds = split_dataset["train"], split_dataset["test"]
+        return tokenized.filter(lambda ex: len(ex["input_ids"]) <= max_seq_length)
 
+    has_provided_eval = use_provided_splits and any(
+        split in raw_dataset for split in ("validation", "test")
+    )
+
+    if has_provided_eval:
+        train_ds = process_split(formatted_train)
+        eval_ds = None
+        if "validation" in raw_dataset:
+            formatted_validation = raw_dataset["validation"].map(format_prompt)
+            eval_ds = process_split(formatted_validation)
+        elif "test" in raw_dataset:
+            formatted_test = raw_dataset["test"].map(format_prompt)
+            eval_ds = process_split(formatted_test)
+        return train_ds, eval_ds
+
+    split_dataset = formatted_train.train_test_split(test_size=0.05, seed=42)
+    train_ds = process_split(split_dataset["train"])
+    eval_ds = process_split(split_dataset["test"])
     return train_ds, eval_ds
 
 
@@ -244,35 +262,19 @@ def load_dataset(
     tokenizer: AutoTokenizer,
     max_seq_length: int = 2048,
     pack_sequences: str | bool = "off",
+    use_provided_splits: bool = True,
     *,
     loader: str = "hf",
 ) -> Tuple[Dataset, Dataset]:
     """Load datasets using the specified loader plugin."""
     fn = _resolve_plugin(_DATASET_GROUP, loader)
-    return fn(dataset_path, tokenizer, max_seq_length=max_seq_length, pack_sequences=pack_sequences)
-
-
-def compute_metrics(eval_pred) -> dict[str, float]:
-    """Compute perplexity for language modeling evaluations."""
-
-    import torch.nn.functional as F
-
-    predictions, labels = eval_pred
-    logits = predictions[0] if isinstance(predictions, tuple) else predictions
-    logits = torch.from_numpy(logits) if not torch.is_tensor(logits) else logits
-    labels = torch.from_numpy(labels) if not torch.is_tensor(labels) else labels
-
-    shift_logits = logits[..., :-1, :].contiguous()
-    shift_labels = labels[..., 1:].contiguous()
-    loss = F.cross_entropy(
-        shift_logits.view(-1, shift_logits.size(-1)),
-        shift_labels.view(-1),
-        ignore_index=-100,
-        reduction="mean",
+    return fn(
+        dataset_path,
+        tokenizer,
+        max_seq_length=max_seq_length,
+        pack_sequences=pack_sequences,
+        use_provided_splits=use_provided_splits,
     )
-    perplexity = torch.exp(loss).item()
-    return {"perplexity": perplexity}
-
 
 def create_trainer(
     model: AutoModelForCausalLM,
@@ -434,6 +436,7 @@ def run_training(config: TrainingConfig) -> int:
         tokenizer,
         max_seq_length=config.max_seq_length,
         pack_sequences=config.pack_sequences,
+        use_provided_splits=config.use_provided_splits,
         loader=config.dataset_loader,
     )
     trainer, _ = create_trainer(
@@ -497,6 +500,7 @@ def run(args: argparse.Namespace) -> int:
         output_dir=args.output_dir,
         max_seq_length=args.max_seq_length,
         pack_sequences=args.pack_sequences,
+        use_provided_splits=args.use_provided_splits,
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
@@ -557,6 +561,15 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         choices=["on", "off", "auto"],
         default="off",
         help="Sequence packing mode. 'auto' uses heuristics to reduce padding",
+    )
+    parser.add_argument(
+        "--use-provided-splits",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use dataset validation/test splits when available; disable to always create an automatic "
+            "train/test split (default: use provided splits)."
+        ),
     )
     parser.add_argument(
         "--epochs",
@@ -670,6 +683,7 @@ def main(argv: list[str] | None = None) -> int:
         output_dir=args.output_dir,
         max_seq_length=args.max_seq_length,
         pack_sequences=args.pack_sequences,
+        use_provided_splits=args.use_provided_splits,
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
