@@ -110,6 +110,14 @@ The `auto` mode samples a small portion of the dataset and enables packing when
 the average sequence length is under 70% of the maximum, mirroring the
 heuristics used by Predibase.
 
+Fine-tuning artifacts are written to the `--output-dir` (default:
+`./results/lora-adapter`). Training saves the adapter weights, checkpoints, and
+`train_results.json`, while evaluation adds `eval_results.json` that includes
+perplexity from the `compute_metrics` callback. A consolidated
+`metrics_summary.json` is emitted next to the saved model and echoed to the
+console so you can quickly see the train loss and eval perplexity after the
+run completes.
+
 Run ``dtrt finetune --help`` to see all available options.
 
 The CLI is also available as ``dtrt-finetune`` for convenience.
