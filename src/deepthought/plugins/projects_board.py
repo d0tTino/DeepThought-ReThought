@@ -107,6 +107,86 @@ def _is_valentines_window(moment: datetime) -> bool:
     return day.month == 2 and 1 <= day.day <= 21
 
 
+def _western_easter_date(year: int) -> date:
+    """Compute Western (Gregorian) Easter Sunday for a given year."""
+
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _nth_weekday_of_month(year: int, month: int, weekday: int, index: int) -> date:
+    """Return the ``index``-th weekday for the given month (1-indexed)."""
+
+    first = date(year, month, 1)
+    offset = (weekday - first.weekday()) % 7
+    return first + timedelta(days=offset + (index - 1) * 7)
+
+
+def _last_weekday_of_month(year: int, month: int, weekday: int) -> date:
+    """Return the last weekday for the given month."""
+
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+    last_day = next_month - timedelta(days=1)
+    offset = (last_day.weekday() - weekday) % 7
+    return last_day - timedelta(days=offset)
+
+
+def _observed_bank_holiday(base_day: date) -> date:
+    """Shift weekend holidays to their observed Monday."""
+
+    if base_day.weekday() == 5:  # Saturday
+        return base_day + timedelta(days=2)
+    if base_day.weekday() == 6:  # Sunday
+        return base_day + timedelta(days=1)
+    return base_day
+
+
+def _gb_bank_holidays(year: int) -> set[date]:
+    """Return the GB bank holidays (observed) for a year."""
+
+    easter = _western_easter_date(year)
+    early_may = _nth_weekday_of_month(year, 5, weekday=0, index=1)
+    spring = _last_weekday_of_month(year, 5, weekday=0)
+    summer = _last_weekday_of_month(year, 8, weekday=0)
+    new_year = _observed_bank_holiday(date(year, 1, 1))
+    christmas = _observed_bank_holiday(date(year, 12, 25))
+    boxing_day = _observed_bank_holiday(date(year, 12, 26))
+    return {
+        new_year,
+        easter - timedelta(days=2),  # Good Friday
+        easter + timedelta(days=1),  # Easter Monday
+        early_may,
+        spring,
+        summer,
+        christmas,
+        boxing_day,
+    }
+
+
+def _is_gb_bank_holiday_window(moment: datetime) -> bool:
+    day = _normalize_datetime(moment).date()
+    if day.month == 12 or (day.month == 1 and day.day <= 7):
+        return True
+    holidays = _gb_bank_holidays(day.year)
+    return day in holidays
+
+
 HOLIDAY_TAG_NAME = "🎁 Holiday"
 _DEFAULT_HOLIDAY_TAG_ALIASES = {HOLIDAY_TAG_NAME.casefold(), "holiday"}
 HOLIDAY_TAG_ALIASES = set(_DEFAULT_HOLIDAY_TAG_ALIASES)
@@ -118,34 +198,52 @@ _US_HOLIDAY_PREDICATES: tuple[Callable[[datetime], bool], ...] = (
     _is_valentines_window,
 )
 
-_HOLIDAY_CALENDARS: dict[str, HolidayCalendar] = {
-    "US": HolidayCalendar(
-        DEFAULT_HOLIDAY_LOCALE,
-        tag_aliases=_DEFAULT_HOLIDAY_TAG_ALIASES,
-        date_predicates=_US_HOLIDAY_PREDICATES,
-    ),
-    "GB": HolidayCalendar(
-        "GB",
-        tag_aliases=_DEFAULT_HOLIDAY_TAG_ALIASES,
-        date_predicates=_US_HOLIDAY_PREDICATES,
-    ),
+_GB_HOLIDAY_PREDICATES: tuple[Callable[[datetime], bool], ...] = (
+    _is_christmas_new_year_window,
+    _is_gb_bank_holiday_window,
+)
+
+_HOLIDAY_PREDICATES: dict[str, tuple[Callable[[datetime], bool], ...]] = {
+    DEFAULT_HOLIDAY_LOCALE: _US_HOLIDAY_PREDICATES,
+    "GB": _GB_HOLIDAY_PREDICATES,
 }
+
+_HOLIDAY_CALENDARS: dict[str, HolidayCalendar] = {}
+
+
+def _build_holiday_calendar(locale: str) -> HolidayCalendar | None:
+    normalized = locale.upper()
+    predicates = _HOLIDAY_PREDICATES.get(normalized)
+    if predicates is None:
+        return None
+    calendar = HolidayCalendar(
+        normalized,
+        tag_aliases=_DEFAULT_HOLIDAY_TAG_ALIASES,
+        date_predicates=predicates,
+    )
+    _HOLIDAY_CALENDARS[normalized] = calendar
+    return calendar
+
+
+# Seed the default locale calendar so it is always available.
+_build_holiday_calendar(DEFAULT_HOLIDAY_LOCALE)
 
 
 def resolve_holiday_calendar(locale: str) -> HolidayCalendar:
     """Return the configured holiday calendar, defaulting to the US rules."""
 
-    key = locale.upper() if locale else DEFAULT_HOLIDAY_LOCALE
-    calendar = _HOLIDAY_CALENDARS.get(key)
-    if calendar is None:
-        if key != DEFAULT_HOLIDAY_LOCALE:
-            _LOG.warning(
-                "Unknown holiday locale '%s'; defaulting to %s",
-                key,
-                DEFAULT_HOLIDAY_LOCALE,
-            )
-        calendar = _HOLIDAY_CALENDARS[DEFAULT_HOLIDAY_LOCALE]
-    return calendar
+    key = locale.upper().strip() if locale else DEFAULT_HOLIDAY_LOCALE
+    calendar = _HOLIDAY_CALENDARS.get(key) or _build_holiday_calendar(key)
+    if calendar is None and key != DEFAULT_HOLIDAY_LOCALE:
+        _LOG.warning(
+            "Unknown holiday locale '%s'; defaulting to %s",
+            key,
+            DEFAULT_HOLIDAY_LOCALE,
+        )
+    fallback = _HOLIDAY_CALENDARS.get(DEFAULT_HOLIDAY_LOCALE) or _build_holiday_calendar(
+        DEFAULT_HOLIDAY_LOCALE
+    )
+    return calendar or fallback
 
 BOARD_STATUS_META: dict[str, dict[str, str]] = {
     "to-do": {"label": "⏳ To-Do", "tag": "⏳ To-Do"},

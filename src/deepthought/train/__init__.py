@@ -66,6 +66,18 @@ class TrainingConfig:
     evaluation_strategy: str = "steps"
     eval_steps: int = 100
     logging_steps: int = 10
+    lora_r: int = 32
+    lora_alpha: int = 64
+    lora_dropout: float = 0.1
+    lora_target_modules: tuple[str, ...] = (
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+    )
+    use_nf4: bool = True
+    use_double_quant: bool = True
+    compute_dtype: str = "bfloat16"
 
 
 def _resolve_plugin(group: str, name: str) -> Callable:
@@ -82,16 +94,39 @@ def _resolve_plugin(group: str, name: str) -> Callable:
     raise KeyError(f"No plugin named '{name}' in group '{group}'")
 
 
-def _hf_model_loader(model_path: str | None, bits: int) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
+def _hf_model_loader(
+    model_path: str | None,
+    bits: int,
+    *,
+    use_nf4: bool = True,
+    use_double_quant: bool = True,
+    compute_dtype: str = "bfloat16",
+) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
     """Default Hugging Face model loader."""
+    if bits not in {4, 8}:
+        raise ValueError("Only 4-bit and 8-bit quantization are supported for the HF loader")
+
     base_model_id = model_path or "meta-llama/Llama-3.2-3B-Instruct"
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=bits == 4,
-        load_in_8bit=bits == 8,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-    )
+    dtype_map = {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+    }
+    quantization_config: BitsAndBytesConfig
+    if bits == 4:
+        normalized_dtype = str(compute_dtype).lower()
+        if normalized_dtype not in dtype_map:
+            raise ValueError(
+                f"Unsupported compute dtype '{compute_dtype}'. Choose from {', '.join(dtype_map.keys())}."
+            )
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4" if use_nf4 else "fp4",
+            bnb_4bit_use_double_quant=use_double_quant,
+            bnb_4bit_compute_dtype=dtype_map[normalized_dtype],
+        )
+    else:
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
     try:
         model = AutoModelForCausalLM.from_pretrained(
             base_model_id,
@@ -114,10 +149,24 @@ def load_model(
     bits: int,
     *,
     loader: str = "hf",
+    use_nf4: bool = True,
+    use_double_quant: bool = True,
+    compute_dtype: str = "bfloat16",
 ) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
     """Load a model using the specified loader plugin."""
     fn = _resolve_plugin(_MODEL_GROUP, loader)
-    return fn(model_path, bits)
+    signature = inspect.signature(fn)
+    kwargs = {
+        "use_nf4": use_nf4,
+        "use_double_quant": use_double_quant,
+        "compute_dtype": compute_dtype,
+    }
+
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+        return fn(model_path, bits, **kwargs)
+
+    supported_kwargs = {k: v for k, v in kwargs.items() if k in signature.parameters}
+    return fn(model_path, bits, **supported_kwargs)
 
 
 def _hf_dataset_loader(
@@ -215,17 +264,26 @@ def create_trainer(
     evaluation_strategy: str = "steps",
     eval_steps: int | None = None,
     logging_steps: int = 10,
+    lora_r: int = 32,
+    lora_alpha: int = 64,
+    lora_dropout: float = 0.1,
+    lora_target_modules: tuple[str, ...] = (
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+    ),
 ) -> Tuple[Trainer, TrainingArguments]:
     """Create the Trainer instance used for fine-tuning."""
     os.makedirs(output_dir, exist_ok=True)
     model = prepare_model_for_kbit_training(model)
     lora_config = LoraConfig(
-        r=32,
-        lora_alpha=64,
-        lora_dropout=0.1,
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        target_modules=list(lora_target_modules),
     )
     model = get_peft_model(model, lora_config)
     training_args = TrainingArguments(
@@ -340,7 +398,14 @@ def _print_summary(output_dir: str, train_metrics: dict, eval_metrics: dict | No
 
 def run_training(config: TrainingConfig) -> int:
     """Execute training using :class:`TrainingConfig`."""
-    model, tokenizer = load_model(config.model_path, config.bits, loader=config.model_loader)
+    model, tokenizer = load_model(
+        config.model_path,
+        config.bits,
+        loader=config.model_loader,
+        use_nf4=config.use_nf4,
+        use_double_quant=config.use_double_quant,
+        compute_dtype=config.compute_dtype,
+    )
     train_ds, eval_ds = load_dataset(
         config.dataset_path,
         tokenizer,
@@ -360,6 +425,10 @@ def run_training(config: TrainingConfig) -> int:
         evaluation_strategy=config.evaluation_strategy,
         eval_steps=config.eval_steps,
         logging_steps=config.logging_steps,
+        lora_r=config.lora_r,
+        lora_alpha=config.lora_alpha,
+        lora_dropout=config.lora_dropout,
+        lora_target_modules=config.lora_target_modules,
     )
     train_result = trainer.train(resume_from_checkpoint=config.resume)
     train_metrics = _prepare_metrics(train_result.metrics)
@@ -402,6 +471,13 @@ def run(args: argparse.Namespace) -> int:
         evaluation_strategy=args.evaluation_strategy,
         eval_steps=args.eval_steps,
         logging_steps=args.logging_steps,
+        lora_r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        lora_target_modules=tuple(args.lora_target_modules),
+        use_nf4=args.use_nf4,
+        use_double_quant=args.use_double_quant,
+        compute_dtype=args.compute_dtype,
     )
     return run_training(cfg)
 
@@ -496,13 +572,52 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         default=10,
         help="Number of update steps between logging events",
     )
+    parser.add_argument("--lora-r", type=int, default=32, help="LoRA rank")
+    parser.add_argument("--lora-alpha", type=int, default=64, help="LoRA scaling")
+    parser.add_argument(
+        "--lora-dropout",
+        type=float,
+        default=0.1,
+        help="Dropout probability for LoRA layers",
+    )
+    parser.add_argument(
+        "--lora-target-modules",
+        nargs="+",
+        default=["q_proj", "k_proj", "v_proj", "o_proj"],
+        help="List of module names to wrap with LoRA adapters",
+    )
+    parser.add_argument(
+        "--use-nf4",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable NF4 quantization (disable to use FP4)",
+    )
+    parser.add_argument(
+        "--use-double-quant",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable nested quantization for 4-bit weights",
+    )
+    parser.add_argument(
+        "--compute-dtype",
+        choices=["bfloat16", "float16", "float32"],
+        default="bfloat16",
+        help="Computation dtype for 4-bit layers",
+    )
     return parser.parse_args(args)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.estimate_vram or args.estimate_only:
-        model, _ = load_model(args.model_path, args.bits, loader=args.model_loader)
+        model, _ = load_model(
+            args.model_path,
+            args.bits,
+            loader=args.model_loader,
+            use_nf4=args.use_nf4,
+            use_double_quant=args.use_double_quant,
+            compute_dtype=args.compute_dtype,
+        )
         vram = estimate_vram(
             model,
             batch_size=args.batch_size,
@@ -529,6 +644,13 @@ def main(argv: list[str] | None = None) -> int:
         evaluation_strategy=args.evaluation_strategy,
         eval_steps=args.eval_steps,
         logging_steps=args.logging_steps,
+        lora_r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        lora_target_modules=tuple(args.lora_target_modules),
+        use_nf4=args.use_nf4,
+        use_double_quant=args.use_double_quant,
+        compute_dtype=args.compute_dtype,
     )
     return run_training(cfg)
 
