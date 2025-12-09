@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+pytest.importorskip("aiosqlite")
+pytest.importorskip("discord")
+
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.plugins.projects_board import ProjectRecord, ProjectsBoard
 
