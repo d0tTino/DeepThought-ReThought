@@ -9,7 +9,7 @@ import logging
 import os
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple
 from importlib import metadata
 
 import torch
@@ -367,7 +367,7 @@ def compute_metrics(eval_pred) -> Dict[str, float]:
             reduction="mean",
         )
     perplexity = torch.exp(loss).item()
-    return {"eval_loss": loss.item(), "perplexity": perplexity}
+    return {"loss": loss.item(), "perplexity": perplexity}
 
 
 def _save_json(path: str | Path, payload: dict) -> None:
@@ -405,6 +405,15 @@ def _prepare_metrics(metrics: dict | None) -> dict:
             except Exception:
                 prepared[key] = str(value)
     return prepared
+
+
+def _get_eval_metric(metrics: dict[str, Any], key: str) -> Any:
+    """Return an evaluation metric value, preferring Trainer-prefixed keys."""
+
+    prefixed_key = f"eval_{key}"
+    if prefixed_key in metrics:
+        return metrics[prefixed_key]
+    return metrics.get(key)
 
 
 def _print_summary(output_dir: str, train_metrics: dict, eval_metrics: dict | None) -> None:
@@ -477,8 +486,8 @@ def run_training(config: TrainingConfig) -> int:
         "train_loss": train_result.metrics.get("train_loss"),
     }
     if eval_metrics:
-        summary["eval_loss"] = eval_metrics.get("eval_loss")
-        summary["eval_perplexity"] = eval_metrics.get("eval_perplexity")
+        summary["eval_loss"] = _get_eval_metric(eval_metrics, "loss")
+        summary["eval_perplexity"] = _get_eval_metric(eval_metrics, "perplexity")
     summary_path = os.path.join(config.output_dir, "metrics_summary.json")
     with open(summary_path, "w", encoding="utf-8") as fh:
         json.dump(summary, fh, indent=2)
