@@ -133,6 +133,19 @@ Adjust 4-bit quantization behaviour (bits must be either 4 or 8):
 dtrt finetune --bits 4 --no-use-nf4 --use-double-quant --compute-dtype float16
 ```
 
+Enable post-training AWQ quantization of the fine-tuned adapter and write a
+quantized copy of the model (plus `awq_results.json`) alongside the existing
+metric files:
+
+```bash
+dtrt finetune --enable-awq --awq-calibration-samples 128 --awq-output-dir ./results/lora-adapter/awq
+```
+
+You can customise the calibration dataset, bit-width, and group size with
+`--awq-dataset-path`, `--awq-w-bit`, and `--awq-group-size`. The
+`metrics_summary.json` file will include the quantized artifact path when AWQ is
+enabled.
+
 Run ``dtrt finetune --help`` to see all available options.
 
 The CLI is also available as ``dtrt-finetune`` for convenience.
