@@ -38,6 +38,7 @@ __all__ = [
     "parse_args",
     "main",
     "TrainingConfig",
+    "AWQConfig",
 ]
 
 
@@ -80,6 +81,21 @@ class TrainingConfig:
     use_nf4: bool = True
     use_double_quant: bool = True
     compute_dtype: str = "bfloat16"
+    awq: "AWQConfig" | None = None
+
+
+@dataclass
+class AWQConfig:
+    """Configuration options for post-training AWQ quantization."""
+
+    enabled: bool = False
+    dataset_path: str | None = None
+    output_dir: str | None = None
+    calibration_samples: int = 128
+    q_group_size: int = 128
+    w_bit: int = 4
+    zero_point: bool = True
+    version: str = "GEMM"
 
 
 def _resolve_plugin(group: str, name: str) -> Callable:
@@ -430,6 +446,56 @@ def _print_summary(output_dir: str, train_metrics: dict, eval_metrics: dict | No
     print("\n".join(lines))
 
 
+def _perform_awq_quantization(config: TrainingConfig, tokenizer) -> dict | None:
+    """Optionally run AWQ quantization on the fine-tuned adapter."""
+
+    awq_cfg = config.awq or AWQConfig()
+    if not awq_cfg.enabled:
+        return None
+
+    try:
+        from awq import AutoAWQForCausalLM
+    except Exception as exc:  # pragma: no cover - exercised via tests with mocks
+        raise RuntimeError("AWQ quantization requested but the 'awq' package is not available") from exc
+
+    quant_config = {
+        "zero_point": awq_cfg.zero_point,
+        "q_group_size": awq_cfg.q_group_size,
+        "w_bit": awq_cfg.w_bit,
+        "version": awq_cfg.version,
+    }
+
+    awq_output_dir = awq_cfg.output_dir or os.path.join(config.output_dir, "awq")
+    calibration_path = awq_cfg.dataset_path or config.dataset_path
+    calibration_dataset = hf_load_dataset(calibration_path, split="train")
+    sample_count = awq_cfg.calibration_samples
+    if hasattr(calibration_dataset, "select"):
+        try:
+            calibration_dataset = calibration_dataset.select(range(sample_count))
+        except Exception:
+            logger.warning("Unable to select calibration subset; using full dataset")
+            sample_count = len(calibration_dataset) if hasattr(calibration_dataset, "__len__") else sample_count
+
+    model = AutoAWQForCausalLM.from_pretrained(
+        config.output_dir,
+        safetensors=True,
+        trust_remote_code=True,
+        device_map="auto",
+    )
+    model.quantize(tokenizer, quant_config=quant_config, calib_data=calibration_dataset)
+    model.save_quantized(awq_output_dir)
+
+    awq_metrics = {
+        "awq_output_dir": awq_output_dir,
+        "awq_quant_config": quant_config,
+        "awq_calibration_samples": sample_count,
+    }
+    awq_results_path = os.path.join(config.output_dir, "awq_results.json")
+    _save_json(awq_results_path, awq_metrics)
+    logger.info("AWQ results saved to %s", awq_results_path)
+    return awq_metrics
+
+
 def run_training(config: TrainingConfig) -> int:
     """Execute training using :class:`TrainingConfig`."""
     model, tokenizer = load_model(
@@ -488,6 +554,9 @@ def run_training(config: TrainingConfig) -> int:
     if eval_metrics:
         summary["eval_loss"] = _get_eval_metric(eval_metrics, "loss")
         summary["eval_perplexity"] = _get_eval_metric(eval_metrics, "perplexity")
+    awq_metrics = _perform_awq_quantization(config, tokenizer)
+    if awq_metrics:
+        summary.update(awq_metrics)
     summary_path = os.path.join(config.output_dir, "metrics_summary.json")
     with open(summary_path, "w", encoding="utf-8") as fh:
         json.dump(summary, fh, indent=2)
@@ -500,6 +569,16 @@ def run_training(config: TrainingConfig) -> int:
 
 def run(args: argparse.Namespace) -> int:
     """Execute training using high level helper functions."""
+    awq_cfg = AWQConfig(
+        enabled=args.enable_awq,
+        dataset_path=args.awq_dataset_path,
+        output_dir=args.awq_output_dir,
+        calibration_samples=args.awq_calibration_samples,
+        q_group_size=args.awq_group_size,
+        w_bit=args.awq_w_bit,
+        zero_point=args.awq_zero_point,
+        version=args.awq_version,
+    )
     cfg = TrainingConfig(
         model_path=args.model_path,
         dataset_path=args.dataset_path,
@@ -524,6 +603,7 @@ def run(args: argparse.Namespace) -> int:
         use_nf4=args.use_nf4,
         use_double_quant=args.use_double_quant,
         compute_dtype=args.compute_dtype,
+        awq=awq_cfg,
     )
     return run_training(cfg)
 
@@ -659,6 +739,46 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         default="bfloat16",
         help="Computation dtype for 4-bit layers",
     )
+    parser.add_argument("--enable-awq", action="store_true", help="Enable post-training AWQ quantization")
+    parser.add_argument(
+        "--awq-dataset-path",
+        default=None,
+        help="Dataset path to use for AWQ calibration (defaults to the training dataset)",
+    )
+    parser.add_argument(
+        "--awq-output-dir",
+        default=None,
+        help="Output directory for the quantized model (default: <output_dir>/awq)",
+    )
+    parser.add_argument(
+        "--awq-calibration-samples",
+        type=int,
+        default=128,
+        help="Number of samples to use for AWQ calibration",
+    )
+    parser.add_argument(
+        "--awq-group-size",
+        type=int,
+        default=128,
+        help="Group size for AWQ quantization",
+    )
+    parser.add_argument(
+        "--awq-w-bit",
+        type=int,
+        default=4,
+        help="Bit width for AWQ quantization",
+    )
+    parser.add_argument(
+        "--awq-zero-point",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable zero-point optimization in AWQ quantization",
+    )
+    parser.add_argument(
+        "--awq-version",
+        default="GEMM",
+        help="AWQ kernel version to use (for example, GEMM)",
+    )
     return parser.parse_args(args)
 
 
@@ -683,6 +803,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Estimated VRAM requirement: {vram:.2f} GB")
         if args.estimate_only:
             return 0
+    awq_cfg = AWQConfig(
+        enabled=args.enable_awq,
+        dataset_path=args.awq_dataset_path,
+        output_dir=args.awq_output_dir,
+        calibration_samples=args.awq_calibration_samples,
+        q_group_size=args.awq_group_size,
+        w_bit=args.awq_w_bit,
+        zero_point=args.awq_zero_point,
+        version=args.awq_version,
+    )
     cfg = TrainingConfig(
         model_path=args.model_path,
         dataset_path=args.dataset_path,
@@ -707,6 +837,7 @@ def main(argv: list[str] | None = None) -> int:
         use_nf4=args.use_nf4,
         use_double_quant=args.use_double_quant,
         compute_dtype=args.compute_dtype,
+        awq=awq_cfg,
     )
     return run_training(cfg)
 

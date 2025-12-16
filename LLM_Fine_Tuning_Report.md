@@ -124,6 +124,15 @@ Follow these steps to execute the fine-tuning process:
 
    Use `--resume` to continue from the latest checkpoint in `./results/lora-adapter`.
 3. **Review metrics** in `./results/lora-adapter/train_results.json`.
+4. **Optionally quantize the adapter with AWQ** by appending flags such as:
+
+   ```bash
+   dtrt finetune --enable-awq --awq-calibration-samples 128 --awq-output-dir ./results/lora-adapter/awq
+   ```
+
+   AWQ writes a quantized copy of the adapter plus `awq_results.json`, and the
+   `metrics_summary.json` file is expanded with the quantized artifact path and
+   quantization settings.
 
 ### Example Metrics
 
