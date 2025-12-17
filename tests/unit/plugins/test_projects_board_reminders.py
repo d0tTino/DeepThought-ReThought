@@ -13,7 +13,11 @@ pytest.importorskip("aiosqlite")
 pytest.importorskip("discord")
 
 from deepthought.goal_scheduler import GoalScheduler
-from deepthought.plugins.projects_board import ProjectRecord, ProjectsBoard
+from deepthought.plugins.projects_board import (
+    ProjectRecord,
+    ProjectsBoard,
+    _is_thanksgiving_window,
+)
 
 sys.modules.pop("examples.social_graph_bot", None)
 sys.path.append(str(Path(__file__).resolve().parents[2] / "src"))
@@ -119,6 +123,57 @@ async def test_queue_goal_scheduler_reminder_single_entry(monkeypatch: pytest.Mo
     assert f"<#{record.thread_id}>" in message
     assert record.due_date.isoformat() in message
     assert f"ID #{record.project_id}" in message
+
+
+@pytest.mark.asyncio
+async def test_queue_goal_scheduler_reminder_honors_extended_thanksgiving_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "deepthought.plugins.projects_board.datetime",
+        _FixedDateTime,
+    )
+    original_now = _FixedDateTime._now
+    _FixedDateTime._now = datetime(2024, 12, 1, 8, 0, tzinfo=UTC)
+    board = ProjectsBoard.__new__(ProjectsBoard)
+    board._scheduler = GoalScheduler()
+
+    holiday_due = datetime(2024, 12, 1, 12, 0, tzinfo=UTC)
+    assert _is_thanksgiving_window(holiday_due)
+
+    record = ProjectRecord(
+        project_id=202,
+        guild_id=999,
+        thread_id=808,
+        name="Holiday Weekend",
+        summary=None,
+        owner_id=None,
+        status="in-progress",
+        due_date=holiday_due,
+        holiday=True,
+        tags=[],
+        priority=None,
+        project_type=None,
+        scheduled_event_id=None,
+        created_at=_FixedDateTime._now - timedelta(days=3),
+        updated_at=_FixedDateTime._now - timedelta(days=2),
+        archived_at=None,
+    )
+
+    reminder_time = holiday_due - timedelta(hours=2)
+    try:
+        board._queue_goal_scheduler_reminder(record, reminder_time)
+
+        queued = board._scheduler.next_goal()
+        assert queued is not None
+        assert board._scheduler.next_goal() is None
+
+        delay_str, message = queued.split(":", 1)
+        assert delay_str == str(int(timedelta(hours=2).total_seconds()))
+        assert f"<#{record.thread_id}>" in message
+        assert record.due_date.isoformat() in message
+    finally:
+        _FixedDateTime._now = original_now
 
 
 @pytest.mark.asyncio

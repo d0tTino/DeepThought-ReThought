@@ -74,12 +74,41 @@ async def _create_board(
 @pytest.mark.parametrize(
     "scenario, due_date, expected",
     [
-        ("halloween", datetime(2024, 10, 5, tzinfo=UTC), True),
-        ("thanksgiving", datetime(2024, 11, 27, tzinfo=UTC), True),
-        ("christmas", datetime(2024, 12, 20, tzinfo=UTC), True),
-        ("new-year", datetime(2025, 1, 5, tzinfo=UTC), True),
-        ("valentines", datetime(2025, 2, 14, tzinfo=UTC), True),
-        ("mid-summer", datetime(2024, 7, 15, tzinfo=UTC), False),
+        (
+            "halloween",
+            datetime(2024, 10, 5, tzinfo=UTC),
+            {"US": True, "GB": False},
+        ),
+        (
+            "thanksgiving",
+            datetime(2024, 11, 27, tzinfo=UTC),
+            {"US": True, "GB": False},
+        ),
+        (
+            "thanksgiving-weekend",
+            datetime(2024, 12, 1, tzinfo=UTC),
+            {"US": True, "GB": True},
+        ),
+        (
+            "christmas",
+            datetime(2024, 12, 20, tzinfo=UTC),
+            {"US": True, "GB": True},
+        ),
+        (
+            "new-year",
+            datetime(2025, 1, 5, tzinfo=UTC),
+            {"US": True, "GB": True},
+        ),
+        (
+            "valentines",
+            datetime(2025, 2, 14, tzinfo=UTC),
+            {"US": True, "GB": False},
+        ),
+        (
+            "mid-summer",
+            datetime(2024, 7, 15, tzinfo=UTC),
+            {"US": False, "GB": False},
+        ),
     ],
 )
 async def test_creation_detects_holiday_windows(
@@ -89,7 +118,7 @@ async def test_creation_detects_holiday_windows(
     holiday_locale: str,
     scenario: str,
     due_date: datetime,
-    expected: bool,
+    expected: dict[str, bool],
 ) -> None:
     board = await _create_board(projects_board_module, monkeypatch, tmp_path, holiday_locale=holiday_locale)
     channel = DummyChannel()
@@ -108,10 +137,10 @@ async def test_creation_detects_holiday_windows(
         )
     finally:
         await board._close_db()
-    assert record.holiday is expected
+    assert record.holiday is expected[holiday_locale]
     tag_names = set(record.tags)
     holiday_tag = projects_board_module.HOLIDAY_TAG_NAME
-    assert (holiday_tag in tag_names) is expected
+    assert (holiday_tag in tag_names) is expected[holiday_locale]
 
 
 @pytest.mark.asyncio

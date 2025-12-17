@@ -85,11 +85,9 @@ def _fourth_thursday(year: int) -> date:
 
 def _is_thanksgiving_window(moment: datetime) -> bool:
     day = _normalize_datetime(moment).date()
-    if day.month != 11:
-        return False
     thanksgiving = _fourth_thursday(day.year)
     window_start = thanksgiving - timedelta(days=3)
-    window_end = thanksgiving + timedelta(days=2)
+    window_end = thanksgiving + timedelta(days=3)
     return window_start <= day <= window_end
 
 
@@ -120,10 +118,10 @@ def _western_easter_date(year: int) -> date:
     h = (19 * a + b - d - g + 15) % 30
     i = c // 4
     k = c % 4
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
+    ell = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * ell) // 451
+    month = (h + ell - 7 * m + 114) // 31
+    day = ((h + ell - 7 * m + 114) % 31) + 1
     return date(year, month, day)
 
 
