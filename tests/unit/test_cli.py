@@ -1,20 +1,25 @@
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
 
 
-def _run_dtrt(tmp_path: Path, *args: str) -> subprocess.CompletedProcess:
-    env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
+def _run_dtrt(
+    tmp_path: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    run_env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
+    if env:
+        run_env.update(env)
     return subprocess.run(
         [sys.executable, "-m", "deepthought.cli", *args],
         cwd=tmp_path,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env=env,
+        env=run_env,
     )
 
 
@@ -22,6 +27,83 @@ def test_finetune_help(tmp_path: Path) -> None:
     result = _run_dtrt(tmp_path, "finetune", "--help")
     combined = result.stdout.lower() + result.stderr.lower()
     assert "usage" in combined
+
+
+def test_finetune_estimate_only(tmp_path: Path) -> None:
+    shim_dir = tmp_path / "shim"
+    shim_dir.mkdir()
+    shim_path = shim_dir / "sitecustomize.py"
+    shim_path.write_text(
+        textwrap.dedent(
+            """
+            from dataclasses import dataclass
+            import sys
+            import types
+
+
+            @dataclass
+            class TrainingConfig:
+                model_path: str
+                dataset_path: str
+                model_loader: str
+                dataset_loader: str
+                bits: int
+                output_dir: str
+                max_seq_length: int
+                pack_sequences: str
+                epochs: float
+                batch_size: int
+                lr: float
+                resume: bool
+                lora_r: int
+                lora_alpha: int
+                lora_dropout: float
+                lora_target_modules: tuple[str, ...]
+                use_nf4: bool
+                use_double_quant: bool
+                compute_dtype: str
+
+
+            def load_model(*_args, **_kwargs):
+                return object(), None
+
+
+            def estimate_vram(*_args, **_kwargs):
+                return 1.23
+
+
+            def run_training(*_args, **_kwargs):
+                return 0
+
+
+            module = types.ModuleType("deepthought.train")
+            module.TrainingConfig = TrainingConfig
+            module.load_model = load_model
+            module.estimate_vram = estimate_vram
+            module.run_training = run_training
+            sys.modules["deepthought.train"] = module
+            """
+        )
+    )
+
+    src_path = Path(__file__).resolve().parents[2] / "src"
+    env = {"PYTHONPATH": f"{shim_dir}:{src_path}"}
+
+    result = _run_dtrt(
+        tmp_path,
+        "finetune",
+        "--estimate-only",
+        "--model-path",
+        "gpt2",
+        "--max-seq-length",
+        "8",
+        "--batch-size",
+        "1",
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert "Estimated VRAM requirement: 1.23 GB" in result.stdout
 
 
 def test_init_service_demo(tmp_path: Path) -> None:
