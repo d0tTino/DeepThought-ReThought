@@ -1,6 +1,7 @@
 import importlib
 import sys
 import types
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -14,6 +15,7 @@ def _install_stubs():
 
     peft_mod = types.ModuleType("peft")
     peft_mod.LoraConfig = object
+    peft_mod.PeftModel = object
     peft_mod.get_peft_model = lambda *a, **k: None
     peft_mod.prepare_model_for_kbit_training = lambda *a, **k: None
     sys.modules["peft"] = peft_mod
@@ -79,6 +81,33 @@ def test_perform_awq_quantization_writes_results(monkeypatch, tmp_path):
 
     dummy_dataset = DummyDataset(size=10)
 
+    class DummyBaseModel:
+        def save_pretrained(self, save_dir):
+            Path(save_dir).mkdir(parents=True, exist_ok=True)
+            (Path(save_dir) / "model.bin").write_text("weights")
+
+    class DummyMergedModel(DummyBaseModel):
+        pass
+
+    class DummyAutoModel:
+        last_loaded = None
+
+        @classmethod
+        def from_pretrained(cls, model_dir, **kwargs):
+            cls.last_loaded = (model_dir, kwargs)
+            return DummyBaseModel()
+
+    class DummyPeftModel:
+        last_loaded = None
+
+        @classmethod
+        def from_pretrained(cls, base_model, adapter_dir):
+            cls.last_loaded = (base_model, adapter_dir)
+            return cls()
+
+        def merge_and_unload(self):
+            return DummyMergedModel()
+
     class DummyAWQModel:
         last_instance = None
 
@@ -98,8 +127,11 @@ def test_perform_awq_quantization_writes_results(monkeypatch, tmp_path):
     awq_mod = types.SimpleNamespace(AutoAWQForCausalLM=DummyAWQModel)
     monkeypatch.setitem(sys.modules, "awq", awq_mod)
     monkeypatch.setattr(train, "hf_load_dataset", lambda *a, **k: dummy_dataset)
+    monkeypatch.setattr(train, "AutoModelForCausalLM", DummyAutoModel)
+    monkeypatch.setattr(train, "PeftModel", DummyPeftModel)
 
     cfg = train.TrainingConfig(
+        model_path="/base/model",
         output_dir=str(tmp_path),
         dataset_path="dummy/calibration",
         awq=train.AWQConfig(
@@ -132,3 +164,21 @@ def test_perform_awq_quantization_writes_results(monkeypatch, tmp_path):
     assert instance.quantize_call[0] is tokenizer
     assert isinstance(instance.quantize_call[2], DummyDataset)
     assert instance.quantize_call[2].selected == [0, 1, 2]
+    assert "awq-merged-" in instance.loaded[0]
+    assert DummyPeftModel.last_loaded[1] == str(tmp_path)
+    assert DummyAutoModel.last_loaded[0] == "/base/model"
+
+
+def test_perform_awq_quantization_skips_without_base_model_path(caplog):
+    tokenizer = object()
+    cfg = train.TrainingConfig(
+        output_dir="/tmp/output",
+        awq=train.AWQConfig(enabled=True),
+        model_path=None,
+    )
+
+    with caplog.at_level("WARNING"):
+        result = train._perform_awq_quantization(cfg, tokenizer)
+
+    assert result is None
+    assert any("no base model path" in message for message in caplog.messages)

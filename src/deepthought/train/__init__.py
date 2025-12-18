@@ -7,6 +7,7 @@ import inspect
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Tuple
@@ -15,7 +16,7 @@ from importlib import metadata
 import torch
 from datasets import Dataset
 from datasets import load_dataset as hf_load_dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -453,6 +454,12 @@ def _perform_awq_quantization(config: TrainingConfig, tokenizer) -> dict | None:
     if not awq_cfg.enabled:
         return None
 
+    if not config.model_path:
+        logger.warning(
+            "AWQ quantization requested but no base model path was provided; skipping AWQ",
+        )
+        return None
+
     try:
         from awq import AutoAWQForCausalLM
     except Exception as exc:  # pragma: no cover - exercised via tests with mocks
@@ -476,14 +483,28 @@ def _perform_awq_quantization(config: TrainingConfig, tokenizer) -> dict | None:
             logger.warning("Unable to select calibration subset; using full dataset")
             sample_count = len(calibration_dataset) if hasattr(calibration_dataset, "__len__") else sample_count
 
-    model = AutoAWQForCausalLM.from_pretrained(
-        config.output_dir,
-        safetensors=True,
-        trust_remote_code=True,
-        device_map="auto",
-    )
-    model.quantize(tokenizer, quant_config=quant_config, calib_data=calibration_dataset)
-    model.save_quantized(awq_output_dir)
+    try:
+        base_model = AutoModelForCausalLM.from_pretrained(config.model_path, trust_remote_code=True)
+        peft_model = PeftModel.from_pretrained(base_model, config.output_dir)
+        merged_model = peft_model.merge_and_unload()
+    except Exception:
+        logger.exception(
+            "Failed to merge base model from %s with adapters in %s; skipping AWQ quantization",
+            config.model_path,
+            config.output_dir,
+        )
+        return None
+
+    with tempfile.TemporaryDirectory(prefix="awq-merged-") as merged_dir:
+        merged_model.save_pretrained(merged_dir)
+        model = AutoAWQForCausalLM.from_pretrained(
+            merged_dir,
+            safetensors=True,
+            trust_remote_code=True,
+            device_map="auto",
+        )
+        model.quantize(tokenizer, quant_config=quant_config, calib_data=calibration_dataset)
+        model.save_quantized(awq_output_dir)
 
     awq_metrics = {
         "awq_output_dir": awq_output_dir,
