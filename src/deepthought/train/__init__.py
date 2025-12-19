@@ -459,6 +459,13 @@ def _perform_awq_quantization(config: TrainingConfig, tokenizer) -> dict | None:
             "AWQ quantization requested but no base model path was provided; skipping AWQ",
         )
         return None
+    base_model_path = Path(config.model_path)
+    if not base_model_path.exists():
+        logger.warning(
+            "AWQ quantization requested but base model path %s does not exist; skipping AWQ",
+            base_model_path,
+        )
+        return None
 
     try:
         from awq import AutoAWQForCausalLM
@@ -483,22 +490,29 @@ def _perform_awq_quantization(config: TrainingConfig, tokenizer) -> dict | None:
             logger.warning("Unable to select calibration subset; using full dataset")
             sample_count = len(calibration_dataset) if hasattr(calibration_dataset, "__len__") else sample_count
 
+    logger.info(
+        "Preparing merged checkpoint for AWQ from base model %s with adapters in %s",
+        base_model_path,
+        config.output_dir,
+    )
     try:
-        base_model = AutoModelForCausalLM.from_pretrained(config.model_path, trust_remote_code=True)
+        base_model = AutoModelForCausalLM.from_pretrained(str(base_model_path), trust_remote_code=True)
         peft_model = PeftModel.from_pretrained(base_model, config.output_dir)
         merged_model = peft_model.merge_and_unload()
     except Exception:
         logger.exception(
             "Failed to merge base model from %s with adapters in %s; skipping AWQ quantization",
-            config.model_path,
+            base_model_path,
             config.output_dir,
         )
         return None
 
     with tempfile.TemporaryDirectory(prefix="awq-merged-") as merged_dir:
-        merged_model.save_pretrained(merged_dir)
+        merged_checkpoint_path = os.path.join(merged_dir, "merged")
+        merged_model.save_pretrained(merged_checkpoint_path)
+        logger.info("Merged checkpoint for AWQ saved to %s", merged_checkpoint_path)
         model = AutoAWQForCausalLM.from_pretrained(
-            merged_dir,
+            merged_checkpoint_path,
             safetensors=True,
             trust_remote_code=True,
             device_map="auto",
