@@ -88,7 +88,15 @@ class BaseLLM(ABC):
         if self._recent_rewards:
             avg = sum(self._recent_rewards) / len(self._recent_rewards)
             reward_part = f"[avg_reward: {avg:.2f}]\n"
-        return build_prompt(facts, persona_desc, reward_part)
+        if facts:
+            memory_lines = "\n".join(f"- {fact}" for fact in facts)
+            base = f"MEMORY_RETRIEVED:\n{memory_lines}\nResponse:"
+        else:
+            base = "Response:"
+        prompt = reward_part + base
+        if persona_desc:
+            prompt = persona_desc.strip() + "\n" + prompt
+        return prompt
 
     async def _handle_memory_event(self, msg: Msg) -> None:
         """Common handler for MEMORY_RETRIEVED events."""

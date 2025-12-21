@@ -64,7 +64,7 @@ from deepthought.plugins.projects_board import DEFAULT_HOLIDAY_LOCALE, ProjectsB
 from deepthought.services import PersonaManager, TrustService
 from deepthought.services.db_manager import DBManager
 from deepthought.services.manipulative_detection import manipulation_score
-from deepthought.services.moderation import is_allowed
+from deepthought.services.moderation import evaluate_toxicity, is_allowed
 from deepthought.services.scheduler import SchedulerService
 from deepthought.utils import UserRateLimiter
 
@@ -261,6 +261,12 @@ MINIMAL_REPLY_PROB = float(os.getenv("MINIMAL_REPLY_PROB", "0.05"))
 MINIMAL_REPLIES = ["...", "👍", "No"]
 AVOIDANCE_REPLY = "Take your time; I'm here if you need me."
 REFUSAL_MESSAGE = "I'm sorry, but I can't help with that."
+FOE_MODE_CAP_ENABLED = os.getenv("FOE_MODE_CAP_ENABLED", "true").lower() in {
+    "true",
+    "1",
+    "yes",
+}
+FOE_MODE_MAX_SEVERITY = float(os.getenv("FOE_MODE_MAX_SEVERITY", "0.4"))
 
 # Optional channel for thought logging
 _THOUGHT_CHANNEL = os.getenv("THOUGHT_CHANNEL")
@@ -332,14 +338,21 @@ def _get_idle_generator():
     return _idle_text_generator
 
 
-def _get_response_generator():
-    global _response_text_generator
-    if _response_text_generator is None:
-        from transformers import pipeline
-
-        model_name = os.getenv("RESPONSE_MODEL_NAME", os.getenv("IDLE_MODEL_NAME", "distilgpt2"))
-        _response_text_generator = pipeline("text-generation", model=model_name)
-    return _response_text_generator
+async def _generate_text(prompt: str, *, max_new_tokens: int) -> str | None:
+    """Return generated text for ``prompt`` or ``None`` on failure."""
+    try:
+        generator = _get_idle_generator()
+        outputs = await asyncio.to_thread(
+            generator,
+            prompt,
+            max_new_tokens=max_new_tokens,
+            num_return_sequences=1,
+        )
+        text = outputs[0]["generated_text"].strip()
+        return text
+    except Exception:  # pragma: no cover - optional dependency or runtime error
+        logger.exception("Text generation failed")
+        return None
 
 
 async def generate_idle_response(prompt: str | None = None) -> str | None:
@@ -349,60 +362,51 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     environment variable. ``None`` is returned if generation fails for any
     reason.
     """
-    try:
-        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
-        if prompt is None and "IDLE_GENERATOR_PROMPT" not in os.environ:
-            topics = await get_recent_topics(3)
-            if topics:
-                gen_prompt = ", ".join(topics) + ": " + gen_prompt
+    gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
+    if prompt is None and "IDLE_GENERATOR_PROMPT" not in os.environ:
+        topics = await get_recent_topics(3)
+        if topics:
+            gen_prompt = ", ".join(topics) + ": " + gen_prompt
 
-        generator = _get_idle_generator()
-        outputs = await asyncio.to_thread(
-            generator,
-            gen_prompt,
-            max_new_tokens=20,
-            num_return_sequences=1,
-        )
-
-        text = outputs[0]["generated_text"].strip()
-        return text
-    except Exception:  # pragma: no cover - optional dependency or runtime error
-        logger.exception("Idle text generation failed")
-        return None
+    return await _generate_text(gen_prompt, max_new_tokens=20)
 
 
-def _build_persona_prompt(parts: List[str], persona_desc: str | None) -> str:
-    try:
-        from deepthought.modules.llm_base import build_prompt
-    except Exception:  # pragma: no cover - optional dependency missing
-        base = "\n".join(parts)
-        if base:
-            base = f"{base}\nResponse:"
-        else:
-            base = "Response:"
-        if persona_desc:
-            return persona_desc.strip() + "\n" + base
-        return base
-    return build_prompt(parts, persona_desc)
+MAX_MEMORY_PROMPT_SNIPPETS = int(os.getenv("MEMORY_PROMPT_SNIPPETS", "5"))
+LLM_REPLY_MAX_NEW_TOKENS = int(os.getenv("LLM_REPLY_MAX_NEW_TOKENS", "40"))
 
 
-async def generate_llm_reply(prompt: str) -> str | None:
-    """Generate a response using a local text-generation model."""
-    try:
-        generator = _get_response_generator()
-        outputs = await asyncio.to_thread(
-            generator,
-            prompt,
-            max_new_tokens=60,
-            num_return_sequences=1,
-        )
-        text = outputs[0]["generated_text"].strip()
-        if text.startswith(prompt):
-            text = text[len(prompt) :].strip()  # noqa: E203
-        return text or None
-    except Exception:  # pragma: no cover - optional dependency or runtime error
-        logger.exception("LLM response generation failed")
-        return None
+def _format_memory_snippets(memories: list[tuple[str, str]], limit: int) -> list[str]:
+    if limit <= 0:
+        return []
+    snippets = []
+    for topic, memory in memories:
+        if not memory or not str(memory).strip():
+            continue
+        entry = f"[{topic}] {memory}" if topic else str(memory)
+        snippets.append(entry.strip())
+    return snippets[-limit:]
+
+
+def build_reply_prompt(user_text: str, memory_snippets: list[str]) -> str:
+    """Assemble a reply prompt with optional memory context."""
+    lines = ["You are a conversational social bot.", "MEMORY_RETRIEVED:"]
+    if memory_snippets:
+        lines.extend(f"- {snippet}" for snippet in memory_snippets)
+    else:
+        lines.append("- (none)")
+    lines.extend(
+        [
+            "Respond naturally and briefly.",
+            f"User: {user_text}",
+            "Bot:",
+        ]
+    )
+    return "\n".join(lines)
+
+
+async def generate_contextual_reply(user_text: str, memory_snippets: list[str]) -> str | None:
+    prompt = build_reply_prompt(user_text, memory_snippets)
+    return await _generate_text(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
 
 
 # Simple list of phrases considered bullying
@@ -1133,15 +1137,22 @@ class SocialGraphBot(commands.Bot):
         if not reply_limiter.allow(str(message.author.id)):
             return
 
+        memories = await recall_user(message.author.id)
+        memory_snippets = _format_memory_snippets(memories, MAX_MEMORY_PROMPT_SNIPPETS)
+        if memories:
+            logger.info(f"Recalling memories for {message.author.id}: {memories}")
+
         async with message.channel.typing():
             start_time = discord.utils.utcnow()
             await asyncio.sleep(random.uniform(1, 3))
             if last_other_bot_message_time and last_other_bot_message_time > start_time:
                 return
+            persona_used = None
             if bullying and not await is_do_not_mock(message.author.id):
                 reply = BULLYING_RESPONSE
             elif social_scores.get("flirtation", 0) > 0.5:
                 reply = random.choice(PERSONA_REPLIES["playful"])
+                persona_used = "playful"
             elif social_scores.get("avoidance", 0) > 0.5:
                 reply = AVOIDANCE_REPLY
             else:
@@ -1153,8 +1164,9 @@ class SocialGraphBot(commands.Bot):
                     if mode == "minimal":
                         use_minimal = True
                     elif mode == "persona":
-                        persona_override = persona_override or "snarky"
-                if not use_minimal:
+                        persona_used = persona_override or "snarky"
+                        reply = random.choice(PERSONA_REPLIES.get(persona_used, PERSONA_REPLIES["snarky"]))
+                if reply is None:
                     trust = await trust_service.get_trust(message.author.id)
                     if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
                         use_minimal = True
@@ -1171,8 +1183,18 @@ class SocialGraphBot(commands.Bot):
                     if llm_reply:
                         reply = llm_reply
                     else:
-                        persona = persona_override or await self.persona_manager.get_persona(message.author.id)
+                        persona = await self.persona_manager.get_persona(message.author.id)
+                        persona_used = persona
                         reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
+            if FOE_MODE_CAP_ENABLED and persona_used == "snarky":
+                severity, matches = evaluate_toxicity(reply)
+                if severity > FOE_MODE_MAX_SEVERITY:
+                    logger.info(
+                        "Foe-mode cap applied: severity=%s matches=%s",
+                        round(severity, 3),
+                        matches,
+                    )
+                    reply = random.choice(MINIMAL_REPLIES)
             now = discord.utils.utcnow()
             while our_message_times and (now - our_message_times[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
                 our_message_times.popleft()
@@ -1196,10 +1218,6 @@ class SocialGraphBot(commands.Bot):
                 "content": message.content,
             }
         )
-
-        memories = await recall_user(message.author.id)
-        if memories:
-            logger.info(f"Recalling memories for {message.author.id}: {memories}")
 
         for theory, conf in evaluate_triggers(message):
             await store_theory(message.author.id, theory, conf)
