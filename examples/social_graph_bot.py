@@ -167,6 +167,11 @@ except Exception:  # pragma: no cover - optional dependency
         return SimpleNamespace(
             nats_url="nats://localhost:4222",
             social_graph_db="social_graph.db",
+            persona_descriptions={
+                "friendly": "You are a friendly assistant who responds warmly.",
+                "playful": "You like to joke around in your answers.",
+                "snarky": "You reply with terse, witty sarcasm.",
+            },
         )
 
     class EventSubjects(SimpleNamespace):
@@ -319,6 +324,7 @@ EMOTION_REPLY_MAP = {
 # Idle text generation helpers
 # -----------------------------
 _idle_text_generator = None
+_response_text_generator = None
 
 
 def _get_idle_generator():
@@ -418,7 +424,7 @@ ALLOW_DECEPTION = bot_deception.ALLOW_DECEPTION
 DECEPTION_COVER_MESSAGE = bot_deception.DECEPTION_COVER_MESSAGE
 DECEPTION_REPLY_MODE = bot_deception.DECEPTION_REPLY_MODE
 DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
-persona_manager = PersonaManager(db_manager)
+persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
 trust_service = TrustService(db_manager)
 reply_limiter = UserRateLimiter(1, USER_REPLY_RATE_SECONDS)
 bot_last_messages: dict[int, tuple[str, datetime.datetime]] = {}
@@ -448,7 +454,7 @@ async def init_db(db_path: str | None = None) -> None:
         db_manager = DBManager(target_path)
 
     await db_manager.init_db()
-    persona_manager = PersonaManager(db_manager)
+    persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
     trust_service = TrustService(db_manager)
     CURRENT_DB_PATH = db_manager.db_path
 
@@ -943,14 +949,14 @@ class SocialGraphBot(commands.Bot):
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler(db_manager)
         self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
-        self.persona_manager = PersonaManager(db_manager)
+        self.persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
         self._subscriber: Subscriber | None = None
         self._projects_board: ProjectsBoard | None = None
 
     async def setup_hook(self) -> None:
         await db_manager.connect()
         await init_db()
-        self.persona_manager = PersonaManager(db_manager)
+        self.persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
 
         await _ensure_nats()
         if _nats_client is not None and _js_context is not None:
@@ -1151,17 +1157,31 @@ class SocialGraphBot(commands.Bot):
                 reply = AVOIDANCE_REPLY
             else:
                 reply = None
+                use_minimal = False
+                persona_override = None
                 if dominant_emotion:
                     mode, persona_override = EMOTION_REPLY_MAP.get(dominant_emotion, (None, None))
                     if mode == "minimal":
-                        reply = random.choice(MINIMAL_REPLIES)
+                        use_minimal = True
                     elif mode == "persona":
                         persona_used = persona_override or "snarky"
                         reply = random.choice(PERSONA_REPLIES.get(persona_used, PERSONA_REPLIES["snarky"]))
                 if reply is None:
                     trust = await trust_service.get_trust(message.author.id)
                     if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
-                        reply = random.choice(MINIMAL_REPLIES)
+                        use_minimal = True
+                if use_minimal:
+                    reply = random.choice(MINIMAL_REPLIES)
+                else:
+                    persona_desc = ""
+                    try:
+                        persona_desc = await self.persona_manager.get_description(message.author.id)
+                    except Exception:
+                        logger.exception("Persona description lookup failed")
+                    prompt = _build_persona_prompt([message.content], persona_desc)
+                    llm_reply = await generate_llm_reply(prompt)
+                    if llm_reply:
+                        reply = llm_reply
                     else:
                         persona = await self.persona_manager.get_persona(message.author.id)
                         persona_used = persona

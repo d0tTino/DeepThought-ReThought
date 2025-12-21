@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Deque, List, Optional
+from typing import Deque, Iterable, List, Optional
 
 import nats
 import torch
@@ -31,6 +31,19 @@ def _safe_no_grad():
             yield
     except Exception:  # pragma: no cover - fallback
         yield
+
+
+def build_prompt(parts: Iterable[str], persona_desc: str | None = None, reward_context: str = "") -> str:
+    """Create a prompt from context lines, persona description, and reward metadata."""
+    base = "\n".join(parts)
+    if base:
+        base = f"{base}\nResponse:"
+    else:
+        base = "Response:"
+    prompt = f"{reward_context}{base}"
+    if persona_desc:
+        prompt = persona_desc.strip() + "\n" + prompt
+    return prompt
 
 
 class BaseLLM(ABC):
