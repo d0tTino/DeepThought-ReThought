@@ -167,6 +167,11 @@ except Exception:  # pragma: no cover - optional dependency
         return SimpleNamespace(
             nats_url="nats://localhost:4222",
             social_graph_db="social_graph.db",
+            persona_descriptions={
+                "friendly": "You are a friendly assistant who responds warmly.",
+                "playful": "You like to joke around in your answers.",
+                "snarky": "You reply with terse, witty sarcasm.",
+            },
         )
 
     class EventSubjects(SimpleNamespace):
@@ -313,6 +318,7 @@ EMOTION_REPLY_MAP = {
 # Idle text generation helpers
 # -----------------------------
 _idle_text_generator = None
+_response_text_generator = None
 
 
 def _get_idle_generator():
@@ -324,6 +330,16 @@ def _get_idle_generator():
         model_name = os.getenv("IDLE_MODEL_NAME", "distilgpt2")
         _idle_text_generator = pipeline("text-generation", model=model_name)
     return _idle_text_generator
+
+
+def _get_response_generator():
+    global _response_text_generator
+    if _response_text_generator is None:
+        from transformers import pipeline
+
+        model_name = os.getenv("RESPONSE_MODEL_NAME", os.getenv("IDLE_MODEL_NAME", "distilgpt2"))
+        _response_text_generator = pipeline("text-generation", model=model_name)
+    return _response_text_generator
 
 
 async def generate_idle_response(prompt: str | None = None) -> str | None:
@@ -355,6 +371,40 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
         return None
 
 
+def _build_persona_prompt(parts: List[str], persona_desc: str | None) -> str:
+    try:
+        from deepthought.modules.llm_base import build_prompt
+    except Exception:  # pragma: no cover - optional dependency missing
+        base = "\n".join(parts)
+        if base:
+            base = f"{base}\nResponse:"
+        else:
+            base = "Response:"
+        if persona_desc:
+            return persona_desc.strip() + "\n" + base
+        return base
+    return build_prompt(parts, persona_desc)
+
+
+async def generate_llm_reply(prompt: str) -> str | None:
+    """Generate a response using a local text-generation model."""
+    try:
+        generator = _get_response_generator()
+        outputs = await asyncio.to_thread(
+            generator,
+            prompt,
+            max_new_tokens=60,
+            num_return_sequences=1,
+        )
+        text = outputs[0]["generated_text"].strip()
+        if text.startswith(prompt):
+            text = text[len(prompt) :].strip()  # noqa: E203
+        return text or None
+    except Exception:  # pragma: no cover - optional dependency or runtime error
+        logger.exception("LLM response generation failed")
+        return None
+
+
 # Simple list of phrases considered bullying
 BULLYING_PHRASES = ["idiot", "stupid", "loser", "dumb", "ugly"]
 BULLYING_RESPONSE = "I'm not here to be disrespected. Let's keep things civil."
@@ -370,7 +420,7 @@ ALLOW_DECEPTION = bot_deception.ALLOW_DECEPTION
 DECEPTION_COVER_MESSAGE = bot_deception.DECEPTION_COVER_MESSAGE
 DECEPTION_REPLY_MODE = bot_deception.DECEPTION_REPLY_MODE
 DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
-persona_manager = PersonaManager(db_manager)
+persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
 trust_service = TrustService(db_manager)
 reply_limiter = UserRateLimiter(1, USER_REPLY_RATE_SECONDS)
 bot_last_messages: dict[int, tuple[str, datetime.datetime]] = {}
@@ -400,7 +450,7 @@ async def init_db(db_path: str | None = None) -> None:
         db_manager = DBManager(target_path)
 
     await db_manager.init_db()
-    persona_manager = PersonaManager(db_manager)
+    persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
     trust_service = TrustService(db_manager)
     CURRENT_DB_PATH = db_manager.db_path
 
@@ -895,14 +945,14 @@ class SocialGraphBot(commands.Bot):
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler(db_manager)
         self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
-        self.persona_manager = PersonaManager(db_manager)
+        self.persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
         self._subscriber: Subscriber | None = None
         self._projects_board: ProjectsBoard | None = None
 
     async def setup_hook(self) -> None:
         await db_manager.connect()
         await init_db()
-        self.persona_manager = PersonaManager(db_manager)
+        self.persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
 
         await _ensure_nats()
         if _nats_client is not None and _js_context is not None:
@@ -1096,18 +1146,32 @@ class SocialGraphBot(commands.Bot):
                 reply = AVOIDANCE_REPLY
             else:
                 reply = None
+                use_minimal = False
+                persona_override = None
                 if dominant_emotion:
                     mode, persona_override = EMOTION_REPLY_MAP.get(dominant_emotion, (None, None))
                     if mode == "minimal":
-                        reply = random.choice(MINIMAL_REPLIES)
+                        use_minimal = True
                     elif mode == "persona":
-                        reply = random.choice(PERSONA_REPLIES.get(persona_override, PERSONA_REPLIES["snarky"]))
-                if reply is None:
+                        persona_override = persona_override or "snarky"
+                if not use_minimal:
                     trust = await trust_service.get_trust(message.author.id)
                     if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
-                        reply = random.choice(MINIMAL_REPLIES)
+                        use_minimal = True
+                if use_minimal:
+                    reply = random.choice(MINIMAL_REPLIES)
+                else:
+                    persona_desc = ""
+                    try:
+                        persona_desc = await self.persona_manager.get_description(message.author.id)
+                    except Exception:
+                        logger.exception("Persona description lookup failed")
+                    prompt = _build_persona_prompt([message.content], persona_desc)
+                    llm_reply = await generate_llm_reply(prompt)
+                    if llm_reply:
+                        reply = llm_reply
                     else:
-                        persona = await self.persona_manager.get_persona(message.author.id)
+                        persona = persona_override or await self.persona_manager.get_persona(message.author.id)
                         reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
             now = discord.utils.utcnow()
             while our_message_times and (now - our_message_times[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
