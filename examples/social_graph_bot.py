@@ -332,6 +332,23 @@ def _get_idle_generator():
     return _idle_text_generator
 
 
+async def _generate_text(prompt: str, *, max_new_tokens: int) -> str | None:
+    """Return generated text for ``prompt`` or ``None`` on failure."""
+    try:
+        generator = _get_idle_generator()
+        outputs = await asyncio.to_thread(
+            generator,
+            prompt,
+            max_new_tokens=max_new_tokens,
+            num_return_sequences=1,
+        )
+        text = outputs[0]["generated_text"].strip()
+        return text
+    except Exception:  # pragma: no cover - optional dependency or runtime error
+        logger.exception("Text generation failed")
+        return None
+
+
 async def generate_idle_response(prompt: str | None = None) -> str | None:
     """Generate a prompt to send when the channel has been idle.
 
@@ -339,26 +356,51 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
     environment variable. ``None`` is returned if generation fails for any
     reason.
     """
-    try:
-        gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
-        if prompt is None and "IDLE_GENERATOR_PROMPT" not in os.environ:
-            topics = await get_recent_topics(3)
-            if topics:
-                gen_prompt = ", ".join(topics) + ": " + gen_prompt
+    gen_prompt = prompt or os.getenv("IDLE_GENERATOR_PROMPT", "Say something to spark conversation.")
+    if prompt is None and "IDLE_GENERATOR_PROMPT" not in os.environ:
+        topics = await get_recent_topics(3)
+        if topics:
+            gen_prompt = ", ".join(topics) + ": " + gen_prompt
 
-        generator = _get_idle_generator()
-        outputs = await asyncio.to_thread(
-            generator,
-            gen_prompt,
-            max_new_tokens=20,
-            num_return_sequences=1,
-        )
+    return await _generate_text(gen_prompt, max_new_tokens=20)
 
-        text = outputs[0]["generated_text"].strip()
-        return text
-    except Exception:  # pragma: no cover - optional dependency or runtime error
-        logger.exception("Idle text generation failed")
-        return None
+
+MAX_MEMORY_PROMPT_SNIPPETS = int(os.getenv("MEMORY_PROMPT_SNIPPETS", "5"))
+LLM_REPLY_MAX_NEW_TOKENS = int(os.getenv("LLM_REPLY_MAX_NEW_TOKENS", "40"))
+
+
+def _format_memory_snippets(memories: list[tuple[str, str]], limit: int) -> list[str]:
+    if limit <= 0:
+        return []
+    snippets = []
+    for topic, memory in memories:
+        if not memory or not str(memory).strip():
+            continue
+        entry = f"[{topic}] {memory}" if topic else str(memory)
+        snippets.append(entry.strip())
+    return snippets[-limit:]
+
+
+def build_reply_prompt(user_text: str, memory_snippets: list[str]) -> str:
+    """Assemble a reply prompt with optional memory context."""
+    lines = ["You are a conversational social bot.", "MEMORY_RETRIEVED:"]
+    if memory_snippets:
+        lines.extend(f"- {snippet}" for snippet in memory_snippets)
+    else:
+        lines.append("- (none)")
+    lines.extend(
+        [
+            "Respond naturally and briefly.",
+            f"User: {user_text}",
+            "Bot:",
+        ]
+    )
+    return "\n".join(lines)
+
+
+async def generate_contextual_reply(user_text: str, memory_snippets: list[str]) -> str | None:
+    prompt = build_reply_prompt(user_text, memory_snippets)
+    return await _generate_text(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
 
 
 # Simple list of phrases considered bullying
@@ -1089,6 +1131,11 @@ class SocialGraphBot(commands.Bot):
         if not reply_limiter.allow(str(message.author.id)):
             return
 
+        memories = await recall_user(message.author.id)
+        memory_snippets = _format_memory_snippets(memories, MAX_MEMORY_PROMPT_SNIPPETS)
+        if memories:
+            logger.info(f"Recalling memories for {message.author.id}: {memories}")
+
         async with message.channel.typing():
             start_time = discord.utils.utcnow()
             await asyncio.sleep(random.uniform(1, 3))
@@ -1151,10 +1198,6 @@ class SocialGraphBot(commands.Bot):
                 "content": message.content,
             }
         )
-
-        memories = await recall_user(message.author.id)
-        if memories:
-            logger.info(f"Recalling memories for {message.author.id}: {memories}")
 
         for theory, conf in evaluate_triggers(message):
             await store_theory(message.author.id, theory, conf)

@@ -65,7 +65,11 @@ class RemoteLLM:
                 user_id = None
             retrieved = data.get("retrieved_knowledge", {})
             facts = retrieved.get("facts", [])
-            prompt = ", ".join(map(str, facts))
+            if facts:
+                memory_lines = "\n".join(f"- {fact}" for fact in map(str, facts))
+                prompt = f"MEMORY_RETRIEVED:\n{memory_lines}\nResponse:"
+            else:
+                prompt = "Response:"
             logger.info("RemoteLLM generating for %s", input_id)
             response = await self._generate(prompt)
             payload = ResponseGeneratedPayload(
