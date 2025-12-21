@@ -461,11 +461,26 @@ def _perform_awq_quantization(config: TrainingConfig, tokenizer) -> dict | None:
         return None
     base_model_path = Path(config.model_path)
     if not base_model_path.exists():
-        logger.warning(
-            "AWQ quantization requested but base model path %s does not exist; skipping AWQ",
-            base_model_path,
-        )
-        return None
+        try:
+            from huggingface_hub import snapshot_download
+        except Exception as exc:  # pragma: no cover - exercised via tests with mocks
+            raise RuntimeError(
+                "AWQ quantization requested but the 'huggingface_hub' package is not available",
+            ) from exc
+        try:
+            resolved_path = snapshot_download(repo_id=config.model_path)
+            base_model_path = Path(resolved_path)
+            logger.info(
+                "Resolved base model %s to local cache at %s for AWQ quantization",
+                config.model_path,
+                base_model_path,
+            )
+        except Exception:
+            logger.warning(
+                "AWQ quantization requested but base model %s could not be resolved; skipping AWQ",
+                config.model_path,
+            )
+            return None
 
     try:
         from awq import AutoAWQForCausalLM
