@@ -7,7 +7,11 @@ from .db_manager import DBManager
 
 
 class PersonaManager:
-    """Select prompts based on user affinity."""
+    """Select prompts based on user affinity and pairwise relationships.
+
+    When a ``target_id`` is unavailable, persona selection falls back to
+    per-user affinity/trust scores instead of pairwise relationship data.
+    """
 
     def __init__(
         self,
@@ -47,26 +51,36 @@ class PersonaManager:
         current = self._personality.setdefault(uid, {})
         current.update(traits)
 
-    async def get_persona(self, user_id: int) -> str:
+    async def get_persona(self, user_id: int | str, target_id: int | str | None = None) -> str:
         if self._init_task is not None:
             await self._init_task
             self._init_task = None
-        score = await self._db.get_mutual_affinity(user_id)
         traits = self._personality.get(str(user_id), {})
+        if target_id is None:
+            score = await self._db.get_mutual_affinity(user_id)
+        else:
+            relationship = await self._db.get_relationship_type(user_id, target_id)
+            if relationship == "friend":
+                return "friendly"
+            if relationship == "rival":
+                return "snarky"
+            score = await self._db.get_pair_mutual_affinity(user_id, target_id)
         if score + traits.get("friendly", 0) >= self._friendly:
             return "friendly"
         if score + traits.get("playful", 0) >= self._playful:
             return "playful"
         return "snarky"
 
-    async def choose_prompt(self, user_id: int, prompts: dict[str, list[str]]) -> str:
-        persona = await self.get_persona(user_id)
+    async def choose_prompt(
+        self, user_id: int | str, prompts: dict[str, list[str]], target_id: int | str | None = None
+    ) -> str:
+        persona = await self.get_persona(user_id, target_id)
         options = prompts.get(persona) or prompts.get("default") or []
         if not options:
             return ""
         return random.choice(options)
 
-    async def get_description(self, user_id: int) -> str:
+    async def get_description(self, user_id: int | str, target_id: int | str | None = None) -> str:
         """Return a persona description for ``user_id`` if available."""
-        persona = await self.get_persona(user_id)
+        persona = await self.get_persona(user_id, target_id)
         return self._descriptions.get(persona, "")
