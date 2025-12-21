@@ -471,6 +471,48 @@ class ProjectRecord:
         ]
 
 
+class ProjectsListView(discord.ui.View):
+    """View for paginating project lists."""
+
+    def __init__(self, embeds: list[discord.Embed], *, user_id: int | None) -> None:
+        super().__init__(timeout=180)
+        self.embeds = embeds
+        self.user_id = user_id
+        self.page_index = 0
+        self._sync_button_state()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.user_id is None or interaction.user.id == self.user_id:
+            return True
+        await interaction.response.send_message(
+            "Only the command invoker can use these buttons.", ephemeral=True
+        )
+        return False
+
+    def _sync_button_state(self) -> None:
+        self.prev_button.disabled = self.page_index <= 0
+        self.next_button.disabled = self.page_index >= len(self.embeds) - 1
+
+    def _current_embed(self) -> discord.Embed:
+        return self.embeds[self.page_index]
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
+    async def prev_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.page_index = max(0, self.page_index - 1)
+        self._sync_button_state()
+        await interaction.response.edit_message(embed=self._current_embed(), view=self)
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.page_index = min(len(self.embeds) - 1, self.page_index + 1)
+        self._sync_button_state()
+        await interaction.response.edit_message(embed=self._current_embed(), view=self)
+
+
 class ProjectsBoardView(discord.ui.View):
     """Persistent view used to control the projects board."""
 
@@ -1122,22 +1164,46 @@ class ProjectsBoard(commands.Cog):
 
     @project.command(name="list", description="List active projects")
     @app_commands.describe(include_archived="Include archived projects in the listing")
-    async def list_projects(self, interaction: discord.Interaction, include_archived: bool = False) -> None:
+    async def list_projects(
+        self, interaction: discord.Interaction, include_archived: bool = False
+    ) -> None:
         await self._ready.wait()
         records = await self._fetch_projects(
             include_archived=include_archived, guild_id=interaction.guild_id
         )
-        embed = discord.Embed(title="Projects", colour=discord.Colour.blurple())
         if not records:
-            embed.description = "No projects recorded yet."
-        else:
-            for proj in records:
+            embed = discord.Embed(
+                title="Projects",
+                description="No projects recorded yet.",
+                colour=discord.Colour.blurple(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        chunk_size = 25
+        embeds: list[discord.Embed] = []
+        for index in range(0, len(records), chunk_size):
+            embed = discord.Embed(title="Projects", colour=discord.Colour.blurple())
+            for proj in records[index : index + chunk_size]:
                 embed.add_field(
                     name=f"#{proj.project_id} · {proj.name}",
                     value="\n".join(proj.as_display_lines()),
                     inline=False,
                 )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            embeds.append(embed)
+
+        total_pages = len(embeds)
+        for page_number, embed in enumerate(embeds, start=1):
+            embed.set_footer(text=f"Page {page_number} of {total_pages}")
+
+        if len(embeds) == 1:
+            await interaction.response.send_message(embed=embeds[0], ephemeral=True)
+            return
+
+        view = ProjectsListView(
+            embeds, user_id=interaction.user.id if interaction.user else None
+        )
+        await interaction.response.send_message(embed=embeds[0], view=view, ephemeral=True)
 
     @project.command(name="create", description="Create a new project and forum thread")
     @app_commands.describe(
