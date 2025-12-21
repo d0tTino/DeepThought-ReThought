@@ -14,6 +14,7 @@ from ..config import get_settings
 from ..eda.events import EventSubjects, ResponseGeneratedPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from ..services.response_filter import build_response_filter
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +49,17 @@ class BaseLLM(ABC):
         self._subscriber = subscriber
         self._tokenizer = tokenizer
         self._model = model
-        buffer_size = reward_buffer_size or get_settings().reward.buffer_size
+        settings = get_settings()
+        buffer_size = reward_buffer_size or settings.reward.buffer_size
         self._recent_rewards: Deque[float] = deque(maxlen=buffer_size)
         self._persona_manager = persona_manager
-        self._persona_descriptions = get_settings().persona_descriptions
+        self._persona_descriptions = settings.persona_descriptions
+        self._response_filter_enabled = settings.response_filter_enabled
+        self._response_filter_fallback = settings.response_filter_fallback_message
+        self._response_filter = build_response_filter(
+            settings.response_filter_denylist,
+            settings.response_filter_classifier,
+        )
 
     @abstractmethod
     async def start_listening(self, durable_name: str = "llm_listener") -> bool:
@@ -128,6 +136,13 @@ class BaseLLM(ABC):
                 response_text = generated[len(prompt) :].strip()  # noqa: E203
             else:
                 response_text = generated.strip()
+
+            if self._response_filter_enabled and not self._response_filter.is_safe(response_text):
+                logger.warning(
+                    "Response filtered for input_id %s; using fallback response",
+                    input_id,
+                )
+                response_text = self._response_filter_fallback
 
             payload = ResponseGeneratedPayload(
                 final_response=response_text,

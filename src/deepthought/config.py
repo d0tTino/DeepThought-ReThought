@@ -119,6 +119,20 @@ def _build_env_overrides() -> dict[str, object]:
         _set(("vector_use_gpu",), vector_gpu)
     _set(("graph_backend",), os.getenv("DT_GRAPH_BACKEND"))
 
+    response_filter_enabled = _coerce_bool(os.getenv("DT_RESPONSE_FILTER_ENABLED"))
+    if response_filter_enabled is not None:
+        _set(("response_filter_enabled",), response_filter_enabled)
+    _set(("response_filter_classifier",), os.getenv("DT_RESPONSE_FILTER_CLASSIFIER"))
+    _set(("response_filter_fallback_message",), os.getenv("DT_RESPONSE_FILTER_FALLBACK_MESSAGE"))
+    response_filter_denylist_raw = os.getenv("DT_RESPONSE_FILTER_DENYLIST")
+    if response_filter_denylist_raw:
+        try:
+            parsed = json.loads(response_filter_denylist_raw)
+        except json.JSONDecodeError:
+            parsed = [item.strip() for item in response_filter_denylist_raw.split(",")]
+        if isinstance(parsed, list):
+            _set(("response_filter_denylist",), parsed)
+
     _set(("db", "host"), os.getenv("DT_DB__HOST"))
     db_port = _coerce_int(os.getenv("DT_DB__PORT"))
     if db_port is not None:
@@ -223,6 +237,14 @@ class Settings(BaseSettings):
         "playful": "You like to joke around in your answers.",
         "snarky": "You reply with terse, witty sarcasm.",
     }
+
+    response_filter_enabled: bool = Field(True, env="DT_RESPONSE_FILTER_ENABLED")
+    response_filter_denylist: list[str] = Field(default_factory=list, env="DT_RESPONSE_FILTER_DENYLIST")
+    response_filter_classifier: str | None = Field(None, env="DT_RESPONSE_FILTER_CLASSIFIER")
+    response_filter_fallback_message: str = Field(
+        "I'm sorry, I can't assist with that.",
+        env="DT_RESPONSE_FILTER_FALLBACK_MESSAGE",
+    )
 
     model_config = SettingsConfigDict(env_prefix="DT_", env_nested_delimiter="__")
 
