@@ -81,6 +81,9 @@ class BaseLLM(ABC):
             if not isinstance(data, dict):
                 raise ValueError("MemoryRetrieved payload must be a dict")
             input_id = data.get("input_id")
+            user_id = data.get("user_id")
+            if not isinstance(user_id, str):
+                user_id = None
             knowledge = data.get("retrieved_knowledge")
             if not isinstance(input_id, str) or not isinstance(knowledge, dict):
                 raise ValueError("Invalid memory payload fields")
@@ -105,7 +108,8 @@ class BaseLLM(ABC):
             persona_desc = ""
             if self._persona_manager is not None:
                 try:
-                    persona_desc = await self._persona_manager.get_description(int(input_id))
+                    persona_id = user_id if user_id is not None else input_id
+                    persona_desc = await self._persona_manager.get_description(int(persona_id))
                 except Exception:
                     logger.error("Persona selection failed", exc_info=True)
 
@@ -125,6 +129,7 @@ class BaseLLM(ABC):
             payload = ResponseGeneratedPayload(
                 final_response=response_text,
                 input_id=input_id,
+                user_id=user_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 confidence=0.5,
             )

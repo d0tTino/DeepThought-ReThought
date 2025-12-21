@@ -48,6 +48,9 @@ class LLMStub:
             if not isinstance(data, dict):
                 raise ValueError(f"Unexpected MemoryRetrieved payload format: {type(data)}")
             input_id = data.get("input_id")
+            user_id = data.get("user_id")
+            if not isinstance(user_id, str):
+                user_id = None
             retrieved = data.get("retrieved_knowledge")
             if not isinstance(input_id, str) or retrieved is None:
                 raise ValueError("Invalid memory payload fields")
@@ -92,7 +95,8 @@ class LLMStub:
             persona_desc = ""
             if self._persona_manager is not None:
                 try:
-                    persona_desc = await self._persona_manager.get_description(int(input_id))
+                    persona_id = user_id if user_id is not None else input_id
+                    persona_desc = await self._persona_manager.get_description(int(persona_id))
                 except Exception:
                     logger.error("Persona selection failed", exc_info=True)
             # Use timezone-aware UTC timestamps
@@ -103,6 +107,7 @@ class LLMStub:
             payload = ResponseGeneratedPayload(
                 final_response=response,
                 input_id=input_id,
+                user_id=user_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 confidence=0.95,
             )

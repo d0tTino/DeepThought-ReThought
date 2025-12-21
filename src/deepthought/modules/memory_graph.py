@@ -49,6 +49,9 @@ class GraphMemory:
                 raise ValueError("InputReceived payload must be a dict")
             input_id = data.get("input_id")
             user_input = data.get("user_input")
+            user_id = data.get("user_id") or (msg.headers.get("user_id") if msg.headers else None)
+            if not isinstance(user_id, str):
+                user_id = None
             if not isinstance(input_id, str) or not isinstance(user_input, str):
                 raise ValueError("Invalid input payload fields")
             logger.info("GraphMemory received input event ID %s", input_id)
@@ -58,6 +61,7 @@ class GraphMemory:
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "graph_memory"},
                 input_id=input_id,
+                user_id=user_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
 
