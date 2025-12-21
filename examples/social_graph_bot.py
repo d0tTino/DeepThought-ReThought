@@ -64,7 +64,7 @@ from deepthought.plugins.projects_board import DEFAULT_HOLIDAY_LOCALE, ProjectsB
 from deepthought.services import PersonaManager, TrustService
 from deepthought.services.db_manager import DBManager
 from deepthought.services.manipulative_detection import manipulation_score
-from deepthought.services.moderation import is_allowed
+from deepthought.services.moderation import evaluate_toxicity, is_allowed
 from deepthought.services.scheduler import SchedulerService
 from deepthought.utils import UserRateLimiter
 
@@ -256,6 +256,12 @@ MINIMAL_REPLY_PROB = float(os.getenv("MINIMAL_REPLY_PROB", "0.05"))
 MINIMAL_REPLIES = ["...", "👍", "No"]
 AVOIDANCE_REPLY = "Take your time; I'm here if you need me."
 REFUSAL_MESSAGE = "I'm sorry, but I can't help with that."
+FOE_MODE_CAP_ENABLED = os.getenv("FOE_MODE_CAP_ENABLED", "true").lower() in {
+    "true",
+    "1",
+    "yes",
+}
+FOE_MODE_MAX_SEVERITY = float(os.getenv("FOE_MODE_MAX_SEVERITY", "0.4"))
 
 # Optional channel for thought logging
 _THOUGHT_CHANNEL = os.getenv("THOUGHT_CHANNEL")
@@ -1135,28 +1141,40 @@ class SocialGraphBot(commands.Bot):
             await asyncio.sleep(random.uniform(1, 3))
             if last_other_bot_message_time and last_other_bot_message_time > start_time:
                 return
+            persona_used = None
             if bullying and not await is_do_not_mock(message.author.id):
                 reply = BULLYING_RESPONSE
             elif social_scores.get("flirtation", 0) > 0.5:
                 reply = random.choice(PERSONA_REPLIES["playful"])
+                persona_used = "playful"
             elif social_scores.get("avoidance", 0) > 0.5:
                 reply = AVOIDANCE_REPLY
             else:
-                reply = await generate_contextual_reply(message.content, memory_snippets)
+                reply = None
+                if dominant_emotion:
+                    mode, persona_override = EMOTION_REPLY_MAP.get(dominant_emotion, (None, None))
+                    if mode == "minimal":
+                        reply = random.choice(MINIMAL_REPLIES)
+                    elif mode == "persona":
+                        persona_used = persona_override or "snarky"
+                        reply = random.choice(PERSONA_REPLIES.get(persona_used, PERSONA_REPLIES["snarky"]))
                 if reply is None:
-                    if dominant_emotion:
-                        mode, persona_override = EMOTION_REPLY_MAP.get(dominant_emotion, (None, None))
-                        if mode == "minimal":
-                            reply = random.choice(MINIMAL_REPLIES)
-                        elif mode == "persona":
-                            reply = random.choice(PERSONA_REPLIES.get(persona_override, PERSONA_REPLIES["snarky"]))
-                    if reply is None:
-                        trust = await trust_service.get_trust(message.author.id)
-                        if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
-                            reply = random.choice(MINIMAL_REPLIES)
-                        else:
-                            persona = await self.persona_manager.get_persona(message.author.id)
-                            reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
+                    trust = await trust_service.get_trust(message.author.id)
+                    if trust < MINIMAL_REPLY_THRESHOLD or random.random() < MINIMAL_REPLY_PROB:
+                        reply = random.choice(MINIMAL_REPLIES)
+                    else:
+                        persona = await self.persona_manager.get_persona(message.author.id)
+                        persona_used = persona
+                        reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
+            if FOE_MODE_CAP_ENABLED and persona_used == "snarky":
+                severity, matches = evaluate_toxicity(reply)
+                if severity > FOE_MODE_MAX_SEVERITY:
+                    logger.info(
+                        "Foe-mode cap applied: severity=%s matches=%s",
+                        round(severity, 3),
+                        matches,
+                    )
+                    reply = random.choice(MINIMAL_REPLIES)
             now = discord.utils.utcnow()
             while our_message_times and (now - our_message_times[0]).total_seconds() > BOT_MESSAGE_INTERVAL_SECONDS:
                 our_message_times.popleft()
