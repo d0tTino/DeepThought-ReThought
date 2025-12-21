@@ -84,6 +84,9 @@ class BaseLLM(ABC):
             user_id = data.get("user_id")
             if not isinstance(user_id, str):
                 user_id = None
+            target_id = data.get("target_id") or (msg.headers.get("target_id") if msg.headers else None)
+            if not isinstance(target_id, str):
+                target_id = None
             knowledge = data.get("retrieved_knowledge")
             if not isinstance(input_id, str) or not isinstance(knowledge, dict):
                 raise ValueError("Invalid memory payload fields")
@@ -109,7 +112,7 @@ class BaseLLM(ABC):
             if self._persona_manager is not None:
                 try:
                     persona_id = user_id if user_id is not None else input_id
-                    persona_desc = await self._persona_manager.get_description(int(persona_id))
+                    persona_desc = await self._persona_manager.get_description(persona_id, target_id)
                 except Exception:
                     logger.error("Persona selection failed", exc_info=True)
 

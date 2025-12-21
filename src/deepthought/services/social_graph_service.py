@@ -53,7 +53,7 @@ class SocialGraphService(BaseService):
         """Process an INPUT_RECEIVED message."""
         try:
             await self._core._handle_input(msg)
-            await self._persona.get_persona("user")
+            await self._persona.get_persona("user", None)
         except Exception:  # pragma: no cover - defensive
             logger.error("Failed to handle input", exc_info=True)
 
