@@ -1771,14 +1771,16 @@ class ProjectsBoard(commands.Cog):
         now = datetime.now(UTC)
         new_tag_names = [tag.name for tag in applied_tags]
         canonical_priority = self._priority_from_tags(new_tag_names)
+        new_holiday = self._is_holiday_project(record.due_date, new_tag_names)
         await self._execute(
             """
             UPDATE projects
-            SET tags = ?, priority = ?, updated_at = ?
+            SET tags = ?, priority = ?, holiday = ?, updated_at = ?
             WHERE project_id = ?
             """,
             json.dumps(new_tag_names) if applied_tags else None,
             canonical_priority,
+            int(new_holiday),
             self._serialize_datetime(now),
             project_id,
         )
@@ -1808,14 +1810,16 @@ class ProjectsBoard(commands.Cog):
         now = datetime.now(UTC)
         new_tag_names = [tag.name for tag in applied_tags]
         canonical_project_type = self._project_type_from_tags(new_tag_names)
+        new_holiday = self._is_holiday_project(record.due_date, new_tag_names)
         await self._execute(
             """
             UPDATE projects
-            SET tags = ?, project_type = ?, updated_at = ?
+            SET tags = ?, project_type = ?, holiday = ?, updated_at = ?
             WHERE project_id = ?
             """,
             json.dumps(new_tag_names) if applied_tags else None,
             canonical_project_type,
+            int(new_holiday),
             self._serialize_datetime(now),
             project_id,
         )
@@ -1836,15 +1840,17 @@ class ProjectsBoard(commands.Cog):
         now = datetime.now(UTC)
         canonical_priority = self._priority_from_tags(new_tag_names)
         canonical_project_type = self._project_type_from_tags(new_tag_names)
+        new_holiday = self._is_holiday_project(record.due_date, new_tag_names)
         await self._execute(
             """
             UPDATE projects
-            SET tags = ?, priority = ?, project_type = ?, updated_at = ?
+            SET tags = ?, priority = ?, project_type = ?, holiday = ?, updated_at = ?
             WHERE project_id = ?
             """,
             json.dumps(new_tag_names) if applied_tags else None,
             canonical_priority,
             canonical_project_type,
+            int(new_holiday),
             self._serialize_datetime(now),
             record.project_id,
         )
@@ -2002,7 +2008,11 @@ class ProjectsBoard(commands.Cog):
         self._board_filters[message_id] = holiday_flag
 
         filtered_records = (
-            [record for record in records if record.holiday]
+            [
+                record
+                for record in records
+                if self._is_holiday_project(record.due_date, record.tags)
+            ]
             if holiday_flag
             else list(records)
         )
