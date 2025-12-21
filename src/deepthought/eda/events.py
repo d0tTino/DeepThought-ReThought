@@ -95,6 +95,7 @@ class MemoryRetrievedPayload(EventPayload):
 
     retrieved_knowledge: Dict[str, Any]
     input_id: Optional[str] = None
+    user_id: Optional[str] = None
     timestamp: Optional[str] = None
 
 
@@ -104,6 +105,7 @@ class ResponseGeneratedPayload(EventPayload):
 
     final_response: str
     input_id: Optional[str] = None
+    user_id: Optional[str] = None
     timestamp: Optional[str] = None
     confidence: Optional[float] = None
 

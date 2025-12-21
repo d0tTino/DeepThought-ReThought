@@ -60,6 +60,9 @@ class RemoteLLM:
             if not isinstance(data, dict):
                 raise ValueError("MemoryRetrieved payload must be a dict")
             input_id = data.get("input_id")
+            user_id = data.get("user_id")
+            if not isinstance(user_id, str):
+                user_id = None
             retrieved = data.get("retrieved_knowledge", {})
             facts = retrieved.get("facts", [])
             prompt = ", ".join(map(str, facts))
@@ -68,6 +71,7 @@ class RemoteLLM:
             payload = ResponseGeneratedPayload(
                 final_response=response,
                 input_id=input_id,
+                user_id=user_id,
                 timestamp=None,
                 confidence=0.9,
             )
