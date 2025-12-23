@@ -1087,6 +1087,13 @@ class SocialGraphBot(commands.Bot):
             sentiment_score=sentiment_score,
         )
         await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
+        affinity_delta = None
+        if sentiment_score >= SENTIMENT_THRESHOLD:
+            affinity_delta = AFFINITY_POS_DELTA
+        elif sentiment_score <= -SENTIMENT_THRESHOLD:
+            affinity_delta = AFFINITY_NEG_DELTA
+        if affinity_delta:
+            await adjust_affinity(message.author.id, affinity_delta)
 
         await db_manager.record_emotion(message.author.id, emotions)
 

@@ -146,3 +146,45 @@ async def test_social_analysis_adjusts_tone(tmp_path, monkeypatch, input_events)
     assert msg2.channel.sent_messages[-1] == sg.AVOIDANCE_REPLY
 
     await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_on_message_updates_affinity_from_sentiment(tmp_path, monkeypatch, input_events):
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    sg.trust_service = sg.TrustService(sg.db_manager)
+    sg.persona_manager = PersonaManager(sg.db_manager)
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(sg, "log_interaction", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+    monkeypatch.setattr(sg.reply_limiter, "allow", lambda _id: True)
+    monkeypatch.setattr(sg, "detect_emotions", lambda _t: {})
+    monkeypatch.setattr(
+        sg,
+        "analyze_social",
+        lambda _t: {"flirtation": 0, "avoidance": 0, "manipulation": 0},
+    )
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+
+    monkeypatch.setattr(sg, "analyze_sentiment", lambda _t: 0.8)
+    msg1 = DummyMessage("you are great")
+    await bot.on_message(msg1)
+    assert await sg.get_affinity(msg1.author.id) == sg.AFFINITY_POS_DELTA
+
+    monkeypatch.setattr(sg, "analyze_sentiment", lambda _t: -0.8)
+    msg2 = DummyMessage("you are terrible", author_id=msg1.author.id, message_id=11)
+    await bot.on_message(msg2)
+    assert await sg.get_affinity(msg2.author.id) == sg.AFFINITY_POS_DELTA + sg.AFFINITY_NEG_DELTA
+
+    await sg.db_manager.close()
