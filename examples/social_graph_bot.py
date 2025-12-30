@@ -8,7 +8,7 @@ import re
 import uuid
 from collections import deque
 from datetime import timedelta, timezone
-from typing import List, Tuple
+from typing import Awaitable, Callable, List, Tuple
 
 import aiohttp
 
@@ -66,7 +66,7 @@ from deepthought.services.db_manager import DBManager
 from deepthought.services.manipulative_detection import manipulation_score
 from deepthought.services.moderation import evaluate_toxicity, is_allowed
 from deepthought.services.scheduler import SchedulerService
-from deepthought.utils import UserRateLimiter
+from deepthought.utils import ResponseQueue, UserRateLimiter
 
 try:
     import discord
@@ -256,6 +256,10 @@ BOT_COOLDOWN_SECONDS = int(os.getenv("BOT_COOLDOWN_SECONDS", "30"))
 OTHER_BOT_COOLDOWN_SECONDS = int(os.getenv("OTHER_BOT_COOLDOWN_SECONDS", "10"))
 BOT_MESSAGE_INTERVAL_SECONDS = int(os.getenv("BOT_MESSAGE_INTERVAL_SECONDS", "60"))
 MAX_BOT_MESSAGES_PER_INTERVAL = int(os.getenv("MAX_BOT_MESSAGES_PER_INTERVAL", "5"))
+RESPONSE_QUEUE_COOLDOWN_SECONDS = float(
+    os.getenv("RESPONSE_QUEUE_COOLDOWN_SECONDS", str(BOT_MESSAGE_INTERVAL_SECONDS))
+)
+RESPONSE_STALE_SECONDS = float(os.getenv("RESPONSE_STALE_SECONDS", "20"))
 MINIMAL_REPLY_THRESHOLD = float(os.getenv("MINIMAL_REPLY_THRESHOLD", "-5"))
 MINIMAL_REPLY_PROB = float(os.getenv("MINIMAL_REPLY_PROB", "0.05"))
 MINIMAL_REPLIES = ["...", "👍", "No"]
@@ -514,11 +518,21 @@ def log_thought(bot: discord.Client, text: str) -> None:
     loop.create_task(_send_thought(bot, text))
 
 
-async def emit_refusal(message: discord.Message) -> None:
+async def emit_refusal(
+    message: discord.Message,
+    enqueue: Callable[[discord.abc.Messageable, Callable[[], Awaitable[None]]], Awaitable[None]] | None = None,
+) -> None:
     """Send a refusal message to ``message.channel``."""
-    async with message.channel.typing():
-        await asyncio.sleep(random.uniform(1, 3))
-        await message.channel.send(REFUSAL_MESSAGE)
+
+    async def _send_refusal() -> None:
+        async with message.channel.typing():
+            await asyncio.sleep(random.uniform(1, 3))
+            await message.channel.send(REFUSAL_MESSAGE)
+
+    if enqueue is None:
+        await _send_refusal()
+    else:
+        await enqueue(message.channel, _send_refusal)
 
 
 async def publish_input_received(text: str) -> None:
@@ -908,12 +922,19 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                 prompt = await generate_idle_response()
                 if not prompt:
                     prompt = random.choice(idle_response_candidates)
-                async with channel.typing():
-                    await asyncio.sleep(random.uniform(3, 10))
-                    if respond_to is not None:
-                        await channel.send(prompt, reference=respond_to)
-                    else:
-                        await channel.send(prompt)
+                async def _send_prompt() -> None:
+                    async with channel.typing():
+                        await asyncio.sleep(random.uniform(3, 10))
+                        if respond_to is not None:
+                            await channel.send(prompt, reference=respond_to)
+                        else:
+                            await channel.send(prompt)
+
+                enqueue = getattr(bot, "enqueue_response", None)
+                if callable(enqueue):
+                    await enqueue(channel, _send_prompt)
+                else:
+                    await _send_prompt()
             await asyncio.sleep(60)
         except asyncio.CancelledError:
             logger.info("monitor_channels cancelled")
@@ -952,6 +973,9 @@ class SocialGraphBot(commands.Bot):
         self.persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
         self._subscriber: Subscriber | None = None
         self._projects_board: ProjectsBoard | None = None
+        self.response_queue = ResponseQueue(
+            RESPONSE_QUEUE_COOLDOWN_SECONDS, stale_after=RESPONSE_STALE_SECONDS
+        )
 
     async def setup_hook(self) -> None:
         await db_manager.connect()
@@ -1001,6 +1025,13 @@ class SocialGraphBot(commands.Bot):
         """Log basic information once the bot connects."""
         logger.info("Logged in as %s (%s)", self.user.name, self.user.id)
 
+    async def enqueue_response(
+        self, channel: discord.abc.Messageable, sender: Callable[[], Awaitable[None]]
+    ) -> None:
+        """Enqueue a response for ``channel`` while respecting cooldowns."""
+
+        await self.response_queue.enqueue(channel.id, sender)
+
     async def on_message(self, message: discord.Message) -> None:
         global last_bot_reply_time, last_other_bot_message_time
         if message.author == self.user:
@@ -1041,7 +1072,7 @@ class SocialGraphBot(commands.Bot):
                 return
 
         if not is_allowed(message.content):  # noqa: F821 - optional import
-            await emit_refusal(message)
+            await emit_refusal(message, enqueue=self.enqueue_response)
             await trust_service.penalize_banned(message.author.id)
             return
 
@@ -1052,9 +1083,13 @@ class SocialGraphBot(commands.Bot):
                 await store_lie(message.author.id, message.content, cover_reply)
             else:
                 cover_reply = lie_reply
-            async with message.channel.typing():
-                await asyncio.sleep(random.uniform(1, 3))
-                await message.channel.send(cover_reply)
+
+            async def send_cover_reply() -> None:
+                async with message.channel.typing():
+                    await asyncio.sleep(random.uniform(1, 3))
+                    await message.channel.send(cover_reply)
+
+            await self.enqueue_response(message.channel, send_cover_reply)
             await store_memory(message.author.id, cover_reply, topic="deception")
             await log_interaction(message.author.id, message.channel.id)
             await publish_input_received(message.content)
@@ -1207,10 +1242,14 @@ class SocialGraphBot(commands.Bot):
                 our_message_times.popleft()
             if len(our_message_times) >= MAX_BOT_MESSAGES_PER_INTERVAL:
                 return
-            await message.channel.send(reply)
-            our_message_times.append(discord.utils.utcnow())
-            if message.author.bot:
-                last_bot_reply_time = discord.utils.utcnow()
+            async def dispatch_reply() -> None:
+                await message.channel.send(reply)
+                our_message_times.append(discord.utils.utcnow())
+                if message.author.bot:
+                    global last_bot_reply_time
+                    last_bot_reply_time = discord.utils.utcnow()
+
+            await self.enqueue_response(message.channel, dispatch_reply)
 
         # Log the interaction
         await log_interaction(message.author.id, message.channel.id)
@@ -1244,7 +1283,7 @@ class SocialGraphBot(commands.Bot):
         channel = self.get_channel(self.monitor_channel_id)
         try:
             if channel is not None:
-                await channel.send(text)
+                await self.enqueue_response(channel, lambda: channel.send(text))
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except Exception:  # pragma: no cover - defensive
@@ -1278,6 +1317,7 @@ class SocialGraphBot(commands.Bot):
             await self._subscriber.unsubscribe_all()
             self._subscriber = None
         await db_manager.close()
+        await self.response_queue.stop()
         global _nats_client, _js_context, _input_publisher, _subscriber
         if _nats_client is not None and not _nats_client.is_closed:
             await _nats_client.close()
