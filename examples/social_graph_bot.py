@@ -294,6 +294,13 @@ BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
     "yes",
 }
 
+# Comma-separated list of channel IDs where reply mentions should be suppressed
+NO_MENTION_CHANNEL_IDS = {
+    int(cid)
+    for cid in os.getenv("NO_MENTION_CHANNEL_IDS", "").split(",")
+    if cid.strip().isdigit()
+}
+
 # Literal handshake message exchanged between bots before chatting.
 HANDSHAKE_MESSAGE = "BOT_HANDSHAKE"
 
@@ -359,6 +366,15 @@ async def _generate_text(prompt: str, *, max_new_tokens: int) -> str | None:
         return None
 
 
+def _build_persona_prompt(messages: List[str], persona_desc: str) -> str:
+    """Return a prompt that includes ``persona_desc`` and message history."""
+
+    history = "\n".join(messages)
+    if persona_desc:
+        return f"{persona_desc}\n\n{history}"
+    return history
+
+
 async def generate_idle_response(prompt: str | None = None) -> str | None:
     """Generate a prompt to send when the channel has been idle.
 
@@ -410,6 +426,12 @@ def build_reply_prompt(user_text: str, memory_snippets: list[str]) -> str:
 
 async def generate_contextual_reply(user_text: str, memory_snippets: list[str]) -> str | None:
     prompt = build_reply_prompt(user_text, memory_snippets)
+    return await _generate_text(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
+
+
+async def generate_llm_reply(prompt: str) -> str | None:
+    """Generate an LLM reply for ``prompt`` using the contextual generator."""
+
     return await _generate_text(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
 
 
@@ -1274,7 +1296,7 @@ class SocialGraphBot(commands.Bot):
             message.content,
         )
 
-        if hasattr(self, "process_commands"):
+        if hasattr(self, "process_commands") and self.user is not None:
             await self.process_commands(message)
 
     async def _handle_chat_raw(self, msg: Msg) -> None:

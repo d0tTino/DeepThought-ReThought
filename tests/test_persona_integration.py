@@ -56,6 +56,11 @@ class DummyMessage:
         # Avoid triggering time-based theories by using a fixed hour
         self.created_at = utcnow().replace(hour=1)
         self.mentions = []
+        self.replies = []
+
+    async def reply(self, content, mention_author=True):
+        self.replies.append({"content": content, "mention_author": mention_author})
+        await self.channel.send(content, reference=self)
 
 
 @pytest.mark.asyncio
