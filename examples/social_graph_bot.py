@@ -366,13 +366,20 @@ async def _generate_text(prompt: str, *, max_new_tokens: int) -> str | None:
         return None
 
 
-def _build_persona_prompt(messages: List[str], persona_desc: str) -> str:
-    """Return a prompt that includes ``persona_desc`` and message history."""
+def _build_persona_prompt(
+    messages: List[str], persona_desc: str, memory_snippets: list[str] | None = None
+) -> str:
+    """Return a prompt that includes persona, memory context, and message history."""
 
     history = "\n".join(messages)
+    sections = []
     if persona_desc:
-        return f"{persona_desc}\n\n{history}"
-    return history
+        sections.append(persona_desc)
+    if memory_snippets:
+        memory_lines = "\n".join(f"- {snippet}" for snippet in memory_snippets)
+        sections.append(f"Memory notes:\n{memory_lines}")
+    sections.append(history)
+    return "\n\n".join(sections)
 
 
 async def generate_idle_response(prompt: str | None = None) -> str | None:
@@ -405,6 +412,29 @@ def _format_memory_snippets(memories: list[tuple[str, str]], limit: int) -> list
         entry = f"[{topic}] {memory}" if topic else str(memory)
         snippets.append(entry.strip())
     return snippets[-limit:]
+
+
+def _build_memory_hint(memory_snippets: list[str]) -> str:
+    """Return a short, user-facing memory hint."""
+
+    if not memory_snippets:
+        return ""
+    summary = re.sub(r"\s+", " ", memory_snippets[-1]).strip()
+    if len(summary) > 120:
+        summary = summary[:117] + "..."
+    return f"You mentioned {summary} earlier."
+
+
+def _append_memory_hint(reply: str, memory_hint: str) -> str:
+    """Append memory hint to reply with proper spacing."""
+
+    if not memory_hint:
+        return reply
+    if not reply:
+        return memory_hint
+    if reply.endswith((".", "!", "?")):
+        return f"{reply} {memory_hint}"
+    return f"{reply}. {memory_hint}"
 
 
 def build_reply_prompt(user_text: str, memory_snippets: list[str]) -> str:
@@ -1203,6 +1233,7 @@ class SocialGraphBot(commands.Bot):
 
         memories = await recall_user(message.author.id)
         memory_snippets = _format_memory_snippets(memories, MAX_MEMORY_PROMPT_SNIPPETS)
+        memory_hint = _build_memory_hint(memory_snippets)
         if memories:
             logger.info(f"Recalling memories for {message.author.id}: {memories}")
 
@@ -1212,6 +1243,7 @@ class SocialGraphBot(commands.Bot):
             if last_other_bot_message_time and last_other_bot_message_time > start_time:
                 return
             persona_used = None
+            reply_from_llm = False
             if bullying and not await is_do_not_mock(message.author.id):
                 reply = BULLYING_RESPONSE
             elif social_scores.get("flirtation", 0) > 0.5:
@@ -1242,14 +1274,17 @@ class SocialGraphBot(commands.Bot):
                         persona_desc = await self.persona_manager.get_description(message.author.id)
                     except Exception:
                         logger.exception("Persona description lookup failed")
-                    prompt = _build_persona_prompt([message.content], persona_desc)
+                    prompt = _build_persona_prompt([message.content], persona_desc, memory_snippets)
                     llm_reply = await generate_llm_reply(prompt)
                     if llm_reply:
                         reply = llm_reply
+                        reply_from_llm = True
                     else:
                         persona = await self.persona_manager.get_persona(message.author.id)
                         persona_used = persona
                         reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
+            if reply and memory_hint and not reply_from_llm:
+                reply = _append_memory_hint(reply, memory_hint)
             if FOE_MODE_CAP_ENABLED and persona_used == "snarky":
                 severity, matches = evaluate_toxicity(reply)
                 if severity > FOE_MODE_MAX_SEVERITY:

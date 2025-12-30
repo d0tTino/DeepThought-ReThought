@@ -317,6 +317,45 @@ async def test_on_message_ignores_other_bot_mentions(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_on_message_includes_memory_hint(tmp_path, monkeypatch, input_events):
+
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+    sg.reply_limiter.clear("2")
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(sg, "publish_input_received", noop)
+    monkeypatch.setattr(random, "random", lambda: 0.0)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+
+    async def fake_recall_user(user_id):
+        return [("greeting", "that you enjoy coding challenges")]
+
+    monkeypatch.setattr(sg, "recall_user", fake_recall_user)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    message = DummyMessage("hello with history")
+    await bot.on_message(message)
+
+    assert message.channel.sent_messages
+    reply = message.channel.sent_messages[0]
+    assert "You mentioned" in reply
+    assert "coding challenges" in reply
+
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
 async def test_on_message_manipulation_trust(tmp_path, monkeypatch, input_events):
     """Trust should decrease when manipulation is detected."""
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
