@@ -89,6 +89,11 @@ class DummyMessage:
         self.id = message_id
         self.created_at = utcnow()
         self.mentions = []
+        self.replies = []
+
+    async def reply(self, content, mention_author=True):
+        self.replies.append({"content": content, "mention_author": mention_author})
+        await self.channel.send(content, reference=self)
 
 
 @pytest.mark.asyncio

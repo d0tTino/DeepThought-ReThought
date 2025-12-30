@@ -290,6 +290,13 @@ BOT_CHAT_ENABLED = os.getenv("BOT_CHAT_ENABLED", "false").lower() in {
     "yes",
 }
 
+# Comma-separated list of channel IDs where reply mentions should be suppressed
+NO_MENTION_CHANNEL_IDS = {
+    int(cid)
+    for cid in os.getenv("NO_MENTION_CHANNEL_IDS", "").split(",")
+    if cid.strip().isdigit()
+}
+
 # Literal handshake message exchanged between bots before chatting.
 HANDSHAKE_MESSAGE = "BOT_HANDSHAKE"
 
@@ -355,6 +362,15 @@ async def _generate_text(prompt: str, *, max_new_tokens: int) -> str | None:
         return None
 
 
+def _build_persona_prompt(messages: List[str], persona_desc: str) -> str:
+    """Return a prompt that includes ``persona_desc`` and message history."""
+
+    history = "\n".join(messages)
+    if persona_desc:
+        return f"{persona_desc}\n\n{history}"
+    return history
+
+
 async def generate_idle_response(prompt: str | None = None) -> str | None:
     """Generate a prompt to send when the channel has been idle.
 
@@ -406,6 +422,12 @@ def build_reply_prompt(user_text: str, memory_snippets: list[str]) -> str:
 
 async def generate_contextual_reply(user_text: str, memory_snippets: list[str]) -> str | None:
     prompt = build_reply_prompt(user_text, memory_snippets)
+    return await _generate_text(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
+
+
+async def generate_llm_reply(prompt: str) -> str | None:
+    """Generate an LLM reply for ``prompt`` using the contextual generator."""
+
     return await _generate_text(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
 
 
@@ -512,6 +534,32 @@ def log_thought(bot: discord.Client, text: str) -> None:
     except RuntimeError:  # pragma: no cover - no loop available
         return
     loop.create_task(_send_thought(bot, text))
+
+
+def should_reply_with_mention(message: discord.Message) -> bool:
+    """Return ``True`` if a reply to ``message`` should mention the author."""
+
+    channel_id = getattr(getattr(message, "channel", None), "id", None)
+    if channel_id is None:
+        return True
+    return channel_id not in NO_MENTION_CHANNEL_IDS
+
+
+async def reply_to_message(message: discord.Message, reply: str) -> None:
+    """Reply to ``message`` while optionally mentioning the author."""
+
+    mention_author = should_reply_with_mention(message)
+    reply_fn = getattr(message, "reply", None)
+    if callable(reply_fn):
+        await reply_fn(reply, mention_author=mention_author)
+        return
+
+    # Fallback for stub message implementations without ``reply``
+    if mention_author and getattr(message, "author", None) is not None:
+        prefix = f"<@{getattr(message.author, 'id', '')}> "
+        await message.channel.send(f"{prefix}{reply}")
+    else:
+        await message.channel.send(reply)
 
 
 async def emit_refusal(message: discord.Message) -> None:
@@ -1207,7 +1255,7 @@ class SocialGraphBot(commands.Bot):
                 our_message_times.popleft()
             if len(our_message_times) >= MAX_BOT_MESSAGES_PER_INTERVAL:
                 return
-            await message.channel.send(reply)
+            await reply_to_message(message, reply)
             our_message_times.append(discord.utils.utcnow())
             if message.author.bot:
                 last_bot_reply_time = discord.utils.utcnow()
@@ -1235,7 +1283,7 @@ class SocialGraphBot(commands.Bot):
             message.content,
         )
 
-        if hasattr(self, "process_commands"):
+        if hasattr(self, "process_commands") and self.user is not None:
             await self.process_commands(message)
 
     async def _handle_chat_raw(self, msg: Msg) -> None:

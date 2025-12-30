@@ -58,6 +58,12 @@ class DummyMessage:
         self.id = message_id
         self.created_at = utcnow()
         self.mentions = []
+        self.replies = []
+        self._state = None
+
+    async def reply(self, content, mention_author=True):
+        self.replies.append({"content": content, "mention_author": mention_author})
+        await self.channel.send(content, reference=self)
 
 
 @pytest.mark.asyncio
@@ -69,6 +75,8 @@ async def test_on_message_rate_limit(monkeypatch, tmp_path):
 
     async def noop(*args, **kwargs):
         return None
+
+    monkeypatch.setattr(sg, "_ensure_nats", noop)
 
     f = asyncio.Future()
     f.set_result((set(), set(), {}))
@@ -89,6 +97,42 @@ async def test_on_message_rate_limit(monkeypatch, tmp_path):
     await bot.on_message(msg2)
 
     assert len(msg1.channel.sent_messages) == 1
+    assert msg1.replies[0]["mention_author"] is True
     assert msg2.channel.sent_messages == []
+
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_on_message_no_mention_channels(monkeypatch, tmp_path):
+    monkeypatch.setenv("NO_MENTION_CHANNEL_IDS", "1")
+    sg = reload_sg(monkeypatch)
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(sg, "_ensure_nats", noop)
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(sg, "evaluate_triggers", lambda message: [])
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    msg = DummyMessage("hello")
+    await bot.on_message(msg)
+
+    assert len(msg.channel.sent_messages) == 1
+    assert msg.channel.sent_messages[0] == msg.replies[0]["content"]
+    assert msg.replies[0]["mention_author"] is False
 
     await sg.db_manager.close()
