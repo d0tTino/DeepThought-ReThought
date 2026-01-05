@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import random
 
 import pytest
@@ -10,6 +11,8 @@ sg = pytest.importorskip("examples.social_graph_bot")
 if not hasattr(sg, "TrustService"):
     pytest.skip("social_graph_bot optional dependencies not installed", allow_module_level=True)
 from deepthought.services import DBManager
+from deepthought.services import moderation
+from deepthought.services.response_filter import build_response_filter
 
 
 class DummyAuthor:
@@ -116,4 +119,38 @@ async def test_refuses_secret_key_request(tmp_path, monkeypatch, input_events):
     await bot.on_message(message)
 
     assert message.channel.sent_messages == [sg.REFUSAL_MESSAGE]
+    await sg.db_manager.close()
+
+
+def test_custom_profanity_terms(monkeypatch):
+    monkeypatch.setenv("MODERATION_PROFANITY_LIST", "zonk:0.9,blorp")
+    importlib.reload(moderation)
+
+    score, matches = moderation.evaluate_toxicity("you are such a zonk")
+    assert score > 0.0
+    assert "zonk" in matches
+
+    monkeypatch.delenv("MODERATION_PROFANITY_LIST", raising=False)
+    importlib.reload(moderation)
+
+
+@pytest.mark.asyncio
+async def test_outbound_response_filter(monkeypatch, tmp_path, input_events):
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    sg.trust_service = sg.TrustService(sg.db_manager)
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    bot.response_filter = build_response_filter(
+        denylist=("spoiler",), replacement="[clean]", toxicity_threshold=0.5
+    )
+    channel = DummyChannel(channel_id=99)
+
+    await bot.send_filtered(channel, "you are worthless and a spoiler")
+    assert channel.sent_messages == []
+
+    await bot.send_filtered(channel, "no spoiler here")
+    assert channel.sent_messages == ["no [clean] here"]
+
     await sg.db_manager.close()

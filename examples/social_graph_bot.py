@@ -64,7 +64,8 @@ from deepthought.plugins.projects_board import DEFAULT_HOLIDAY_LOCALE, ProjectsB
 from deepthought.services import PersonaManager, TrustService
 from deepthought.services.db_manager import DBManager
 from deepthought.services.manipulative_detection import manipulation_score
-from deepthought.services.moderation import evaluate_toxicity, is_allowed
+from deepthought.services.moderation import evaluate_toxicity, get_profanity_list, is_allowed
+from deepthought.services.response_filter import build_response_filter
 from deepthought.services.scheduler import SchedulerService
 from deepthought.utils import ResponseQueue, UserRateLimiter
 
@@ -553,6 +554,12 @@ async def _send_thought(bot: discord.Client, text: str) -> None:
     if channel is None:
         logger.warning("Thought channel %s not found", THOUGHT_CHANNEL_ID)
         return
+    if hasattr(bot, "response_filter"):
+        filtered = bot.response_filter.sanitize(text)  # type: ignore[attr-defined]
+        if filtered is None:
+            logger.info("Thought message filtered; not sending")
+            return
+        text = filtered
     try:
         await channel.send(text)
     except Exception as exc:  # pragma: no cover - send failure
@@ -665,10 +672,14 @@ async def process_deep_reflections(bot: discord.Client) -> None:
                     await asyncio.sleep(2)
                     reflection = generate_reflection(prompt)
                     logger.info(f"Posting deep reflection for task {task_id}")
-                    await channel.send(
-                        f"After some thought... {reflection}",
-                        reference=ref,
-                    )
+                    text = f"After some thought... {reflection}"
+                    if hasattr(bot, "response_filter"):
+                        text = bot.response_filter.sanitize(text)  # type: ignore[attr-defined]
+                    if text:
+                        await channel.send(
+                            text,
+                            reference=ref,
+                        )
                 await db_manager.mark_task_done(task_id)
             await assign_themes()
             await asyncio.sleep(REFLECTION_CHECK_SECONDS)
@@ -706,7 +717,10 @@ async def _maybe_post_reminder_to_thread(bot: "SocialGraphBot", message: str) ->
         return
 
     try:
-        await channel.send(message)
+        if hasattr(bot, "response_filter"):
+            message = bot.response_filter.sanitize(message)  # type: ignore[attr-defined]
+        if message:
+            await channel.send(message)
     except Exception:
         logger.debug("Failed to post reminder to thread %s", thread_id)
 
@@ -788,7 +802,9 @@ async def process_thought_commands(bot: "SocialGraphBot") -> None:
                         if msg.author == bot.user:
                             msgs.append(f"{msg.id}: {msg.content}")
                     if msgs:
-                        await message.channel.send("\n".join(reversed(msgs)))
+                        await bot.send_filtered(
+                            message.channel, "\n".join(reversed(msgs))
+                        )
                 elif cmd == "delete" and len(parts) > 2:
                     try:
                         msg_id = int(parts[2])
@@ -818,7 +834,7 @@ async def process_thought_commands(bot: "SocialGraphBot") -> None:
                     rows = await db_manager.list_lies(limit)
                     if rows:
                         lines = [f"{rowid}: {question} -> {reply} (user {uid})" for rowid, uid, question, reply in rows]
-                        await message.channel.send("\n".join(lines))
+                        await bot.send_filtered(message.channel, "\n".join(lines))
                 elif cmd == "delete" and len(parts) > 2:
                     if parts[2].isdigit():
                         rowid = int(parts[2])
@@ -977,10 +993,17 @@ async def monitor_channels(bot: discord.Client, channel_id: int) -> None:
                 async def _send_prompt() -> None:
                     async with channel.typing():
                         await asyncio.sleep(random.uniform(3, 10))
+                        safe_prompt = (
+                            bot.response_filter.sanitize(prompt)
+                            if hasattr(bot, "response_filter")
+                            else prompt
+                        )
+                        if not safe_prompt:
+                            return
                         if respond_to is not None:
-                            await channel.send(prompt, reference=respond_to)
+                            await channel.send(safe_prompt, reference=respond_to)
                         else:
-                            await channel.send(prompt)
+                            await channel.send(safe_prompt)
 
                 enqueue = getattr(bot, "enqueue_response", None)
                 if callable(enqueue):
@@ -1027,6 +1050,9 @@ class SocialGraphBot(commands.Bot):
         self._projects_board: ProjectsBoard | None = None
         self.response_queue = ResponseQueue(
             RESPONSE_QUEUE_COOLDOWN_SECONDS, stale_after=RESPONSE_STALE_SECONDS
+        )
+        self.response_filter = build_response_filter(
+            denylist=get_profanity_list(), toxicity_threshold=FOE_MODE_MAX_SEVERITY
         )
 
     async def setup_hook(self) -> None:
@@ -1084,6 +1110,16 @@ class SocialGraphBot(commands.Bot):
 
         await self.response_queue.enqueue(channel.id, sender)
 
+    def sanitize_response(self, text: str) -> str | None:
+        return self.response_filter.sanitize(text)
+
+    async def send_filtered(self, channel: discord.abc.Messageable, text: str, **kwargs) -> None:
+        sanitized = self.sanitize_response(text)
+        if sanitized is None:
+            logger.info("Response filtered; nothing sent")
+            return
+        await channel.send(sanitized, **kwargs)
+
     async def on_message(self, message: discord.Message) -> None:
         global last_bot_reply_time, last_other_bot_message_time
         if message.author == self.user:
@@ -1135,11 +1171,15 @@ class SocialGraphBot(commands.Bot):
                 await store_lie(message.author.id, message.content, cover_reply)
             else:
                 cover_reply = lie_reply
+            cover_reply = self.sanitize_response(cover_reply) or None
+            if cover_reply is None:
+                logger.info("Cover reply blocked by response filter")
+                return
 
             async def send_cover_reply() -> None:
                 async with message.channel.typing():
                     await asyncio.sleep(random.uniform(1, 3))
-                    await message.channel.send(cover_reply)
+                    await self.send_filtered(message.channel, cover_reply)
 
             await self.enqueue_response(message.channel, send_cover_reply)
             await store_memory(message.author.id, cover_reply, topic="deception")
@@ -1299,8 +1339,12 @@ class SocialGraphBot(commands.Bot):
                 our_message_times.popleft()
             if len(our_message_times) >= MAX_BOT_MESSAGES_PER_INTERVAL:
                 return
+            safe_reply = self.sanitize_response(reply)
+            if safe_reply is None:
+                logger.info("Reply blocked by response filter")
+                return
             async def dispatch_reply() -> None:
-                await message.channel.send(reply)
+                await self.send_filtered(message.channel, safe_reply)
                 our_message_times.append(discord.utils.utcnow())
                 if message.author.bot:
                     global last_bot_reply_time
@@ -1339,8 +1383,14 @@ class SocialGraphBot(commands.Bot):
         text = msg.data.decode()
         channel = self.get_channel(self.monitor_channel_id)
         try:
+            safe_text = self.sanitize_response(text)
+            if safe_text is None:
+                logger.info("CHAT_RAW message blocked by response filter")
+                if hasattr(msg, "ack") and callable(msg.ack):
+                    await msg.ack()
+                return
             if channel is not None:
-                await self.enqueue_response(channel, lambda: channel.send(text))
+                await self.enqueue_response(channel, lambda: self.send_filtered(channel, safe_text))
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except Exception:  # pragma: no cover - defensive

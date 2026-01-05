@@ -1,7 +1,7 @@
 import logging
 import os
 import re
-from typing import Iterable, Mapping, Sequence, Tuple
+from typing import Iterable, Mapping, MutableMapping, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,12 @@ TOXICITY_CHECK_ENABLED = os.getenv("MODERATION_TOXICITY_ENABLED", "true").lower(
 }
 TOXICITY_THRESHOLD = float(os.getenv("MODERATION_TOXICITY_THRESHOLD", "0.6"))
 
-# Lightweight toxicity lexicon with severity weights.
-TOXICITY_TERMS: Mapping[str, float] = {
+# Lightweight toxicity lexicon with severity weights. Users can add terms via
+# ``MODERATION_PROFANITY_LIST``, using comma-separated entries. Each entry can
+# optionally include a weight (``term:weight``). Example::
+#
+#     export MODERATION_PROFANITY_LIST="foobar:0.9,baz"
+DEFAULT_TOXICITY_TERMS: Mapping[str, float] = {
     "idiot": 0.4,
     "stupid": 0.4,
     "loser": 0.4,
@@ -67,6 +71,37 @@ TOXICITY_TERMS: Mapping[str, float] = {
     "piece of": 0.6,
     "kill yourself": 1.0,
 }
+
+
+def _parse_weighted_terms(raw_terms: str) -> MutableMapping[str, float]:
+    parsed: MutableMapping[str, float] = {}
+    for chunk in raw_terms.split(","):
+        if not chunk:
+            continue
+        if ":" in chunk:
+            phrase, _, weight_str = chunk.partition(":")
+            try:
+                weight = float(weight_str)
+            except ValueError:
+                weight = 0.6
+        else:
+            phrase, weight = chunk, 0.6
+        normalized = phrase.strip().lower()
+        if not normalized:
+            continue
+        parsed[normalized] = max(0.1, min(weight, 1.0))
+    return parsed
+
+
+def _build_toxicity_terms() -> MutableMapping[str, float]:
+    configured = os.getenv("MODERATION_PROFANITY_LIST", "")
+    combined: MutableMapping[str, float] = dict(DEFAULT_TOXICITY_TERMS)
+    if configured:
+        combined.update(_parse_weighted_terms(configured))
+    return combined
+
+
+TOXICITY_TERMS: Mapping[str, float] = _build_toxicity_terms()
 _MAX_TOXICITY_WEIGHT = max(TOXICITY_TERMS.values(), default=1.0)
 
 
@@ -94,6 +129,18 @@ def evaluate_toxicity(
         return 0.0, []
     score = min(1.0, total_weight / (_MAX_TOXICITY_WEIGHT * len(matches)))
     return score, matches
+
+
+def get_toxicity_terms() -> Mapping[str, float]:
+    """Return the configured toxicity lexicon."""
+
+    return TOXICITY_TERMS
+
+
+def get_profanity_list() -> Tuple[str, ...]:
+    """Return profanity phrases for outbound filtering or UI hints."""
+
+    return tuple(TOXICITY_TERMS.keys())
 
 
 def _log_decision(

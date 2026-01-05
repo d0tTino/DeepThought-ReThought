@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Mapping
+
+from deepthought.services import moderation
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,7 @@ def _normalize_denylist(denylist: Iterable[str]) -> tuple[str, ...]:
 
 def load_classifier(classifier_path: str) -> Classifier:
     """Load a classifier callable from ``module:attribute`` notation."""
+
     module_path, _, attr_name = classifier_path.rpartition(":")
     if not module_path or not attr_name:
         raise ValueError("Classifier path must be in 'module:attribute' format")
@@ -41,28 +46,71 @@ class ResponseFilter:
 
     denylist: tuple[str, ...] = ()
     classifier: Classifier | None = None
+    replacement: str = "***"
+    toxicity_threshold: float | None = moderation.TOXICITY_THRESHOLD
+    toxicity_terms: Mapping[str, float] | None = None
 
     def is_safe(self, text: str) -> bool:
+        sanitized = self.sanitize(text)
+        return sanitized is not None
+
+    def sanitize(self, text: str) -> str | None:
+        """Return sanitized ``text`` or ``None`` if it should be blocked."""
+
         if not isinstance(text, str):
-            return False
-        lowered = text.lower()
-        if self.denylist and any(phrase in lowered for phrase in self.denylist):
-            return False
-        if self.classifier is None:
-            return True
-        try:
-            return bool(self.classifier(text))
-        except Exception:
-            logger.warning("Response classifier failed; treating as unsafe", exc_info=True)
-            return False
+            return None
+
+        sanitized = text
+        if self.denylist:
+            pattern = re.compile(
+                "|".join(re.escape(term) for term in self.denylist), re.IGNORECASE
+            )
+
+            def _sub(match: re.Match[str]) -> str:
+                return self.replacement
+
+            sanitized = pattern.sub(_sub, sanitized)
+
+        if self.classifier is not None:
+            try:
+                if not self.classifier(sanitized):
+                    return None
+            except Exception:
+                logger.warning(
+                    "Response classifier failed; treating as unsafe", exc_info=True
+                )
+                return None
+
+        if self.toxicity_threshold is not None:
+            score, matches = moderation.evaluate_toxicity(
+                sanitized, terms=self.toxicity_terms
+            )
+            if score >= self.toxicity_threshold:
+                logger.info(
+                    "Blocked response due to toxicity score %.3f and matches %s",
+                    score,
+                    matches,
+                )
+                return None
+
+        return sanitized
 
 
 def build_response_filter(
     denylist: Iterable[str] | None = None,
     classifier_path: str | None = None,
+    *,
+    replacement: str = "***",
+    toxicity_threshold: float | None = None,
+    toxicity_terms: Mapping[str, float] | None = None,
 ) -> ResponseFilter:
     """Construct a response filter for the configured inputs."""
-    normalized = _normalize_denylist(denylist or [])
+
+    env_denylist = os.getenv("RESPONSE_FILTER_DENYLIST", "")
+    configured_denylist = _normalize_denylist(
+        env_denylist.split(",") if env_denylist else []
+    )
+    normalized = _normalize_denylist(denylist or ()) + configured_denylist
     classifier: Classifier | None = None
     if classifier_path:
         try:
@@ -73,4 +121,12 @@ def build_response_filter(
                 classifier_path,
                 exc_info=True,
             )
-    return ResponseFilter(denylist=normalized, classifier=classifier)
+    return ResponseFilter(
+        denylist=normalized,
+        classifier=classifier,
+        replacement=replacement,
+        toxicity_threshold=toxicity_threshold
+        if toxicity_threshold is not None
+        else moderation.TOXICITY_THRESHOLD,
+        toxicity_terms=toxicity_terms or moderation.get_toxicity_terms(),
+    )
