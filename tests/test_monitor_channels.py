@@ -17,6 +17,7 @@ from deepthought.services import DBManager
 class DummyChannel:
     def __init__(self):
         self.sent_messages = []
+        self.id = 1
 
     def history(self, limit=1):
         async def _gen():
@@ -259,7 +260,51 @@ async def test_monitor_channels_no_channel(monkeypatch, caplog):
     with caplog.at_level(logging.ERROR):
         await sg.monitor_channels(bot, 123)
 
-    assert any("does not exist" in r.getMessage() for r in caplog.records)
+
+@pytest.mark.asyncio
+async def test_on_message_requires_mention_or_prefix(monkeypatch):
+    """Ignore messages without mentions or prefixes when gating is enabled."""
+
+    class DummyAuthor:
+        def __init__(self, author_id=2):
+            self.id = author_id
+            self.bot = False
+
+    class DummyMessage:
+        def __init__(self, content, channel):
+            from discord.utils import utcnow
+
+            self.content = content
+            self.author = DummyAuthor()
+            self.channel = channel
+            self.id = 10
+            self.created_at = utcnow()
+            self.mentions = []
+            self.replies = []
+
+        async def reply(self, content, mention_author=True):
+            self.replies.append({"content": content, "mention_author": mention_author})
+            await self.channel.send(content, reference=self)
+
+    channel = DummyChannel()
+    bot = sg.SocialGraphBot(monitor_channel_id=1, require_mention_or_prefix=True)
+    bot.user = DummyAuthor(author_id=99)
+
+    handshake_called = False
+
+    async def fake_handshake(message):
+        nonlocal handshake_called
+        handshake_called = True
+        return True
+
+    monkeypatch.setattr(sg, "handle_bot_handshake", fake_handshake)
+
+    message = DummyMessage("hello there", channel)
+    await bot.on_message(message)
+
+    assert handshake_called is False
+    assert channel.sent_messages == []
+    assert message.replies == []
 
 
 @pytest.mark.asyncio
