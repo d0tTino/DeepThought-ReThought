@@ -213,7 +213,7 @@ class DummyDB:
     async def adjust_affinity(self, user_id, delta):
         self.affinity += delta
 
-    async def recall_user(self, user_id):
+    async def recall_user(self, user_id, limit=None):
         return [("", m) for m in self.memories]
 
     async def close(self):

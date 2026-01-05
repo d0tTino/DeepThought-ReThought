@@ -338,7 +338,7 @@ async def test_on_message_includes_memory_hint(tmp_path, monkeypatch, input_even
     monkeypatch.setattr(random, "random", lambda: 0.0)
     monkeypatch.setattr(random, "choice", lambda seq: seq[0])
 
-    async def fake_recall_user(user_id):
+    async def fake_recall_user(user_id, limit=None):
         return [("greeting", "that you enjoy coding challenges")]
 
     monkeypatch.setattr(sg, "recall_user", fake_recall_user)

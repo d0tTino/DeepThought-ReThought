@@ -105,7 +105,7 @@ class DummyDB:
     async def log_interaction(self, *a, **k):
         pass
 
-    async def recall_user(self, user_id):
+    async def recall_user(self, user_id, limit=None):
         return []
 
     async def close(self):

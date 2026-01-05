@@ -408,11 +408,13 @@ def _format_memory_snippets(memories: list[tuple[str, str]], limit: int) -> list
         return []
     snippets = []
     for topic, memory in memories:
+        if len(snippets) >= limit:
+            break
         if not memory or not str(memory).strip():
             continue
         entry = f"[{topic}] {memory}" if topic else str(memory)
         snippets.append(entry.strip())
-    return snippets[-limit:]
+    return snippets
 
 
 def _build_memory_hint(memory_snippets: list[str]) -> str:
@@ -420,7 +422,7 @@ def _build_memory_hint(memory_snippets: list[str]) -> str:
 
     if not memory_snippets:
         return ""
-    summary = re.sub(r"\s+", " ", memory_snippets[-1]).strip()
+    summary = re.sub(r"\s+", " ", memory_snippets[0]).strip()
     if len(summary) > 120:
         summary = summary[:117] + "..."
     return f"You mentioned {summary} earlier."
@@ -1290,7 +1292,7 @@ class SocialGraphBot(commands.Bot):
         if not reply_limiter.allow(str(message.author.id)):
             return
 
-        memories = await recall_user(message.author.id)
+        memories = await recall_user(message.author.id, limit=MAX_MEMORY_PROMPT_SNIPPETS)
         memory_snippets = _format_memory_snippets(memories, MAX_MEMORY_PROMPT_SNIPPETS)
         memory_hint = _build_memory_hint(memory_snippets)
         if memories:

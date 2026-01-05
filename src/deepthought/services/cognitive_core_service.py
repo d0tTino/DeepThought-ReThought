@@ -115,10 +115,8 @@ class CognitiveCoreService(BaseService):
         return merged
 
     async def _db_context(self) -> List[str]:
-        rows = await self._db.recall_user("user")
-        data = [m[1] for m in rows]
-        start = -self._top_k
-        return data[start:]
+        rows = await self._db.recall_user("user", limit=self._top_k)
+        return [m[1] for m in rows]
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
