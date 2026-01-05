@@ -237,6 +237,7 @@ class Settings(BaseSettings):
         "playful": "You like to joke around in your answers.",
         "snarky": "You reply with terse, witty sarcasm.",
     }
+    persona_sentiment_weight: float = Field(0.0, env="DT_PERSONA_SENTIMENT_WEIGHT")
 
     response_filter_enabled: bool = Field(True, env="DT_RESPONSE_FILTER_ENABLED")
     response_filter_denylist: list[str] = Field(default_factory=list, env="DT_RESPONSE_FILTER_DENYLIST")
