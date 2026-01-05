@@ -558,13 +558,19 @@ class DBManager:
         )
         await self._db.commit()
 
-    async def recall_user(self, user_id: int):
+    async def recall_user(self, user_id: int, limit: int | None = None):
         await self.connect()
+        if limit is not None and limit <= 0:
+            return []
+
         assert self._db
-        async with self._db.execute(
-            "SELECT topic, memory FROM memories WHERE user_id= ?",
-            (str(user_id),),
-        ) as cur:
+        query = "SELECT topic, memory FROM memories WHERE user_id=? ORDER BY timestamp DESC"
+        params: list[str | int] = [str(user_id)]
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+
+        async with self._db.execute(query, params) as cur:
             return await cur.fetchall()
 
     async def store_memory(

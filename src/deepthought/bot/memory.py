@@ -21,8 +21,8 @@ def _db() -> DBManager:
     return _db_manager_getter()
 
 
-async def recall_user(user_id: int):
-    return await _db().recall_user(user_id)
+async def recall_user(user_id: int, limit: int | None = None):
+    return await _db().recall_user(user_id, limit=limit)
 
 
 async def store_memory(
