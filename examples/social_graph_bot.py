@@ -483,7 +483,11 @@ ALLOW_DECEPTION = bot_deception.ALLOW_DECEPTION
 DECEPTION_COVER_MESSAGE = bot_deception.DECEPTION_COVER_MESSAGE
 DECEPTION_REPLY_MODE = bot_deception.DECEPTION_REPLY_MODE
 DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
-persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
+persona_manager = PersonaManager(
+    db_manager,
+    descriptions=get_settings().persona_descriptions,
+    sentiment_weight=get_settings().persona_sentiment_weight,
+)
 trust_service = TrustService(db_manager)
 reply_limiter = UserRateLimiter(1, USER_REPLY_RATE_SECONDS)
 bot_last_messages: dict[int, tuple[str, datetime.datetime]] = {}
@@ -513,7 +517,11 @@ async def init_db(db_path: str | None = None) -> None:
         db_manager = DBManager(target_path)
 
     await db_manager.init_db()
-    persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
+    persona_manager = PersonaManager(
+        db_manager,
+        descriptions=get_settings().persona_descriptions,
+        sentiment_weight=get_settings().persona_sentiment_weight,
+    )
     trust_service = TrustService(db_manager)
     CURRENT_DB_PATH = db_manager.db_path
 
@@ -1056,7 +1064,11 @@ class SocialGraphBot(commands.Bot):
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler(db_manager)
         self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
-        self.persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
+        self.persona_manager = PersonaManager(
+            db_manager,
+            descriptions=get_settings().persona_descriptions,
+            sentiment_weight=get_settings().persona_sentiment_weight,
+        )
         self._subscriber: Subscriber | None = None
         self._projects_board: ProjectsBoard | None = None
         self.response_queue = ResponseQueue(
@@ -1069,7 +1081,11 @@ class SocialGraphBot(commands.Bot):
     async def setup_hook(self) -> None:
         await db_manager.connect()
         await init_db()
-        self.persona_manager = PersonaManager(db_manager, descriptions=get_settings().persona_descriptions)
+        self.persona_manager = PersonaManager(
+            db_manager,
+            descriptions=get_settings().persona_descriptions,
+            sentiment_weight=get_settings().persona_sentiment_weight,
+        )
 
         await _ensure_nats()
         if _nats_client is not None and _js_context is not None:
@@ -1332,7 +1348,9 @@ class SocialGraphBot(commands.Bot):
                 else:
                     persona_desc = ""
                     try:
-                        persona_desc = await self.persona_manager.get_description(message.author.id)
+                        persona_desc = await self.persona_manager.get_description(
+                            message.author.id, channel_id=message.channel.id
+                        )
                     except Exception:
                         logger.exception("Persona description lookup failed")
                     prompt = _build_persona_prompt([message.content], persona_desc, memory_snippets)
@@ -1341,7 +1359,9 @@ class SocialGraphBot(commands.Bot):
                         reply = llm_reply
                         reply_from_llm = True
                     else:
-                        persona = await self.persona_manager.get_persona(message.author.id)
+                        persona = await self.persona_manager.get_persona(
+                            message.author.id, channel_id=message.channel.id
+                        )
                         persona_used = persona
                         reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
             if reply and memory_hint and not reply_from_llm:
