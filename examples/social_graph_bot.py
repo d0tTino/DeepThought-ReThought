@@ -1028,6 +1028,8 @@ class SocialGraphBot(commands.Bot):
         require_scheduled_events: bool = False,
         holiday_locale: str = DEFAULT_HOLIDAY_LOCALE,
         command_prefix: str = "!",
+        require_mention_or_prefix: bool = False,
+        message_prefixes: list[str] | tuple[str, ...] | None = None,
         **kwargs,
     ):
         intents = discord.Intents.default()
@@ -1042,6 +1044,13 @@ class SocialGraphBot(commands.Bot):
         self.index_channel_id = index_channel_id
         self.require_scheduled_events = require_scheduled_events
         self.holiday_locale = holiday_locale
+        self.require_mention_or_prefix = require_mention_or_prefix
+        self.message_prefixes: list[str] = []
+        prefixes = message_prefixes if message_prefixes is not None else command_prefix
+        if isinstance(prefixes, str):
+            self.message_prefixes = [prefixes]
+        elif isinstance(prefixes, (list, tuple)):
+            self.message_prefixes = [p for p in prefixes if isinstance(p, str)]
         self._bg_tasks: list[asyncio.Task] = []
         self.goal_scheduler = GoalScheduler(db_manager)
         self.scheduler_service: SchedulerService | None = None  # noqa: F821 - optional feature
@@ -1133,6 +1142,16 @@ class SocialGraphBot(commands.Bot):
 
         if any(getattr(m, "bot", False) for m in message.mentions) and self.user not in message.mentions:
             return
+
+        if self.require_mention_or_prefix:
+            content = message.content or ""
+            has_prefix = bool(
+                self.message_prefixes
+                and isinstance(content, str)
+                and any(content.startswith(prefix) for prefix in self.message_prefixes)
+            )
+            if self.user not in message.mentions and not has_prefix:
+                return
 
         if not await handle_bot_handshake(message):
             return
@@ -1443,6 +1462,7 @@ async def run(
     index_channel_id: int | None = None,
     require_scheduled_events: bool = False,
     holiday_locale: str = DEFAULT_HOLIDAY_LOCALE,
+    require_mention_or_prefix: bool = True,
 ) -> None:
     """Run the SocialGraphBot."""
     bot = SocialGraphBot(
@@ -1451,6 +1471,7 @@ async def run(
         index_channel_id=index_channel_id,
         require_scheduled_events=require_scheduled_events,
         holiday_locale=holiday_locale,
+        require_mention_or_prefix=require_mention_or_prefix,
     )
     try:
         await bot.start(token)
