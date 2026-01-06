@@ -1384,12 +1384,22 @@ class SocialGraphBot(commands.Bot):
             if safe_reply is None:
                 logger.info("Reply blocked by response filter")
                 return
+            mention_author = message.channel.id not in NO_MENTION_CHANNEL_IDS
+
             async def dispatch_reply() -> None:
-                await self.send_filtered(message.channel, safe_reply)
-                our_message_times.append(discord.utils.utcnow())
-                if message.author.bot:
-                    global last_bot_reply_time
-                    last_bot_reply_time = discord.utils.utcnow()
+                async with message.channel.typing():
+                    try:
+                        await message.reply(safe_reply, mention_author=mention_author)
+                    except Exception:
+                        content = safe_reply
+                        if mention_author and not getattr(message.author, "bot", False):
+                            mention = getattr(message.author, "mention", f"<@{message.author.id}>")
+                            content = f"{mention} {safe_reply}"
+                        await self.send_filtered(message.channel, content)
+                    our_message_times.append(discord.utils.utcnow())
+                    if message.author.bot:
+                        global last_bot_reply_time
+                        last_bot_reply_time = discord.utils.utcnow()
 
             await self.enqueue_response(message.channel, dispatch_reply)
 

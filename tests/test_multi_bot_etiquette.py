@@ -58,9 +58,11 @@ class DummyChannel:
     def __init__(self, channel_id=1):
         self.id = channel_id
         self.sent_messages = []
+        self.sent_references = []
 
     async def send(self, content, reference=None):
         self.sent_messages.append(content)
+        self.sent_references.append(reference)
 
     def history(self, limit=1):
         async def _gen():
@@ -174,4 +176,69 @@ async def test_silence_on_message_cap(monkeypatch, tmp_path):
     message = DummyMessage("hi")
     await bot.on_message(message)
     assert message.channel.sent_messages == []
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_replies_to_trigger_message(monkeypatch, tmp_path):
+    sg = reload_sg(monkeypatch)
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(sg, "evaluate_triggers", lambda message: [])
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    message = DummyMessage("hi there")
+    await bot.on_message(message)
+
+    assert len(message.replies) == 1
+    assert message.replies[0]["mention_author"] is True
+    assert message.channel.sent_references == [message]
+
+    await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_respects_no_mention_channels(monkeypatch, tmp_path):
+    monkeypatch.setenv("NO_MENTION_CHANNEL_IDS", "1")
+    sg = reload_sg(monkeypatch)
+    sg.db_manager = sg.DBManager(str(tmp_path / "sg.db"))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(sg, "evaluate_triggers", lambda message: [])
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "uniform", lambda a, b: 0)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    message = DummyMessage("hello")
+    await bot.on_message(message)
+
+    assert len(message.replies) == 1
+    assert message.replies[0]["mention_author"] is False
+    assert message.channel.sent_references == [message]
+
     await sg.db_manager.close()
