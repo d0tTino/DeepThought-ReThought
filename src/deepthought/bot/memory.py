@@ -82,8 +82,8 @@ async def is_do_not_mock(user_id: int) -> bool:
     return await _db().is_do_not_mock(user_id)
 
 
-async def adjust_affinity(user_id: int, delta: float) -> None:
-    await _db().adjust_affinity(user_id, delta)
+async def adjust_affinity(user_id: int, delta: float, target_id: int | None = None) -> None:
+    await _db().adjust_affinity(user_id, delta, target_id=target_id)
 
 
 async def get_affinity(user_id: int) -> int:

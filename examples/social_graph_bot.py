@@ -1147,6 +1147,60 @@ class SocialGraphBot(commands.Bot):
             return
         await channel.send(sanitized, **kwargs)
 
+    async def _resolve_reply_author(self, message: discord.Message):
+        reference = getattr(message, "reference", None)
+        if reference is None:
+            return None
+        resolved = getattr(reference, "resolved", None)
+        if resolved is None:
+            message_id = getattr(reference, "message_id", None)
+            fetch_message = getattr(message.channel, "fetch_message", None)
+            if message_id is not None and callable(fetch_message):
+                try:
+                    resolved = await fetch_message(message_id)
+                except Exception:
+                    resolved = None
+        if resolved is None:
+            return None
+        return getattr(resolved, "author", None)
+
+    async def _extract_target_ids(self, message: discord.Message) -> list[int]:
+        targets: list[object] = []
+        mentions = getattr(message, "mentions", None)
+        if mentions:
+            targets.extend(mentions)
+        reply_author = await self._resolve_reply_author(message)
+        if reply_author is not None:
+            targets.append(reply_author)
+        seen: set[int] = set()
+        target_ids: list[int] = []
+        author_id = getattr(message.author, "id", None)
+        author_is_bot = getattr(message.author, "bot", False)
+        for target in targets:
+            target_id = getattr(target, "id", None)
+            if target_id is None or target_id == author_id:
+                continue
+            target_is_bot = getattr(target, "bot", False)
+            if author_is_bot and target_is_bot:
+                continue
+            if target_id in seen:
+                continue
+            seen.add(target_id)
+            target_ids.append(target_id)
+        return target_ids
+
+    async def _log_interactions(
+        self,
+        user_id: int,
+        target_ids: list[int],
+        sentiment_score: float | None = None,
+    ) -> None:
+        if target_ids:
+            for target_id in target_ids:
+                await log_interaction(user_id, target_id, sentiment_score=sentiment_score)
+            return
+        await log_interaction(user_id, None, sentiment_score=sentiment_score)
+
     async def on_message(self, message: discord.Message) -> None:
         global last_bot_reply_time, last_other_bot_message_time
         if message.author == self.user:
@@ -1201,6 +1255,8 @@ class SocialGraphBot(commands.Bot):
             await trust_service.penalize_banned(message.author.id)
             return
 
+        target_ids = await self._extract_target_ids(message)
+
         lie_reply = await maybe_deceptive_reply(message.author.id, message.content)
         if lie_reply:
             if DECEPTION_REPLY_MODE == "dynamic" and lie_reply != DECEPTION_COVER_MESSAGE:
@@ -1220,7 +1276,7 @@ class SocialGraphBot(commands.Bot):
 
             await self.enqueue_response(message.channel, send_cover_reply)
             await store_memory(message.author.id, cover_reply, topic="deception")
-            await log_interaction(message.author.id, message.channel.id)
+            await self._log_interactions(message.author.id, target_ids)
             await publish_input_received(message.content)
             await send_to_prism(
                 {
@@ -1257,7 +1313,8 @@ class SocialGraphBot(commands.Bot):
         elif sentiment_score <= -SENTIMENT_THRESHOLD:
             affinity_delta = AFFINITY_NEG_DELTA
         if affinity_delta:
-            await adjust_affinity(message.author.id, affinity_delta)
+            primary_target_id = target_ids[0] if target_ids else None
+            await adjust_affinity(message.author.id, affinity_delta, target_id=primary_target_id)
 
         await db_manager.record_emotion(message.author.id, emotions)
 
@@ -1404,7 +1461,7 @@ class SocialGraphBot(commands.Bot):
             await self.enqueue_response(message.channel, dispatch_reply)
 
         # Log the interaction
-        await log_interaction(message.author.id, message.channel.id)
+        await self._log_interactions(message.author.id, target_ids)
 
         # Publish event and forward to Prism
         await publish_input_received(message.content)
