@@ -1162,7 +1162,12 @@ class DBManager:
             return 0
         return int(value)
 
-    async def adjust_affinity(self, user_id: int, delta: float) -> None:
+    async def adjust_affinity(
+        self,
+        user_id: int,
+        delta: float,
+        target_id: int | None = None,
+    ) -> None:
         delta_int = self._affinity_delta(delta)
         if not delta_int:
             return
