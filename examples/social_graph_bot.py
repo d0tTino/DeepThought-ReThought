@@ -60,6 +60,7 @@ DECEPTION_REPLY_MODE = bot_deception.DECEPTION_REPLY_MODE
 DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
 from deepthought.goal_scheduler import GoalScheduler
 from deepthought.perception.emotion_detection import detect_emotions
+from deepthought.perception.personality_detection import infer_personality
 from deepthought.perception.social_perception import analyze as analyze_social
 from deepthought.plugins.projects_board import DEFAULT_HOLIDAY_LOCALE, ProjectsBoard
 from deepthought.services import CognitiveCoreService, PersonaManager, TrustService
@@ -644,7 +645,11 @@ last_other_bot_message_time: datetime.datetime | None = None
 # Track handshake completions and per-bot cooldowns
 bot_handshakes: dict[int, datetime.datetime] = {}
 bot_reply_times: dict[int, datetime.datetime] = {}
-fact_context_cache: dict[int, tuple[str, datetime.datetime]] = {}
+_personality_message_buffers: dict[int, deque[str]] = {}
+_personality_message_counts: dict[int, int] = {}
+
+PERSONALITY_TRAIT_UPDATE_EVERY = 5
+PERSONALITY_TRAIT_WINDOW = 12
 
 
 async def init_db(db_path: str | None = None) -> None:
@@ -746,6 +751,22 @@ def log_thought(bot: discord.Client, text: str) -> None:
     except RuntimeError:  # pragma: no cover - no loop available
         return
     loop.create_task(_send_thought(bot, text))
+
+
+async def _maybe_update_personality_traits(user_id: int, message_text: str) -> None:
+    buffer = _personality_message_buffers.setdefault(
+        user_id, deque(maxlen=PERSONALITY_TRAIT_WINDOW)
+    )
+    buffer.append(message_text)
+    count = _personality_message_counts.get(user_id, 0) + 1
+    _personality_message_counts[user_id] = count
+    if count % PERSONALITY_TRAIT_UPDATE_EVERY:
+        return
+    traits = infer_personality(list(buffer))
+    try:
+        await persona_manager.update_personality(user_id, traits)
+    except Exception:
+        logger.exception("Failed to update personality traits for user %s", user_id)
 
 
 async def emit_refusal(
@@ -1476,6 +1497,8 @@ class SocialGraphBot(commands.Bot):
         except Exception:
             logger.exception("Failed to extract user facts")
         await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
+        if not message.author.bot:
+            await _maybe_update_personality_traits(message.author.id, message.content)
         affinity_delta = None
         if sentiment_score >= SENTIMENT_THRESHOLD:
             affinity_delta = AFFINITY_POS_DELTA
