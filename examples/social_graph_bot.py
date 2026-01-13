@@ -43,6 +43,7 @@ from deepthought.bot.memory import (
     store_theory,
     update_sentiment_trend,
 )
+from deepthought.memory.fact_extractor import build_user_fact_context, extract_and_store_user_facts
 
 # Re-export bot helper functions and configuration values for convenience
 maybe_deceptive_reply = bot_deception.maybe_deceptive_reply
@@ -271,6 +272,7 @@ MINIMAL_REPLY_PROB = float(os.getenv("MINIMAL_REPLY_PROB", "0.05"))
 MINIMAL_REPLIES = ["...", "👍", "No"]
 AVOIDANCE_REPLY = "Take your time; I'm here if you need me."
 REFUSAL_MESSAGE = "I'm sorry, but I can't help with that."
+FACT_CONTEXT_TTL_SECONDS = int(os.getenv("FACT_CONTEXT_TTL_SECONDS", "900"))
 FOE_MODE_CAP_ENABLED = os.getenv("FOE_MODE_CAP_ENABLED", "true").lower() in {
     "true",
     "1",
@@ -456,7 +458,10 @@ def _get_text_adapter() -> LLMTextAdapter:
 
 
 def _build_persona_prompt(
-    messages: List[str], persona_desc: str, memory_snippets: list[str] | None = None
+    messages: List[str],
+    persona_desc: str,
+    memory_snippets: list[str] | None = None,
+    fact_context: str | None = None,
 ) -> str:
     """Return a prompt that includes persona, memory context, and message history."""
 
@@ -467,6 +472,8 @@ def _build_persona_prompt(
     if memory_snippets:
         memory_lines = "\n".join(f"- {snippet}" for snippet in memory_snippets)
         sections.append(f"Memory notes:\n{memory_lines}")
+    if fact_context:
+        sections.append(fact_context)
     sections.append(history)
     return "\n\n".join(sections)
 
@@ -528,6 +535,15 @@ def _build_memory_hint(memory_snippets: list[str]) -> str:
     return f"You mentioned {summary} earlier."
 
 
+def _build_fact_hint(fact_context: str | None) -> str:
+    if not fact_context:
+        return ""
+    summary = re.sub(r"\s+", " ", fact_context).strip()
+    if len(summary) > 120:
+        summary = summary[:117] + "..."
+    return f"Reminder: {summary}"
+
+
 def _append_memory_hint(reply: str, memory_hint: str) -> str:
     """Append memory hint to reply with proper spacing."""
 
@@ -540,13 +556,20 @@ def _append_memory_hint(reply: str, memory_hint: str) -> str:
     return f"{reply}. {memory_hint}"
 
 
-def build_reply_prompt(user_text: str, memory_snippets: list[str]) -> str:
+def build_reply_prompt(
+    user_text: str,
+    memory_snippets: list[str],
+    fact_context: str | None = None,
+) -> str:
     """Assemble a reply prompt with optional memory context."""
     lines = ["You are a conversational social bot.", "MEMORY_RETRIEVED:"]
     if memory_snippets:
         lines.extend(f"- {snippet}" for snippet in memory_snippets)
     else:
         lines.append("- (none)")
+    if fact_context:
+        lines.append("USER_FACTS:")
+        lines.append(fact_context)
     lines.extend(
         [
             "Respond naturally and briefly.",
@@ -557,10 +580,30 @@ def build_reply_prompt(user_text: str, memory_snippets: list[str]) -> str:
     return "\n".join(lines)
 
 
-async def generate_contextual_reply(user_text: str, memory_snippets: list[str]) -> str | None:
-    prompt = build_reply_prompt(user_text, memory_snippets)
+async def generate_contextual_reply(
+    user_text: str,
+    memory_snippets: list[str],
+    fact_context: str | None = None,
+) -> str | None:
+    prompt = build_reply_prompt(user_text, memory_snippets, fact_context)
     adapter = _get_text_adapter()
     return await adapter.generate(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
+
+
+def _dedupe_fact_context(
+    user_id: int,
+    fact_context: str | None,
+    now: datetime.datetime,
+) -> str | None:
+    if not fact_context:
+        return None
+    cached = fact_context_cache.get(user_id)
+    if cached:
+        cached_fact, cached_time = cached
+        if cached_fact == fact_context and (now - cached_time).total_seconds() < FACT_CONTEXT_TTL_SECONDS:
+            return None
+    fact_context_cache[user_id] = (fact_context, now)
+    return fact_context
 
 
 async def generate_llm_reply(prompt: str) -> str | None:
@@ -1445,6 +1488,14 @@ class SocialGraphBot(commands.Bot):
             topic=topic,
             sentiment_score=sentiment_score,
         )
+        try:
+            await extract_and_store_user_facts(
+                message.author.id,
+                message.content,
+                db_manager=db_manager,
+            )
+        except Exception:
+            logger.exception("Failed to extract user facts")
         await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
         if not message.author.bot:
             await _maybe_update_personality_traits(message.author.id, message.content)
@@ -1508,6 +1559,12 @@ class SocialGraphBot(commands.Bot):
 
         memories = await recall_user(message.author.id, limit=MAX_MEMORY_PROMPT_SNIPPETS)
         memory_snippets = _format_memory_snippets(memories, MAX_MEMORY_PROMPT_SNIPPETS)
+        fact_context = None
+        try:
+            raw_fact_context = await build_user_fact_context(message.author.id, db_manager=db_manager)
+            fact_context = _dedupe_fact_context(message.author.id, raw_fact_context, discord.utils.utcnow())
+        except Exception:
+            logger.exception("Failed to build user fact context")
         retrieved_facts: list[str] = []
         cognitive_core = _get_cognitive_core_service()
         if cognitive_core is not None:
@@ -1521,6 +1578,7 @@ class SocialGraphBot(commands.Bot):
             except Exception:
                 logger.exception("Failed to retrieve cognitive core facts")
         memory_hint = _build_memory_hint(memory_snippets)
+        fact_hint = _build_fact_hint(fact_context)
         persona_snippets = _merge_memory_snippets(memory_snippets, retrieved_facts)
         if memories:
             logger.info(f"Recalling memories for {message.author.id}: {memories}")
@@ -1564,7 +1622,12 @@ class SocialGraphBot(commands.Bot):
                         )
                     except Exception:
                         logger.exception("Persona description lookup failed")
-                    prompt = _build_persona_prompt([message.content], persona_desc, persona_snippets)
+                    prompt = _build_persona_prompt(
+                        [message.content],
+                        persona_desc,
+                        persona_snippets,
+                        fact_context=fact_context,
+                    )
                     llm_reply = await generate_llm_reply(prompt)
                     if llm_reply:
                         reply = llm_reply
@@ -1575,8 +1638,11 @@ class SocialGraphBot(commands.Bot):
                         )
                         persona_used = persona
                         reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
-            if reply and memory_hint and not reply_from_llm:
-                reply = _append_memory_hint(reply, memory_hint)
+            if reply and not reply_from_llm:
+                if memory_hint:
+                    reply = _append_memory_hint(reply, memory_hint)
+                if fact_hint:
+                    reply = _append_memory_hint(reply, fact_hint)
             if FOE_MODE_CAP_ENABLED and persona_used == "snarky":
                 severity, matches = evaluate_toxicity(reply)
                 if severity > FOE_MODE_MAX_SEVERITY:
