@@ -461,6 +461,7 @@ def _build_persona_prompt(
     messages: List[str],
     persona_desc: str,
     memory_snippets: list[str] | None = None,
+    graph_facts: list[str] | None = None,
     fact_context: str | None = None,
 ) -> str:
     """Return a prompt that includes persona, memory context, and message history."""
@@ -472,6 +473,9 @@ def _build_persona_prompt(
     if memory_snippets:
         memory_lines = "\n".join(f"- {snippet}" for snippet in memory_snippets)
         sections.append(f"Memory notes:\n{memory_lines}")
+    if graph_facts:
+        graph_lines = "\n".join(f"- {snippet}" for snippet in graph_facts)
+        sections.append(f"Graph facts:\n{graph_lines}")
     if fact_context:
         sections.append(fact_context)
     sections.append(history)
@@ -497,6 +501,18 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
 
 MAX_MEMORY_PROMPT_SNIPPETS = int(os.getenv("MEMORY_PROMPT_SNIPPETS", "5"))
 LLM_REPLY_MAX_NEW_TOKENS = int(os.getenv("LLM_REPLY_MAX_NEW_TOKENS", "40"))
+ENABLE_COGNITIVE_CORE_MEMORY = os.getenv("ENABLE_COGNITIVE_CORE_MEMORY", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+ENABLE_MEMORY_QUERY_BACKEND = os.getenv("ENABLE_MEMORY_QUERY_BACKEND", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+MEMORY_QUERY_ENDPOINT = os.getenv("MEMORY_QUERY_ENDPOINT", "http://localhost:8000/memory/query")
+MEMORY_QUERY_TIMEOUT_SECONDS = float(os.getenv("MEMORY_QUERY_TIMEOUT_SECONDS", "3"))
 
 
 def _format_memory_snippets(memories: list[tuple[str, str]], limit: int) -> list[str]:
@@ -559,14 +575,21 @@ def _append_memory_hint(reply: str, memory_hint: str) -> str:
 def build_reply_prompt(
     user_text: str,
     memory_snippets: list[str],
+    graph_facts: list[str] | None = None,
     fact_context: str | None = None,
 ) -> str:
     """Assemble a reply prompt with optional memory context."""
-    lines = ["You are a conversational social bot.", "MEMORY_RETRIEVED:"]
+    lines = ["You are a conversational social bot.", "MEMORY_NOTES:"]
     if memory_snippets:
         lines.extend(f"- {snippet}" for snippet in memory_snippets)
     else:
         lines.append("- (none)")
+    if graph_facts is not None:
+        lines.append("GRAPH_FACTS:")
+        if graph_facts:
+            lines.extend(f"- {snippet}" for snippet in graph_facts)
+        else:
+            lines.append("- (none)")
     if fact_context:
         lines.append("USER_FACTS:")
         lines.append(fact_context)
@@ -583,9 +606,10 @@ def build_reply_prompt(
 async def generate_contextual_reply(
     user_text: str,
     memory_snippets: list[str],
+    graph_facts: list[str] | None = None,
     fact_context: str | None = None,
 ) -> str | None:
-    prompt = build_reply_prompt(user_text, memory_snippets, fact_context)
+    prompt = build_reply_prompt(user_text, memory_snippets, graph_facts, fact_context)
     adapter = _get_text_adapter()
     return await adapter.generate(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
 
@@ -690,6 +714,47 @@ def _get_cognitive_core_service() -> CognitiveCoreService | None:
             logger.exception("Failed to initialize cognitive core service")
             return None
     return _cognitive_core
+
+
+def _extract_graph_facts(payload: dict) -> list[str]:
+    data = payload
+    if isinstance(data, dict) and "retrieved_knowledge" in data:
+        data = data.get("retrieved_knowledge")
+    if isinstance(data, dict) and "retrieved_knowledge" in data:
+        data = data.get("retrieved_knowledge")
+    if not isinstance(data, dict):
+        return []
+    facts = data.get("facts")
+    if not isinstance(facts, list):
+        return []
+    return [str(fact).strip() for fact in facts if str(fact).strip()]
+
+
+async def _fetch_memory_query_facts(query: str, limit: int) -> list[str]:
+    if not ENABLE_MEMORY_QUERY_BACKEND or not query:
+        return []
+    try:
+        timeout = aiohttp.ClientTimeout(total=MEMORY_QUERY_TIMEOUT_SECONDS)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(MEMORY_QUERY_ENDPOINT, json={"query": query}) as response:
+                response.raise_for_status()
+                payload = await response.json()
+    except Exception:
+        logger.exception("Failed to query memory backend at %s", MEMORY_QUERY_ENDPOINT)
+        return []
+    results = payload.get("results")
+    if not isinstance(results, list):
+        return []
+    facts: list[str] = []
+    for entry in results:
+        if not isinstance(entry, dict):
+            continue
+        facts.extend(_extract_graph_facts(entry))
+        if len(facts) >= limit:
+            break
+    if len(facts) > limit:
+        facts = facts[:limit]
+    return facts
 
 
 async def send_to_prism(data: dict) -> None:
@@ -1558,30 +1623,36 @@ class SocialGraphBot(commands.Bot):
             return
 
         memories = await recall_user(message.author.id, limit=MAX_MEMORY_PROMPT_SNIPPETS)
-        memory_snippets = _format_memory_snippets(memories, MAX_MEMORY_PROMPT_SNIPPETS)
+        sqlite_memory_snippets = _format_memory_snippets(memories, MAX_MEMORY_PROMPT_SNIPPETS)
         fact_context = None
         try:
             raw_fact_context = await build_user_fact_context(message.author.id, db_manager=db_manager)
             fact_context = _dedupe_fact_context(message.author.id, raw_fact_context, discord.utils.utcnow())
         except Exception:
             logger.exception("Failed to build user fact context")
-        retrieved_facts: list[str] = []
-        cognitive_core = _get_cognitive_core_service()
-        if cognitive_core is not None:
-            try:
-                retrieved_facts = await cognitive_core.retrieve_user_facts(
-                    message.author.id,
-                    channel_id=message.channel.id,
-                    prompt=message.content,
-                    limit=MAX_MEMORY_PROMPT_SNIPPETS,
-                )
-            except Exception:
-                logger.exception("Failed to retrieve cognitive core facts")
+        graph_facts: list[str] = []
+        if ENABLE_COGNITIVE_CORE_MEMORY:
+            cognitive_core = _get_cognitive_core_service()
+            if cognitive_core is not None:
+                try:
+                    graph_facts = await cognitive_core.retrieve_user_facts(
+                        message.author.id,
+                        channel_id=message.channel.id,
+                        prompt=message.content,
+                        limit=MAX_MEMORY_PROMPT_SNIPPETS,
+                    )
+                except Exception:
+                    logger.exception("Failed to retrieve cognitive core facts")
+        if ENABLE_MEMORY_QUERY_BACKEND:
+            memory_query_facts = await _fetch_memory_query_facts(message.content, MAX_MEMORY_PROMPT_SNIPPETS)
+            graph_facts = _merge_memory_snippets(graph_facts, memory_query_facts)
+        memory_snippets = _merge_memory_snippets(sqlite_memory_snippets, graph_facts)
         memory_hint = _build_memory_hint(memory_snippets)
         fact_hint = _build_fact_hint(fact_context)
-        persona_snippets = _merge_memory_snippets(memory_snippets, retrieved_facts)
         if memories:
             logger.info(f"Recalling memories for {message.author.id}: {memories}")
+        if graph_facts:
+            logger.info("Retrieved graph facts for %s: %s", message.author.id, graph_facts)
 
         async with message.channel.typing():
             start_time = discord.utils.utcnow()
@@ -1625,7 +1696,8 @@ class SocialGraphBot(commands.Bot):
                     prompt = _build_persona_prompt(
                         [message.content],
                         persona_desc,
-                        persona_snippets,
+                        sqlite_memory_snippets,
+                        graph_facts,
                         fact_context=fact_context,
                     )
                     llm_reply = await generate_llm_reply(prompt)
