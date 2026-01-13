@@ -18,11 +18,11 @@ async def test_personality_traits_override_affinity(tmp_path):
     assert await pm.get_persona(user) == "snarky"
 
     # Personality can push persona to friendly
-    pm.update_personality(user, {"friendly": 5})
+    await pm.update_personality(user, {"friendly": 5})
     assert await pm.get_persona(user) == "friendly"
 
     # Updating traits can shift persona again
-    pm.update_personality(user, {"friendly": 0, "playful": 2})
+    await pm.update_personality(user, {"friendly": 0, "playful": 2})
     assert await pm.get_persona(user) == "playful"
 
     await sg.db_manager.close()
@@ -37,7 +37,7 @@ async def test_personality_combines_with_affinity(tmp_path):
     await sg.adjust_affinity(user, 1)
     assert await pm.get_persona(user) == "snarky"
 
-    pm.update_personality(user, {"playful": 1})
+    await pm.update_personality(user, {"playful": 1})
     assert await pm.get_persona(user) == "playful"
 
     await sg.db_manager.close()

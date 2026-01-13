@@ -57,16 +57,22 @@ class PersonaManager:
             asyncio.run(self._db.init_db())
             self._init_task = None
 
-    def update_personality(self, user_id: int, traits: dict[str, float]) -> None:
+    async def update_personality(self, user_id: int, traits: dict[str, float]) -> None:
         """Update stored personality ``traits`` for ``user_id``.
 
         The provided ``traits`` mapping is merged with any existing traits for
-        the user, overwriting values for matching keys.
+        the user, overwriting values for matching keys. Trait maps are stored
+        as JSON dictionaries in the ``user_profiles`` table.
         """
 
+        await self._ensure_initialized()
         uid = str(user_id)
-        current = self._personality.setdefault(uid, {})
-        current.update(traits)
+        current = self._personality.get(uid)
+        if current is None:
+            current = await self._load_user_traits(user_id)
+        current.update(self._normalize_traits(traits))
+        self._personality[uid] = current
+        await self._store_user_traits(user_id, current)
 
     async def get_persona(
         self,
@@ -75,10 +81,11 @@ class PersonaManager:
         *,
         channel_id: int | str | None = None,
     ) -> str:
-        if self._init_task is not None:
-            await self._init_task
-            self._init_task = None
-        traits = self._personality.get(str(user_id), {})
+        await self._ensure_initialized()
+        uid = str(user_id)
+        traits = self._personality.get(uid)
+        if traits is None:
+            traits = await self._load_user_traits(user_id)
         relationship = None
         key = self._state_key(user_id, target_id, channel_id)
         if target_id is None:
@@ -211,3 +218,30 @@ class PersonaManager:
             return 0.0, None
         average_sentiment = sentiment_sum / message_count
         return average_sentiment * self._sentiment_weight, average_sentiment
+
+    async def _ensure_initialized(self) -> None:
+        if self._init_task is not None:
+            await self._init_task
+            self._init_task = None
+
+    async def _load_user_traits(self, user_id: int | str) -> dict[str, float]:
+        profile = await self._db.get_user_profile(user_id)
+        traits = self._normalize_traits(profile)
+        self._personality[str(user_id)] = traits
+        return traits
+
+    async def _store_user_traits(self, user_id: int | str, traits: dict[str, float]) -> None:
+        await self._db.set_user_profile(user_id, traits)
+
+    def _normalize_traits(self, traits: object | None) -> dict[str, float]:
+        if not isinstance(traits, dict):
+            return {}
+        if "traits" in traits and isinstance(traits["traits"], dict):
+            traits = traits["traits"]
+        normalized: dict[str, float] = {}
+        for key, value in traits.items():
+            try:
+                normalized[str(key)] = float(value)
+            except (TypeError, ValueError):
+                continue
+        return normalized
