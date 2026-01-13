@@ -173,6 +173,10 @@ except Exception:  # pragma: no cover - optional dependency
                 "playful": "You like to joke around in your answers.",
                 "snarky": "You reply with terse, witty sarcasm.",
             },
+            llm_model_path=None,
+            llm_adapter_path=None,
+            llm_quantization_bits=None,
+            model_path="distilgpt2",
         )
 
     class EventSubjects(SimpleNamespace):
@@ -335,36 +339,119 @@ EMOTION_REPLY_MAP = {
 # -----------------------------
 # Idle text generation helpers
 # -----------------------------
-_idle_text_generator = None
-_response_text_generator = None
+class LLMTextAdapter:
+    """Configurable adapter for local LLM text generation."""
 
+    def __init__(self) -> None:
+        settings = get_settings()
+        self._model_path = settings.llm_model_path or settings.model_path
+        self._adapter_path = settings.llm_adapter_path
+        self._quant_bits = settings.llm_quantization_bits
+        self._model = None
+        self._tokenizer = None
+        self._init_lock = asyncio.Lock()
+        self._use_stub = False
+        self._stub_responses = [
+            "I'm still warming up, but I'm here.",
+            "Give me a moment; I'm getting my thoughts together.",
+            "Let's chat! I'm still loading some context though.",
+        ]
 
-def _get_idle_generator():
-    """Return a cached HuggingFace text-generation pipeline."""
-    global _idle_text_generator
-    if _idle_text_generator is None:
-        from transformers import pipeline
+    def _load_model(self) -> None:
+        from peft import PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        import torch
 
-        model_name = os.getenv("IDLE_MODEL_NAME", "distilgpt2")
-        _idle_text_generator = pipeline("text-generation", model=model_name)
-    return _idle_text_generator
+        quant_config = None
+        if self._quant_bits in {4, 8}:
+            if self._quant_bits == 4:
+                quant_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                )
+            else:
+                quant_config = BitsAndBytesConfig(load_in_8bit=True)
+        elif self._quant_bits is not None:
+            logger.warning("Unsupported quantization bits %s; loading full precision model", self._quant_bits)
 
-
-async def _generate_text(prompt: str, *, max_new_tokens: int) -> str | None:
-    """Return generated text for ``prompt`` or ``None`` on failure."""
-    try:
-        generator = _get_idle_generator()
-        outputs = await asyncio.to_thread(
-            generator,
-            prompt,
-            max_new_tokens=max_new_tokens,
-            num_return_sequences=1,
+        model = AutoModelForCausalLM.from_pretrained(
+            self._model_path,
+            device_map="auto",
+            quantization_config=quant_config,
         )
-        text = outputs[0]["generated_text"].strip()
-        return text
-    except Exception:  # pragma: no cover - optional dependency or runtime error
-        logger.exception("Text generation failed")
-        return None
+        tokenizer = AutoTokenizer.from_pretrained(self._model_path)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        if self._adapter_path and os.path.isdir(self._adapter_path):
+            logger.info("Loading LoRA adapter from %s", self._adapter_path)
+            model = PeftModel.from_pretrained(model, self._adapter_path)
+            model = model.merge_and_unload()
+        elif self._adapter_path:
+            logger.warning("LoRA adapter path %s not found; using base model", self._adapter_path)
+        self._model = model
+        self._tokenizer = tokenizer
+
+    async def _ensure_ready(self) -> None:
+        if self._use_stub or self._model is not None:
+            return
+        async with self._init_lock:
+            if self._use_stub or self._model is not None:
+                return
+            try:
+                await asyncio.to_thread(self._load_model)
+            except Exception:
+                logger.exception("Failed to initialize LLM adapter; falling back to stub")
+                self._use_stub = True
+
+    def _generate_stub(self, prompt: str) -> str:
+        choice = random.choice(self._stub_responses)
+        if prompt.strip().endswith("Bot:"):
+            return choice
+        return f"{choice} (prompt: {prompt[:120].strip()})"
+
+    def _generate_sync(self, prompt: str, max_new_tokens: int) -> str:
+        import torch
+
+        if self._model is None or self._tokenizer is None:
+            return self._generate_stub(prompt)
+        inputs = self._tokenizer(prompt, return_tensors="pt")
+        if hasattr(self._model, "device"):
+            inputs = {key: value.to(self._model.device) for key, value in inputs.items()}
+        with torch.no_grad():
+            outputs = self._model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                temperature=0.7,
+                pad_token_id=self._tokenizer.eos_token_id,
+            )
+        generated = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
+        if generated.startswith(prompt):
+            return generated[len(prompt) :].strip()  # noqa: E203
+        return generated.strip()
+
+    async def generate(self, prompt: str, *, max_new_tokens: int) -> str | None:
+        await self._ensure_ready()
+        if self._use_stub:
+            return self._generate_stub(prompt)
+        try:
+            return await asyncio.to_thread(self._generate_sync, prompt, max_new_tokens)
+        except Exception:
+            logger.exception("LLM generation failed; using stub response")
+            self._use_stub = True
+            return self._generate_stub(prompt)
+
+
+_text_adapter: LLMTextAdapter | None = None
+
+
+def _get_text_adapter() -> LLMTextAdapter:
+    global _text_adapter
+    if _text_adapter is None:
+        _text_adapter = LLMTextAdapter()
+    return _text_adapter
 
 
 def _build_persona_prompt(
@@ -396,7 +483,8 @@ async def generate_idle_response(prompt: str | None = None) -> str | None:
         if topics:
             gen_prompt = ", ".join(topics) + ": " + gen_prompt
 
-    return await _generate_text(gen_prompt, max_new_tokens=20)
+    adapter = _get_text_adapter()
+    return await adapter.generate(gen_prompt, max_new_tokens=20)
 
 
 MAX_MEMORY_PROMPT_SNIPPETS = int(os.getenv("MEMORY_PROMPT_SNIPPETS", "5"))
@@ -470,13 +558,15 @@ def build_reply_prompt(user_text: str, memory_snippets: list[str]) -> str:
 
 async def generate_contextual_reply(user_text: str, memory_snippets: list[str]) -> str | None:
     prompt = build_reply_prompt(user_text, memory_snippets)
-    return await _generate_text(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
+    adapter = _get_text_adapter()
+    return await adapter.generate(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
 
 
 async def generate_llm_reply(prompt: str) -> str | None:
     """Generate an LLM reply for ``prompt`` using the contextual generator."""
 
-    return await _generate_text(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
+    adapter = _get_text_adapter()
+    return await adapter.generate(prompt, max_new_tokens=LLM_REPLY_MAX_NEW_TOKENS)
 
 
 # Simple list of phrases considered bullying
