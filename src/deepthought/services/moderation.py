@@ -1,7 +1,8 @@
 import logging
 import os
 import re
-from typing import Iterable, Mapping, MutableMapping, Sequence, Tuple
+from importlib import import_module
+from typing import Callable, Iterable, Mapping, MutableMapping, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ TOXICITY_CHECK_ENABLED = os.getenv("MODERATION_TOXICITY_ENABLED", "true").lower(
     "yes",
 }
 TOXICITY_THRESHOLD = float(os.getenv("MODERATION_TOXICITY_THRESHOLD", "0.6"))
+TOXICITY_CLASSIFIER_PATH = os.getenv("MODERATION_TOXICITY_CLASSIFIER", "")
 
 # Lightweight toxicity lexicon with severity weights. Users can add terms via
 # ``MODERATION_PROFANITY_LIST``, using comma-separated entries. Each entry can
@@ -71,6 +73,45 @@ DEFAULT_TOXICITY_TERMS: Mapping[str, float] = {
     "piece of": 0.6,
     "kill yourself": 1.0,
 }
+
+ToxicityClassifier = Callable[[str], object]
+
+
+def _load_toxicity_classifier(path: str) -> ToxicityClassifier:
+    module_path, _, attr_name = path.rpartition(":")
+    if not module_path or not attr_name:
+        raise ValueError("Toxicity classifier path must be in 'module:attribute' format")
+    module = import_module(module_path)
+    classifier = getattr(module, attr_name)
+    if not callable(classifier):
+        raise TypeError(f"Toxicity classifier {path!r} is not callable")
+    return classifier
+
+
+def _parse_classifier_result(result: object) -> Tuple[float | None, Sequence[str]]:
+    matches: list[str] = []
+    score: float | None = None
+    score_value: object | None = None
+    matches_value: object | None = None
+    if isinstance(result, tuple) and len(result) == 2:
+        score_value, matches_value = result
+    elif isinstance(result, Mapping):
+        score_value = result.get("score") or result.get("toxicity") or result.get("value")
+        matches_value = result.get("matches") or result.get("terms") or result.get("labels")
+    else:
+        score_value = result
+    try:
+        if score_value is not None:
+            score = float(score_value)
+    except (TypeError, ValueError):
+        score = None
+    if isinstance(matches_value, str):
+        matches = [matches_value]
+    elif isinstance(matches_value, Sequence) and not isinstance(matches_value, (str, bytes)):
+        matches = [str(item) for item in matches_value if item]
+    if score is not None:
+        score = max(0.0, min(score, 1.0))
+    return score, matches
 
 
 def _parse_weighted_terms(raw_terms: str) -> MutableMapping[str, float]:
@@ -103,6 +144,16 @@ def _build_toxicity_terms() -> MutableMapping[str, float]:
 
 TOXICITY_TERMS: Mapping[str, float] = _build_toxicity_terms()
 _MAX_TOXICITY_WEIGHT = max(TOXICITY_TERMS.values(), default=1.0)
+_TOXICITY_CLASSIFIER: ToxicityClassifier | None = None
+if TOXICITY_CLASSIFIER_PATH:
+    try:
+        _TOXICITY_CLASSIFIER = _load_toxicity_classifier(TOXICITY_CLASSIFIER_PATH)
+    except Exception:
+        logger.warning(
+            "Unable to load toxicity classifier %s; falling back to lexicon scoring",
+            TOXICITY_CLASSIFIER_PATH,
+            exc_info=True,
+        )
 
 
 def evaluate_toxicity(
@@ -113,6 +164,16 @@ def evaluate_toxicity(
     """Return a toxicity score and matched terms for ``text``."""
     if not isinstance(text, str):
         return 0.0, []
+    if _TOXICITY_CLASSIFIER is not None:
+        try:
+            score, matches = _parse_classifier_result(_TOXICITY_CLASSIFIER(text))
+            if score is not None:
+                return score, matches
+        except Exception:
+            logger.warning(
+                "Toxicity classifier failed; falling back to lexicon scoring",
+                exc_info=True,
+            )
     lexicon = terms or TOXICITY_TERMS
     lowered = text.lower()
     matches: list[str] = []

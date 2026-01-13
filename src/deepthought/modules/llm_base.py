@@ -154,12 +154,16 @@ class BaseLLM(ABC):
             else:
                 response_text = generated.strip()
 
-            if self._response_filter_enabled and not self._response_filter.is_safe(response_text):
-                logger.warning(
-                    "Response filtered for input_id %s; using fallback response",
-                    input_id,
-                )
-                response_text = self._response_filter_fallback
+            if self._response_filter_enabled:
+                sanitized = self._response_filter.sanitize(response_text)
+                if sanitized is None:
+                    logger.warning(
+                        "Response filtered for input_id %s; using fallback response",
+                        input_id,
+                    )
+                    response_text = self._response_filter_fallback
+                else:
+                    response_text = sanitized
 
             payload = ResponseGeneratedPayload(
                 final_response=response_text,
