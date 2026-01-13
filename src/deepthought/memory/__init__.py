@@ -13,6 +13,14 @@ from .vector_store import (
     VectorStore,
     create_vector_store,
 )
+from .fact_extractor import (
+    build_user_fact_context,
+    extract_and_store_user_facts,
+    extract_user_facts,
+    format_user_facts_for_prompt,
+    get_user_fact_profile,
+    merge_user_profiles,
+)
 
 __all__ = [
     "HierarchicalMemory",
@@ -23,6 +31,12 @@ __all__ = [
     "SimpleEmbeddingFunction",
     "TieredMemory",
     "create_memory_backend",
+    "build_user_fact_context",
+    "extract_and_store_user_facts",
+    "extract_user_facts",
+    "format_user_facts_for_prompt",
+    "get_user_fact_profile",
+    "merge_user_profiles",
 ]
 
 
