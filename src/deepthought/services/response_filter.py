@@ -50,6 +50,24 @@ class ResponseFilter:
     toxicity_threshold: float | None = moderation.TOXICITY_THRESHOLD
     toxicity_terms: Mapping[str, float] | None = None
 
+    def _log_decision(
+        self,
+        *,
+        allowed: bool,
+        reason: str,
+        text: str,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        if not moderation.MODERATION_LOG_DECISIONS:
+            return
+        logger.info(
+            "Response filter decision: allowed=%s reason=%s details=%s text_preview=%s",
+            allowed,
+            reason,
+            {} if details is None else details,
+            text[:160].replace("\n", " "),
+        )
+
     def is_safe(self, text: str) -> bool:
         sanitized = self.sanitize(text)
         return sanitized is not None
@@ -65,19 +83,37 @@ class ResponseFilter:
             pattern = re.compile(
                 "|".join(re.escape(term) for term in self.denylist), re.IGNORECASE
             )
+            matches = pattern.findall(sanitized)
 
             def _sub(match: re.Match[str]) -> str:
                 return self.replacement
 
             sanitized = pattern.sub(_sub, sanitized)
+            if matches:
+                self._log_decision(
+                    allowed=True,
+                    reason="denylist_replace",
+                    text=sanitized,
+                    details={"matches": sorted({match.lower() for match in matches})},
+                )
 
         if self.classifier is not None:
             try:
                 if not self.classifier(sanitized):
+                    self._log_decision(
+                        allowed=False,
+                        reason="classifier_blocked",
+                        text=sanitized,
+                    )
                     return None
             except Exception:
                 logger.warning(
                     "Response classifier failed; treating as unsafe", exc_info=True
+                )
+                self._log_decision(
+                    allowed=False,
+                    reason="classifier_error",
+                    text=sanitized,
                 )
                 return None
 
@@ -91,7 +127,27 @@ class ResponseFilter:
                     score,
                     matches,
                 )
+                self._log_decision(
+                    allowed=False,
+                    reason="toxicity_blocked",
+                    text=sanitized,
+                    details={
+                        "score": round(score, 3),
+                        "threshold": self.toxicity_threshold,
+                        "matches": list(matches),
+                    },
+                )
                 return None
+            self._log_decision(
+                allowed=True,
+                reason="toxicity_checked",
+                text=sanitized,
+                details={
+                    "score": round(score, 3),
+                    "threshold": self.toxicity_threshold,
+                    "matches": list(matches),
+                },
+            )
 
         return sanitized
 
