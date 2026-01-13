@@ -114,6 +114,50 @@ class CognitiveCoreService(BaseService):
                 merged.append(item)
         return merged
 
+    async def retrieve_user_facts(
+        self,
+        user_id: str | int,
+        channel_id: str | int | None = None,
+        *,
+        prompt: str | None = None,
+        limit: int | None = None,
+    ) -> List[str]:
+        """Return top facts/snippets for ``user_id`` and ``channel_id``."""
+
+        max_items = self._top_k if limit is None else int(limit)
+        if max_items <= 0:
+            return []
+
+        seed_prompt = prompt
+        if not seed_prompt:
+            seed_parts = []
+            if user_id is not None:
+                seed_parts.append(f"user:{user_id}")
+            if channel_id is not None:
+                seed_parts.append(f"channel:{channel_id}")
+            seed_prompt = " ".join(seed_parts)
+
+        memory_facts = self.retrieve_context(seed_prompt) if seed_prompt else []
+        db_snippets: List[str] = []
+        if self._db is not None and user_id is not None:
+            rows = await self._db.recall_user(user_id, limit=max_items)
+            for topic, memory in rows:
+                if not memory or not str(memory).strip():
+                    continue
+                entry = f"[{topic}] {memory}" if topic else str(memory)
+                db_snippets.append(entry.strip())
+
+        merged: List[str] = []
+        seen = set()
+        for item in memory_facts + db_snippets:
+            if item in seen:
+                continue
+            seen.add(item)
+            merged.append(item)
+            if len(merged) >= max_items:
+                break
+        return merged
+
     async def _db_context(self) -> List[str]:
         rows = await self._db.recall_user("user", limit=self._top_k)
         return [m[1] for m in rows]
@@ -127,7 +171,8 @@ class CognitiveCoreService(BaseService):
                 raise ValueError("InputReceived payload must be a dict")
             input_id = data.get("input_id")
             user_input = data.get("user_input")
-            user_id = data.get("user_id") or (msg.headers.get("user_id") if msg.headers else None)
+            headers = getattr(msg, "headers", None)
+            user_id = data.get("user_id") or (headers.get("user_id") if headers else None)
             if not isinstance(user_id, str):
                 user_id = None
             if not isinstance(input_id, str) or not isinstance(user_input, str):

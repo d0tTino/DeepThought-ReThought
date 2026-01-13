@@ -61,7 +61,7 @@ from deepthought.goal_scheduler import GoalScheduler
 from deepthought.perception.emotion_detection import detect_emotions
 from deepthought.perception.social_perception import analyze as analyze_social
 from deepthought.plugins.projects_board import DEFAULT_HOLIDAY_LOCALE, ProjectsBoard
-from deepthought.services import PersonaManager, TrustService
+from deepthought.services import CognitiveCoreService, PersonaManager, TrustService
 from deepthought.services.db_manager import DBManager
 from deepthought.services.manipulative_detection import manipulation_score
 from deepthought.services.moderation import evaluate_toxicity, get_profanity_list, is_allowed
@@ -417,6 +417,17 @@ def _format_memory_snippets(memories: list[tuple[str, str]], limit: int) -> list
     return snippets
 
 
+def _merge_memory_snippets(primary: list[str], secondary: list[str]) -> list[str]:
+    merged: list[str] = []
+    seen = set()
+    for snippet in primary + secondary:
+        if snippet in seen:
+            continue
+        seen.add(snippet)
+        merged.append(snippet)
+    return merged
+
+
 def _build_memory_hint(memory_snippets: list[str]) -> str:
     """Return a short, user-facing memory hint."""
 
@@ -489,6 +500,7 @@ persona_manager = PersonaManager(
     sentiment_weight=get_settings().persona_sentiment_weight,
 )
 trust_service = TrustService(db_manager)
+_cognitive_core: CognitiveCoreService | None = None
 reply_limiter = UserRateLimiter(1, USER_REPLY_RATE_SECONDS)
 bot_last_messages: dict[int, tuple[str, datetime.datetime]] = {}
 last_bot_reply_time: datetime.datetime | None = None
@@ -503,7 +515,7 @@ bot_reply_times: dict[int, datetime.datetime] = {}
 
 async def init_db(db_path: str | None = None) -> None:
     """Initialize the database, recreating the manager when the path changes."""
-    global db_manager, persona_manager, trust_service, CURRENT_DB_PATH
+    global db_manager, persona_manager, trust_service, CURRENT_DB_PATH, _cognitive_core
 
     target_path = (
         db_path
@@ -524,6 +536,21 @@ async def init_db(db_path: str | None = None) -> None:
     )
     trust_service = TrustService(db_manager)
     CURRENT_DB_PATH = db_manager.db_path
+    _cognitive_core = None
+
+
+def _get_cognitive_core_service() -> CognitiveCoreService | None:
+    global _cognitive_core
+    if _cognitive_core is None:
+        try:
+            _cognitive_core = CognitiveCoreService(
+                settings=get_settings(),
+                db=db_manager,
+            )
+        except Exception:
+            logger.exception("Failed to initialize cognitive core service")
+            return None
+    return _cognitive_core
 
 
 async def send_to_prism(data: dict) -> None:
@@ -1367,7 +1394,20 @@ class SocialGraphBot(commands.Bot):
 
         memories = await recall_user(message.author.id, limit=MAX_MEMORY_PROMPT_SNIPPETS)
         memory_snippets = _format_memory_snippets(memories, MAX_MEMORY_PROMPT_SNIPPETS)
+        retrieved_facts: list[str] = []
+        cognitive_core = _get_cognitive_core_service()
+        if cognitive_core is not None:
+            try:
+                retrieved_facts = await cognitive_core.retrieve_user_facts(
+                    message.author.id,
+                    channel_id=message.channel.id,
+                    prompt=message.content,
+                    limit=MAX_MEMORY_PROMPT_SNIPPETS,
+                )
+            except Exception:
+                logger.exception("Failed to retrieve cognitive core facts")
         memory_hint = _build_memory_hint(memory_snippets)
+        persona_snippets = _merge_memory_snippets(memory_snippets, retrieved_facts)
         if memories:
             logger.info(f"Recalling memories for {message.author.id}: {memories}")
 
@@ -1410,7 +1450,7 @@ class SocialGraphBot(commands.Bot):
                         )
                     except Exception:
                         logger.exception("Persona description lookup failed")
-                    prompt = _build_persona_prompt([message.content], persona_desc, memory_snippets)
+                    prompt = _build_persona_prompt([message.content], persona_desc, persona_snippets)
                     llm_reply = await generate_llm_reply(prompt)
                     if llm_reply:
                         reply = llm_reply
