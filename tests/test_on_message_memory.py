@@ -65,6 +65,19 @@ class DummyMessage:
         await self.channel.send(content, reference=self)
 
 
+def test_build_reply_prompt_includes_memory_and_fact_sections():
+    prompt = sg.build_reply_prompt(
+        "hello there",
+        ["met at the cafe", "likes chess"],
+        graph_facts=["connected to user 42"],
+        fact_context="enjoys hiking.",
+    )
+
+    assert "MEMORY_NOTES:" in prompt
+    assert "GRAPH_FACTS:" in prompt
+    assert "USER_FACTS:" in prompt
+
+
 @pytest.mark.asyncio
 async def test_on_message_stores_memory(tmp_path, monkeypatch, input_events):
     sg.db_manager = DBManager(str(tmp_path / "sg.db"))
