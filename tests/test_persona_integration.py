@@ -193,3 +193,60 @@ async def test_on_message_updates_affinity_from_sentiment(tmp_path, monkeypatch,
     assert await sg.get_affinity(msg2.author.id) == sg.AFFINITY_POS_DELTA + sg.AFFINITY_NEG_DELTA
 
     await sg.db_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_foe_mode_caps_snarky_llm_reply(tmp_path, monkeypatch, input_events):
+    sg.db_manager = DBManager(str(tmp_path / "sg.db"))
+    sg.trust_service = sg.TrustService(sg.db_manager)
+
+    async def noop(*args, **kwargs):
+        return None
+
+    f = asyncio.Future()
+    f.set_result((set(), set(), {}))
+    monkeypatch.setattr(sg, "who_is_active", lambda channel: f)
+    monkeypatch.setattr(sg, "send_to_prism", noop)
+    monkeypatch.setattr(sg, "store_theory", noop)
+    monkeypatch.setattr(sg, "queue_deep_reflection", noop)
+    monkeypatch.setattr(sg, "log_interaction", noop)
+    monkeypatch.setattr(asyncio, "sleep", noop)
+    monkeypatch.setattr(random, "choice", lambda seq: seq[0])
+    monkeypatch.setattr(random, "random", lambda: 1.0)
+    monkeypatch.setattr(sg.reply_limiter, "allow", lambda _id: True)
+    monkeypatch.setattr(sg, "detect_emotions", lambda _t: {})
+    monkeypatch.setattr(
+        sg,
+        "analyze_social",
+        lambda _t: {"flirtation": 0, "avoidance": 0, "manipulation": 0},
+    )
+
+    async def fake_generate_llm_reply(_prompt):
+        return "You are the worst, obviously."
+
+    monkeypatch.setattr(sg, "generate_llm_reply", fake_generate_llm_reply)
+    monkeypatch.setattr(
+        sg,
+        "evaluate_toxicity",
+        lambda _reply: (sg.FOE_MODE_MAX_SEVERITY + 1, ["insult"]),
+    )
+    monkeypatch.setattr(sg, "FOE_MODE_CAP_ENABLED", True)
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+
+    async def fake_get_persona(*_args, **_kwargs):
+        return "snarky"
+
+    async def fake_get_description(*_args, **_kwargs):
+        return ""
+
+    monkeypatch.setattr(bot.persona_manager, "get_persona", fake_get_persona)
+    monkeypatch.setattr(bot.persona_manager, "get_description", fake_get_description)
+
+    msg = DummyMessage("say something mean", author_id=42)
+    await sg.db_manager.adjust_trust(msg.author.id, sg.MINIMAL_REPLY_THRESHOLD + 1)
+    await bot.on_message(msg)
+
+    assert msg.channel.sent_messages[-1] == sg.MINIMAL_REPLIES[0]
+
+    await sg.db_manager.close()
