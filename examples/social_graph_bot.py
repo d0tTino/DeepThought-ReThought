@@ -1700,6 +1700,13 @@ class SocialGraphBot(commands.Bot):
                         )
                     except Exception:
                         logger.exception("Persona description lookup failed")
+                    try:
+                        persona_used = await self.persona_manager.get_persona(
+                            message.author.id, channel_id=message.channel.id
+                        )
+                    except Exception:
+                        logger.exception("Persona lookup failed")
+                        persona_used = "snarky"
                     prompt = _build_persona_prompt(
                         [message.content],
                         persona_desc,
@@ -1712,10 +1719,7 @@ class SocialGraphBot(commands.Bot):
                         reply = llm_reply
                         reply_from_llm = True
                     else:
-                        persona = await self.persona_manager.get_persona(
-                            message.author.id, channel_id=message.channel.id
-                        )
-                        persona_used = persona
+                        persona = persona_used or "snarky"
                         reply = random.choice(PERSONA_REPLIES.get(persona, PERSONA_REPLIES["snarky"]))
             if reply and not reply_from_llm:
                 if memory_hint:
