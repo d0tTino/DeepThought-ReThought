@@ -69,6 +69,7 @@ from deepthought.services.manipulative_detection import manipulation_score
 from deepthought.services.moderation import evaluate_toxicity, get_profanity_list, is_allowed
 from deepthought.services.response_filter import build_response_filter
 from deepthought.services.scheduler import SchedulerService
+from deepthought.services.social_graph_memory import SocialGraphMemory
 from deepthought.utils import ResponseQueue, UserRateLimiter
 
 try:
@@ -652,6 +653,7 @@ ALLOW_DECEPTION = bot_deception.ALLOW_DECEPTION
 DECEPTION_COVER_MESSAGE = bot_deception.DECEPTION_COVER_MESSAGE
 DECEPTION_REPLY_MODE = bot_deception.DECEPTION_REPLY_MODE
 DYNAMIC_COVER_REPLIES = bot_deception.DYNAMIC_COVER_REPLIES
+social_graph_memory = SocialGraphMemory(db_manager)
 persona_manager = PersonaManager(
     db_manager,
     descriptions=get_settings().persona_descriptions,
@@ -678,7 +680,7 @@ PERSONALITY_TRAIT_WINDOW = 12
 
 async def init_db(db_path: str | None = None) -> None:
     """Initialize the database, recreating the manager when the path changes."""
-    global db_manager, persona_manager, trust_service, CURRENT_DB_PATH, _cognitive_core
+    global db_manager, persona_manager, trust_service, CURRENT_DB_PATH, _cognitive_core, social_graph_memory
 
     target_path = (
         db_path
@@ -692,6 +694,7 @@ async def init_db(db_path: str | None = None) -> None:
         db_manager = DBManager(target_path)
 
     await db_manager.init_db()
+    social_graph_memory = SocialGraphMemory(db_manager)
     persona_manager = PersonaManager(
         db_manager,
         descriptions=get_settings().persona_descriptions,
@@ -1445,8 +1448,12 @@ class SocialGraphBot(commands.Bot):
         if target_ids:
             for target_id in target_ids:
                 await log_interaction(user_id, target_id, sentiment_score=sentiment_score)
+                await self._update_relationship_status(user_id, target_id)
             return
         await log_interaction(user_id, None, sentiment_score=sentiment_score)
+
+    async def _update_relationship_status(self, user_id: int, target_id: int) -> None:
+        await social_graph_memory.update_relationship_type(str(user_id), str(target_id))
 
     async def on_message(self, message: discord.Message) -> None:
         global last_bot_reply_time, last_other_bot_message_time

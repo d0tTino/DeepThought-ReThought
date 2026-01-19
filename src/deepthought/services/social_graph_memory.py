@@ -112,6 +112,10 @@ class SocialGraphMemory:
         elif status == "rival":
             await self._db.update_edge(user_a, user_b, "rival", 1.0)
 
+    async def update_relationship_type(self, user_a: str, user_b: str) -> None:
+        """Public wrapper for updating relationship type between two users."""
+        await self._update_relationship_type(user_a, user_b)
+
     async def get_relationship_status(self, user_a: str, user_b: str) -> str | None:
         return await self._db.get_relationship_type(user_a, user_b)
 
