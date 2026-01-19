@@ -8,8 +8,58 @@ if not hasattr(sg, "TrustService"):
     pytest.skip("social_graph_bot optional dependencies not installed", allow_module_level=True)
 
 pytest.importorskip("nats")
-from deepthought.services import DBManager
+from deepthought.services import DBManager, PersonaManager
 from deepthought.services.social_graph_memory import SocialGraphMemory
+
+
+class DummyAuthor:
+    def __init__(self, user_id, bot=False):
+        self.id = user_id
+        self.bot = bot
+
+
+class DummyChannel:
+    def __init__(self, channel_id=1):
+        self.id = channel_id
+        self.sent_messages = []
+
+    async def send(self, content, reference=None):
+        self.sent_messages.append(content)
+
+    def history(self, limit=1):
+        async def _gen():
+            if False:
+                yield  # pragma: no cover
+
+        return _gen()
+
+    def typing(self):
+        class DummyContext:
+            async def __aenter__(self):
+                return None
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        return DummyContext()
+
+
+class DummyMessage:
+    def __init__(self, content, author_id=2, message_id=10, mentions=None):
+        from discord.utils import utcnow
+
+        self.content = content
+        self.author = DummyAuthor(author_id)
+        self.channel = DummyChannel()
+        self.id = message_id
+        self.created_at = utcnow()
+        self.mentions = mentions or []
+        self.replies = []
+        self.reference = None
+
+    async def reply(self, content, mention_author=True):
+        self.replies.append({"content": content, "mention_author": mention_author})
+        await self.channel.send(content, reference=self)
 
 
 @pytest.mark.asyncio
@@ -77,6 +127,47 @@ async def test_relationship_stats(tmp_path):
     assert stats["a_to_b"]["interaction_weight"] == pytest.approx(1.0)
     assert stats["b_to_a"]["interaction_weight"] == pytest.approx(1.0)
     assert stats["a_to_b"]["last_interaction"] is not None
+
+
+@pytest.mark.asyncio
+async def test_relationship_status_updates_from_message_target(tmp_path):
+    db_path = tmp_path / "sg.db"
+    sg.db_manager = DBManager(str(db_path))
+    sg.trust_service = sg.TrustService(sg.db_manager)
+    sg.persona_manager = PersonaManager(sg.db_manager, friendly=5, playful=2, friendly_exit=-1)
+    sg.social_graph_memory = SocialGraphMemory(sg.db_manager)
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    bot = sg.SocialGraphBot(monitor_channel_id=1)
+    target = DummyAuthor(99)
+    message = DummyMessage("I love you", author_id=42, mentions=[target])
+    target_ids = await bot._extract_target_ids(message)
+    assert target_ids == [target.id]
+
+    assert await sg.db_manager.get_relationship_type(message.author.id, target.id) is None
+    assert await sg.persona_manager.get_persona(message.author.id, target.id) == "snarky"
+
+    for _ in range(2):
+        await sg.social_graph_memory.record_message(
+            str(message.author.id),
+            message.content,
+            str(target.id),
+        )
+    assert (
+        await sg.db_manager.get_relationship_type(message.author.id, target.id) == "neutral"
+    )
+
+    await sg.social_graph_memory.record_message(
+        str(message.author.id),
+        message.content,
+        str(target.id),
+    )
+
+    assert await sg.db_manager.get_relationship_type(message.author.id, target.id) == "friend"
+    assert await sg.persona_manager.get_persona(message.author.id, target.id) == "friendly"
+
+    await sg.db_manager.close()
 
 
 @pytest.mark.asyncio
