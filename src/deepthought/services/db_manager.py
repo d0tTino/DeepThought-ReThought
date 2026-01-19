@@ -1168,6 +1168,12 @@ class DBManager:
         delta: float,
         target_id: int | None = None,
     ) -> None:
+        """Adjust affinity for a user and optionally update pairwise state.
+
+        When ``target_id`` is provided, this mirrors ``log_interaction`` by
+        updating ``relationships`` (directional) and ``mutual_affinity``
+        (symmetric) rows alongside the global ``affinity`` score.
+        """
         delta_int = self._affinity_delta(delta)
         if not delta_int:
             return
@@ -1181,6 +1187,58 @@ class DBManager:
             """,
             (str(user_id), delta_int, delta_int),
         )
+        if target_id is not None:
+            weight = 1.0
+            w_decay, s_decay = await self.get_decay_params()
+            now = datetime.utcnow()
+            async with self._db.execute(
+                "SELECT interaction_count, sentiment_sum, interaction_weight, last_interaction FROM relationships WHERE source_id=? AND target_id=?",
+                (str(user_id), str(target_id)),
+            ) as cur:
+                row = await cur.fetchone()
+            if row:
+                count, ssum, w, last_ts = row
+                if last_ts:
+                    last_dt = datetime.fromisoformat(str(last_ts))
+                    elapsed = (now - last_dt).total_seconds()
+                    ssum = float(ssum) * (s_decay**elapsed)
+                    w = float(w) * (w_decay**elapsed)
+                count = int(count) + 1
+                ssum += float(delta)
+                w += weight
+                await self._db.execute(
+                    "UPDATE relationships SET interaction_count=?, sentiment_sum=?, interaction_weight=?, last_interaction=CURRENT_TIMESTAMP WHERE source_id=? AND target_id=?",
+                    (count, ssum, w, str(user_id), str(target_id)),
+                )
+            else:
+                await self._db.execute(
+                    "INSERT INTO relationships (source_id, target_id, interaction_count, sentiment_sum, interaction_weight, last_interaction) VALUES (?, ?, 1, ?, ?, CURRENT_TIMESTAMP)",
+                    (str(user_id), str(target_id), float(delta), weight),
+                )
+
+            a, b = sorted((str(user_id), str(target_id)))
+            async with self._db.execute(
+                "SELECT score, interaction_weight, last_interaction FROM mutual_affinity WHERE user_a=? AND user_b=?",
+                (a, b),
+            ) as cur:
+                mrow = await cur.fetchone()
+            if mrow:
+                score, w, last_ts = mrow
+                if last_ts:
+                    last_dt = datetime.fromisoformat(str(last_ts))
+                    elapsed = (now - last_dt).total_seconds()
+                    w = float(w) * (w_decay**elapsed)
+                score = int(score) + delta_int
+                w += weight
+                await self._db.execute(
+                    "UPDATE mutual_affinity SET score=?, interaction_weight=?, last_interaction=CURRENT_TIMESTAMP WHERE user_a=? AND user_b=?",
+                    (score, w, a, b),
+                )
+            else:
+                await self._db.execute(
+                    "INSERT INTO mutual_affinity (user_a, user_b, score, interaction_weight, last_interaction) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    (a, b, delta_int, weight),
+                )
         await self._db.commit()
 
     async def get_affinity(self, user_id: int) -> int:
