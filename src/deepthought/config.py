@@ -241,9 +241,9 @@ class Settings(BaseSettings):
 
     reward: RewardThresholds = RewardThresholds()
     persona_descriptions: dict[str, str] = {
-        "friendly": "You are a friendly assistant who responds warmly.",
-        "playful": "You like to joke around in your answers.",
-        "snarky": "You reply with terse, witty sarcasm.",
+        "friendly": "Warm, helpful, and respectful; avoid cruelty, slurs, or targeted harassment.",
+        "playful": "Light, playful humor; keep it kind and avoid cruelty, slurs, or targeted harassment.",
+        "snarky": "Concise, witty snark that stays playful; never cruel and no slurs or targeted harassment.",
     }
     persona_sentiment_weight: float = Field(0.0, env="DT_PERSONA_SENTIMENT_WEIGHT")
 
