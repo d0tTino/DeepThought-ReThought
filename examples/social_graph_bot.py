@@ -1529,7 +1529,15 @@ class SocialGraphBot(commands.Bot):
                     await self.send_filtered(message.channel, cover_reply)
 
             await self.enqueue_response(message.channel, send_cover_reply)
-            await store_memory(message.author.id, cover_reply, topic="deception")
+            try:
+                await store_memory(message.author.id, cover_reply, topic="deception")
+            except Exception as exc:
+                logger.warning(
+                    "Memory write failed for user_id=%s channel_id=%s in deception flow: %s",
+                    message.author.id,
+                    message.channel.id,
+                    exc,
+                )
             await self._log_interactions(message.author.id, target_ids)
             await publish_input_received(message.content)
             await send_to_prism(
@@ -1554,12 +1562,20 @@ class SocialGraphBot(commands.Bot):
             f"Sentiment score: {sentiment_score:+.2f}, Emotion: {dominant_emotion or 'Neutral'}",
         )
         topic = "message" if abs(sentiment_score) > SENTIMENT_THRESHOLD else ""
-        await store_memory(
-            message.author.id,
-            message.content,
-            topic=topic,
-            sentiment_score=sentiment_score,
-        )
+        try:
+            await store_memory(
+                message.author.id,
+                message.content,
+                topic=topic,
+                sentiment_score=sentiment_score,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Memory write failed for user_id=%s channel_id=%s: %s",
+                message.author.id,
+                message.channel.id,
+                exc,
+            )
         try:
             await extract_and_store_user_facts(
                 message.author.id,
@@ -1568,7 +1584,15 @@ class SocialGraphBot(commands.Bot):
             )
         except Exception:
             logger.exception("Failed to extract user facts")
-        await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
+        try:
+            await update_sentiment_trend(message.author.id, message.channel.id, sentiment_score)
+        except Exception as exc:
+            logger.warning(
+                "Sentiment trend update failed for user_id=%s channel_id=%s: %s",
+                message.author.id,
+                message.channel.id,
+                exc,
+            )
         if not message.author.bot:
             await _maybe_update_personality_traits(message.author.id, message.content)
         affinity_delta = None
