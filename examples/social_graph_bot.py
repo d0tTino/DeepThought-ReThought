@@ -1550,6 +1550,8 @@ class SocialGraphBot(commands.Bot):
 
             return
 
+        primary_target_id = target_ids[0] if target_ids else None
+
         sentiment_score = analyze_sentiment(message.content)
         emotions = detect_emotions(message.content)
         dominant_emotion, dom_score = (None, 0.0)
@@ -1601,7 +1603,6 @@ class SocialGraphBot(commands.Bot):
         elif sentiment_score <= -SENTIMENT_THRESHOLD:
             affinity_delta = AFFINITY_NEG_DELTA
         if affinity_delta:
-            primary_target_id = target_ids[0] if target_ids else None
             await adjust_affinity(message.author.id, affinity_delta, target_id=primary_target_id)
 
         await db_manager.record_emotion(message.author.id, emotions)
@@ -1720,13 +1721,17 @@ class SocialGraphBot(commands.Bot):
                     persona_desc = ""
                     try:
                         persona_desc = await self.persona_manager.get_description(
-                            message.author.id, channel_id=message.channel.id
+                            message.author.id,
+                            target_id=primary_target_id,
+                            channel_id=message.channel.id,
                         )
                     except Exception:
                         logger.exception("Persona description lookup failed")
                     try:
                         persona_used = await self.persona_manager.get_persona(
-                            message.author.id, channel_id=message.channel.id
+                            message.author.id,
+                            target_id=primary_target_id,
+                            channel_id=message.channel.id,
                         )
                     except Exception:
                         logger.exception("Persona lookup failed")
