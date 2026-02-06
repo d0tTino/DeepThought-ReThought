@@ -1597,11 +1597,7 @@ class SocialGraphBot(commands.Bot):
             )
         if not message.author.bot:
             await _maybe_update_personality_traits(message.author.id, message.content)
-        affinity_delta = None
-        if sentiment_score >= SENTIMENT_THRESHOLD:
-            affinity_delta = AFFINITY_POS_DELTA
-        elif sentiment_score <= -SENTIMENT_THRESHOLD:
-            affinity_delta = AFFINITY_NEG_DELTA
+        affinity_delta = DBManager.sentiment_to_affinity_delta(sentiment_score, scale=3.0, cap=3)
         if affinity_delta:
             await adjust_affinity(message.author.id, affinity_delta, target_id=primary_target_id)
 

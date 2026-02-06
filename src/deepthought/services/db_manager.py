@@ -1160,7 +1160,29 @@ class DBManager:
             if value < 0:
                 return AFFINITY_NEG_DELTA
             return 0
-        return int(value)
+        return int(round(float(value)))
+
+    @staticmethod
+    def sentiment_to_affinity_delta(
+        sentiment_score: float,
+        *,
+        scale: float = 3.0,
+        cap: int = 3,
+    ) -> int:
+        """Map sentiment polarity in ``[-1, 1]`` to a small integer affinity step."""
+        if not isinstance(sentiment_score, (int, float)):
+            raise ValueError("sentiment_score must be numeric")
+        if not -1 <= float(sentiment_score) <= 1:
+            raise ValueError("sentiment_score out of range")
+        if scale <= 0:
+            raise ValueError("scale must be positive")
+        if cap < 0:
+            raise ValueError("cap must be non-negative")
+
+        delta = int(round(float(sentiment_score) * scale))
+        if cap:
+            delta = max(-cap, min(cap, delta))
+        return delta
 
     async def adjust_affinity(
         self,
