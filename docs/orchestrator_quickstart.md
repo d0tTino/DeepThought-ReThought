@@ -62,6 +62,10 @@ The orchestrator starts multiple services with a single NATS connection. Each se
      - examples.multi_agent_demo:run_graph
    ```
 
+   For a complete, canonical wiring map (subjects, durable consumer names,
+   and environment variable references), copy from
+   [`examples/orchestrator.yml`](../examples/orchestrator.yml).
+
    `llm_remote` requires the `LLM_ENDPOINT` variable pointing to a running
    `/generate` endpoint.
 

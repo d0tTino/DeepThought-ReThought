@@ -6,6 +6,8 @@ This document provides a high level overview of how the main services in **DeepT
 
 The project follows an event driven architecture built on NATS/JetStream. Components publish and subscribe to event subjects defined in `src/deepthought/eda/events.py`.
 
+A canonical service-to-subject wiring reference (including durable consumers and required environment variables) is maintained in [`examples/orchestrator.yml`](../examples/orchestrator.yml).
+
 ```mermaid
 sequenceDiagram
     participant User
