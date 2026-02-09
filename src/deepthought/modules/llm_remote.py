@@ -21,6 +21,56 @@ from ..pipeline.dspy_pipeline import build_qa_pipeline
 logger = logging.getLogger(__name__)
 
 
+def _normalized_optional_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized if normalized else None
+
+
+def _extract_memory_facts(retrieved: object) -> list[str]:
+    if not isinstance(retrieved, dict):
+        return []
+    facts = retrieved.get("facts")
+    if not isinstance(facts, list):
+        return []
+    return [str(fact) for fact in facts]
+
+
+def _build_generation_prompt(
+    *,
+    user_input: str,
+    facts: list[str],
+    author_name: str | None = None,
+    channel_context: str | None = None,
+    recent_turn_summary: str | None = None,
+) -> str:
+    facts_block = "\n".join(f"- {fact}" for fact in facts) if facts else "- None"
+
+    hints: list[str] = []
+    if author_name:
+        hints.append(f"- Author name: {author_name}")
+    if channel_context:
+        hints.append(f"- Channel context: {channel_context}")
+    if recent_turn_summary:
+        hints.append(f"- Recent turn summary: {recent_turn_summary}")
+    hints_block = "\n".join(hints) if hints else "- None"
+
+    return (
+        "[SYSTEM PERSONA]\n"
+        "You are DeepThought, a conversational assistant.\n"
+        "Respond clearly, ground your answer in retrieved facts when relevant, and avoid inventing details.\n\n"
+        "[RELEVANT FACTS]\n"
+        f"{facts_block}\n\n"
+        "[LATEST USER MESSAGE]\n"
+        f"{user_input}\n\n"
+        "[SOCIAL/PERCEPTION HINTS]\n"
+        f"{hints_block}\n\n"
+        "[TASK]\n"
+        "Generate a helpful response to the user message."
+    )
+
+
 class RemoteLLM:
     """LLM module that calls a remote HTTP endpoint."""
 
@@ -71,13 +121,20 @@ class RemoteLLM:
             channel_id = data.get("channel_id")
             if not isinstance(channel_id, str):
                 channel_id = None
-            retrieved = data.get("retrieved_knowledge", {})
-            facts = retrieved.get("facts", [])
-            if facts:
-                memory_lines = "\n".join(f"- {fact}" for fact in map(str, facts))
-                prompt = f"MEMORY_RETRIEVED:\n{memory_lines}\nResponse:"
-            else:
-                prompt = "Response:"
+            user_input = _normalized_optional_text(data.get("user_input"))
+            if user_input is None:
+                raise ValueError("MemoryRetrieved payload missing required non-empty user_input")
+            author_name = _normalized_optional_text(data.get("author_name"))
+            channel_context = _normalized_optional_text(data.get("channel_context"))
+            recent_turn_summary = _normalized_optional_text(data.get("recent_turn_summary"))
+            facts = _extract_memory_facts(data.get("retrieved_knowledge", {}))
+            prompt = _build_generation_prompt(
+                user_input=user_input,
+                facts=facts,
+                author_name=author_name,
+                channel_context=channel_context,
+                recent_turn_summary=recent_turn_summary,
+            )
             logger.info("RemoteLLM generating for %s", input_id)
             response = await self._generate(prompt)
             payload = ResponseCandidatesPayload(

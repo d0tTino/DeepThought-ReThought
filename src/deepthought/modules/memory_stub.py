@@ -53,6 +53,7 @@ class MemoryStub:
             }
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"retrieved_knowledge": memory_data},
+                user_input=user_input,
                 input_id=input_id,
                 user_id=user_id,
                 # Use timezone-aware UTC timestamp

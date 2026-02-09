@@ -90,6 +90,7 @@ class KnowledgeGraphMemory:
             facts = self.infer_facts()
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "knowledge_graph"},
+                user_input=user_input,
                 input_id=input_id,
                 user_id=user_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
