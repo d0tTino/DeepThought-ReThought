@@ -172,14 +172,19 @@ class CognitiveCoreService(BaseService):
             input_id = data.get("input_id")
             user_input = data.get("user_input")
             headers = getattr(msg, "headers", None)
-            author_id = data.get("author_id")
-            if not isinstance(author_id, str):
-                author_id = None
-            user_id = data.get("user_id")
-            if not isinstance(user_id, str):
-                user_id = None
+            def _normalized_identifier(value: object) -> str | None:
+                if not isinstance(value, str):
+                    return None
+                normalized = value.strip()
+                return normalized or None
+
+            user_id = _normalized_identifier(data.get("user_id"))
+            if user_id is None and headers:
+                user_id = _normalized_identifier(headers.get("user_id"))
+
+            author_id = _normalized_identifier(data.get("author_id"))
             if author_id is None:
-                author_id = user_id or (headers.get("user_id") if headers else None)
+                author_id = user_id
             channel_id = data.get("channel_id")
             if not isinstance(channel_id, str):
                 channel_id = None
@@ -192,7 +197,7 @@ class CognitiveCoreService(BaseService):
                 raise ValueError("Invalid input payload fields")
             logger.info("CognitiveCoreService received input %s", input_id)
 
-            resolved_user_id = author_id or "user"
+            resolved_user_id = author_id or user_id or "anonymous"
             self._memory.store_interaction(user_input)
             await self._db.store_memory(resolved_user_id, user_input)
             await self._db.log_interaction(resolved_user_id, None)
