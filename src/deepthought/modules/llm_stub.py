@@ -13,7 +13,7 @@ from nats.js.client import JetStreamContext
 
 # Assuming eda modules are in parent dir relative to modules dir
 from ..config import get_settings
-from ..eda.events import EventSubjects, ResponseGeneratedPayload
+from ..eda.events import EventSubjects, ResponseCandidate, ResponseCandidatesPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 
@@ -107,34 +107,40 @@ class LLMStub:
             response = (
                 f"{intro}Based on: {facts_str}, this is a stub response. [TS: {datetime.now(timezone.utc).isoformat()}]"
             )
-            payload = ResponseGeneratedPayload(
-                final_response=response,
+            payload = ResponseCandidatesPayload(
+                candidates=[
+                    ResponseCandidate(
+                        text=response,
+                        confidence=0.95,
+                        source="LLMStub",
+                        safety_passed=True,
+                    )
+                ],
                 input_id=input_id,
                 user_id=user_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
-                confidence=0.95,
             )
 
-            logger.info(f"LLMStub: Publishing RESPONSE_GENERATED for input_id: {input_id}")
+            logger.info(f"LLMStub: Publishing RESPONSE_CANDIDATES for input_id: {input_id}")
             try:
                 await self._publisher.publish(
-                    EventSubjects.RESPONSE_GENERATED,
+                    EventSubjects.RESPONSE_CANDIDATES,
                     payload,
                     use_jetstream=True,
                     timeout=10.0,
                 )
-                logger.debug(f"LLMStub: Successfully published RESPONSE_GENERATED for {input_id}")
+                logger.debug(f"LLMStub: Successfully published RESPONSE_CANDIDATES for {input_id}")
                 await msg.ack()
                 logger.debug(f"LLMStub: Acked message for {input_id} in LLMStub")
             except nats.errors.TimeoutError as e:
                 logger.error(
-                    f"LLMStub: Timeout publishing RESPONSE_GENERATED for {input_id}: {e}",
+                    f"LLMStub: Timeout publishing RESPONSE_CANDIDATES for {input_id}: {e}",
                     exc_info=True,
                 )
                 # Do not ack/nak on failure; leave to message broker
             except Exception as e:
                 logger.error(
-                    f"LLMStub: Failed to publish RESPONSE_GENERATED for {input_id}: {e}",
+                    f"LLMStub: Failed to publish RESPONSE_CANDIDATES for {input_id}: {e}",
                     exc_info=True,
                 )
                 # Do not ack/nak on failure; leave to message broker

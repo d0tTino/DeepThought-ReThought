@@ -11,7 +11,7 @@ import torch
 from nats.aio.msg import Msg
 
 from ..config import get_settings
-from ..eda.events import EventSubjects, ResponseGeneratedPayload
+from ..eda.events import EventSubjects, ResponseCandidate, ResponseCandidatesPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..services.response_filter import build_response_filter
@@ -165,24 +165,30 @@ class BaseLLM(ABC):
                 else:
                     response_text = sanitized
 
-            payload = ResponseGeneratedPayload(
-                final_response=response_text,
+            payload = ResponseCandidatesPayload(
+                candidates=[
+                    ResponseCandidate(
+                        text=response_text,
+                        confidence=0.5,
+                        source=self.__class__.__name__,
+                        safety_passed=True,
+                    )
+                ],
                 input_id=input_id,
                 user_id=user_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
-                confidence=0.5,
             )
             if self._publisher is not None:
                 await self._publisher.publish(
-                    EventSubjects.RESPONSE_GENERATED,
+                    EventSubjects.RESPONSE_CANDIDATES,
                     payload,
                     use_jetstream=True,
                     timeout=10.0,
                 )
-                logger.info("%s published RESPONSE_GENERATED for %s", self.__class__.__name__, input_id)
+                logger.info("%s published RESPONSE_CANDIDATES for %s", self.__class__.__name__, input_id)
             else:
                 logger.warning(
-                    "Cannot publish RESPONSE_GENERATED for %s - publisher not initialized",
+                    "Cannot publish RESPONSE_CANDIDATES for %s - publisher not initialized",
                     input_id,
                 )
             await msg.ack()

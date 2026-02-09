@@ -13,7 +13,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-from ..eda.events import EventSubjects, ResponseGeneratedPayload
+from ..eda.events import EventSubjects, ResponseCandidate, ResponseCandidatesPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..pipeline.dspy_pipeline import build_qa_pipeline
@@ -72,15 +72,21 @@ class RemoteLLM:
                 prompt = "Response:"
             logger.info("RemoteLLM generating for %s", input_id)
             response = await self._generate(prompt)
-            payload = ResponseGeneratedPayload(
-                final_response=response,
+            payload = ResponseCandidatesPayload(
+                candidates=[
+                    ResponseCandidate(
+                        text=response,
+                        confidence=0.9,
+                        source="RemoteLLM",
+                        safety_passed=True,
+                    )
+                ],
                 input_id=input_id,
                 user_id=user_id,
                 timestamp=None,
-                confidence=0.9,
             )
             await self._publisher.publish(
-                EventSubjects.RESPONSE_GENERATED,
+                EventSubjects.RESPONSE_CANDIDATES,
                 payload,
                 use_jetstream=True,
                 timeout=10.0,

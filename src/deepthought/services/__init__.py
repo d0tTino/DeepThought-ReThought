@@ -24,6 +24,7 @@ __all__ = [
     "SocialGraphService",
     "PlanningService",
     "ReasoningService",
+    "SelectorService",
     "manipulation_score",
 ]
 
@@ -38,6 +39,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "SocialGraphService": ("social_graph_service", "SocialGraphService"),
     "PlanningService": ("planning_service", "PlanningService"),
     "ReasoningService": ("reasoning_service", "ReasoningService"),
+    "SelectorService": ("selector_service", "SelectorService"),
     "manipulation_score": ("manipulative_detection", "manipulation_score"),
 }
 

@@ -46,6 +46,7 @@ class DummySubscriber:
 class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
+        self.headers = None
         self.acked = False
         self.nacked = False
 
@@ -151,9 +152,9 @@ async def test_handle_memory_event(monkeypatch):
     pub = llm._publisher
     assert pub.published
     subject, sent_payload = pub.published[0]
-    assert subject == EventSubjects.RESPONSE_GENERATED
+    assert subject == EventSubjects.RESPONSE_CANDIDATES
     assert sent_payload.input_id == "abc"
-    assert sent_payload.final_response == "generated"
+    assert sent_payload.candidates[0].text == "generated"
     ts = sent_payload.timestamp
     assert datetime.fromisoformat(ts).tzinfo == timezone.utc
 

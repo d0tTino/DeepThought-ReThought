@@ -48,6 +48,7 @@ class DummySubscriber:
 class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
+        self.headers = None
         self.acked = False
         self.nacked = False
 
@@ -81,7 +82,7 @@ async def test_handle_memory_success(monkeypatch, knowledge):
     pub = stub._publisher
     assert pub.published
     subject, sent_payload = pub.published[0]
-    assert subject == EventSubjects.RESPONSE_GENERATED
+    assert subject == EventSubjects.RESPONSE_CANDIDATES
     assert sent_payload.input_id == "abc"
     # Timestamp should be timezone-aware UTC
     ts = sent_payload.timestamp
