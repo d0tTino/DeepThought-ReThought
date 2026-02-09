@@ -22,3 +22,20 @@ async def test_relationship_persistence(tmp_path):
     assert stats["b_to_a"]["count"] == 1
     await mem2.close()
 
+
+
+@pytest.mark.asyncio
+async def test_memory_persistence_isolated_per_user(tmp_path):
+    db_path = tmp_path / "sg.db"
+    db = DBManager(str(db_path))
+
+    await db.store_memory("user-a", "alpha fact", topic="bio")
+    await db.store_memory("user-b", "beta fact", topic="bio")
+
+    a_rows = await db.recall_user("user-a")
+    b_rows = await db.recall_user("user-b")
+
+    assert [memory for _, memory in a_rows] == ["alpha fact"]
+    assert [memory for _, memory in b_rows] == ["beta fact"]
+
+    await db.close()

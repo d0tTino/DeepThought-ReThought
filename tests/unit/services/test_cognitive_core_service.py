@@ -197,20 +197,26 @@ class DummyMemory:
 class DummyDB:
     def __init__(self):
         self.memories = []
+        self.memory_user_ids = []
         self.interactions = 0
+        self.interaction_user_ids = []
         self.affinity = 0.0
+        self.affinity_user_ids = []
         self.perceptions = []
 
     async def store_memory(self, user_id, memory, topic="", sentiment_score=None):
+        self.memory_user_ids.append(user_id)
         if topic == "social_perception":
             self.perceptions.append(json.loads(memory))
         else:
             self.memories.append(memory)
 
     async def log_interaction(self, user_id, target_id=None, sentiment_score=None):
+        self.interaction_user_ids.append(user_id)
         self.interactions += 1
 
     async def adjust_affinity(self, user_id, delta):
+        self.affinity_user_ids.append(user_id)
         self.affinity += delta
 
     async def recall_user(self, user_id, limit=None):
@@ -270,6 +276,59 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
     assert "hello" in sent_payload.retrieved_knowledge["facts"]
+
+
+@pytest.mark.asyncio
+async def test_handle_input_prefers_payload_user_id_over_header(monkeypatch):
+    memory = DummyMemory()
+    db = DummyDB()
+    monkeypatch.setattr(
+        cognitive_core_service,
+        "analyze_social",
+        lambda text: {"flirtation": 0.0, "avoidance": 0.0, "manipulation": 0.0},
+    )
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    payload = InputReceivedPayload(user_input="hello", input_id="x", user_id="payload-user")
+    msg = DummyMsg(payload.to_json())
+    msg.headers = {"user_id": "header-user"}
+
+    await service._handle_input(msg)
+
+    assert msg.acked
+    assert db.memory_user_ids == ["payload-user", "payload-user"]
+    assert db.interaction_user_ids == ["payload-user"]
+    assert db.affinity_user_ids == ["payload-user"]
+
+
+@pytest.mark.asyncio
+async def test_handle_input_uses_header_user_id_then_anonymous(monkeypatch):
+    memory = DummyMemory()
+    db = DummyDB()
+    monkeypatch.setattr(
+        cognitive_core_service,
+        "analyze_social",
+        lambda text: {"flirtation": 0.0, "avoidance": 0.0, "manipulation": 0.0},
+    )
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    payload_with_header = InputReceivedPayload(user_input="hello", input_id="x")
+    msg_with_header = DummyMsg(payload_with_header.to_json())
+    msg_with_header.headers = {"user_id": "header-user"}
+    await service._handle_input(msg_with_header)
+
+    payload_without_user = InputReceivedPayload(user_input="hi", input_id="y")
+    msg_without_user = DummyMsg(payload_without_user.to_json())
+    await service._handle_input(msg_without_user)
+
+    assert msg_with_header.acked
+    assert msg_without_user.acked
+    assert db.interaction_user_ids == ["header-user", "anonymous"]
+    assert db.affinity_user_ids == ["header-user", "anonymous"]
 
 
 class DummyStore:
