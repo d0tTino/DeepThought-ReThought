@@ -126,6 +126,10 @@ class PerceptionService:
         message_id: str,
         user_id: str,
         *,
+        input_id: str | None = None,
+        author_id: str | None = None,
+        channel_id: str | None = None,
+        confidence: float | None = None,
         spans: Sequence[Sequence[int]] | None = None,
         modality_mask: Dict[str, Sequence[bool]] | None = None,
         contribution_mask: Dict[str, Sequence[bool]] | None = None,
@@ -563,9 +567,25 @@ class PerceptionService:
         if self.user_embeddings is not None and store_embedding is not None and store_embedding.numel() > 0:
             self.user_embeddings.set(user_id, store_embedding)
 
+        modality_confidence: Dict[str, float] = {}
+        total_hops = len(grid_spans or [])
+        for name, payload in modality_payload.items():
+            mask = payload.get("mask") if isinstance(payload, dict) else None
+            if isinstance(mask, list) and mask:
+                modality_confidence[name] = sum(1 for flag in mask if flag) / len(mask)
+            elif total_hops > 0:
+                modality_confidence[name] = min(1.0, len(payload.get("embeddings", [])) / total_hops)
+            else:
+                modality_confidence[name] = 1.0 if payload.get("embeddings") else 0.0
+
         await self.publisher.publish(
             message_id=message_id,
             user_id=user_id,
+            input_id=input_id or message_id,
+            author_id=author_id or user_id,
+            channel_id=channel_id,
+            confidence=confidence if confidence is not None else 1.0,
+            modality_confidence=modality_confidence,
             fused=fused_list,
             by_modality=modality_payload,
             spans=grid_spans,

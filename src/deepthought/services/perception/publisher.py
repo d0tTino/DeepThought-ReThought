@@ -29,6 +29,11 @@ class PerceptionPublisher:
         message_id: str,
         user_id: str,
         *,
+        input_id: str | None = None,
+        author_id: str | None = None,
+        channel_id: str | None = None,
+        confidence: float | None = None,
+        modality_confidence: Mapping[str, float | int] | None = None,
         fused: Sequence[Sequence[float]] | None = None,
         by_modality: Mapping[str, Mapping[str, Any]] | None = None,
         spans: Sequence[Sequence[int]] | None = None,
@@ -104,6 +109,15 @@ class PerceptionPublisher:
         payload = PerceptionEmbeddingsPayload(
             message_id=message_id,
             user_id=user_id,
+            input_id=input_id,
+            author_id=author_id,
+            channel_id=channel_id,
+            confidence=confidence,
+            modality_confidence={
+                name: float(value)
+                for name, value in (modality_confidence or {}).items()
+                if value is not None
+            },
             fused=fused_vectors,
             spans=span_payload,
             modality_mask=modality_mask_payload,
@@ -126,9 +140,25 @@ class PerceptionPublisher:
             payload=payload,
         )
 
-        return await self._publisher.publish(
+        fused_result = await self._publisher.publish(
             EventSubjects.PERCEPTION_EMBEDDINGS,
             event,
             use_jetstream=True,
             retries=retries,
         )
+
+        for modality_name, subject in (
+            ("image", EventSubjects.PERCEPTION_IMAGE_EMBED),
+            ("audio", EventSubjects.PERCEPTION_AUDIO_EMBED),
+            ("video", EventSubjects.PERCEPTION_VIDEO_EMBED),
+        ):
+            if modality_name not in modality_payloads:
+                continue
+            await self._publisher.publish(
+                subject,
+                event,
+                use_jetstream=True,
+                retries=retries,
+            )
+
+        return fused_result

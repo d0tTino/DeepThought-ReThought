@@ -312,7 +312,7 @@ class CognitiveCoreService(BaseService):
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except Exception:
-            logger.error("Failed to handle PERCEPTION_EMBEDDINGS", exc_info=True)
+            logger.error("Failed to handle perception embedding event", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
@@ -352,12 +352,18 @@ class CognitiveCoreService(BaseService):
             use_jetstream=True,
             durable=durable_name,
         )
-        self.add_subscription(
-            subject=EventSubjects.PERCEPTION_EMBEDDINGS,
-            handler=self._handle_embeddings,
-            use_jetstream=True,
-            durable=f"{durable_name}_perception",
-        )
+        for subject, suffix in (
+            (EventSubjects.PERCEPTION_EMBEDDINGS, "perception_fused"),
+            (EventSubjects.PERCEPTION_IMAGE_EMBED, "perception_image"),
+            (EventSubjects.PERCEPTION_AUDIO_EMBED, "perception_audio"),
+            (EventSubjects.PERCEPTION_VIDEO_EMBED, "perception_video"),
+        ):
+            self.add_subscription(
+                subject=subject,
+                handler=self._handle_embeddings,
+                use_jetstream=True,
+                durable=f"{durable_name}_{suffix}",
+            )
         self.add_subscription(
             subject=EventSubjects.BDI_INTENTION,
             handler=self._handle_intention,

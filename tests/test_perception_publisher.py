@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -108,3 +107,40 @@ async def test_perception_publisher_deduplicates_encoders(monkeypatch):
     subject, payload = pub._publisher.publish.call_args[0]
     assert subject == EventSubjects.PERCEPTION_EMBEDDINGS
     assert len(payload.encoders) == 1
+
+
+@pytest.mark.asyncio
+async def test_perception_publisher_emits_modality_subjects_and_correlation(monkeypatch):
+    monkeypatch.setattr(
+        "deepthought.services.perception.publisher.Publisher",
+        DummyPublisher,
+    )
+    pub = PerceptionPublisher(nats_client=object(), js_context=object())
+    await pub.publish(
+        "msg3",
+        "user3",
+        input_id="input-3",
+        author_id="author-3",
+        channel_id="channel-3",
+        confidence=0.91,
+        modality_confidence={"image": 0.8, "audio": 0.7},
+        by_modality={
+            "image": {"spans": [[0, 1]], "embeddings": [[0.1, 0.2]], "encoders": []},
+            "audio": {"spans": [[0, 1]], "embeddings": [[0.3, 0.4]], "encoders": []},
+        },
+    )
+
+    calls = pub._publisher.publish.await_args_list
+    subjects = [call.args[0] for call in calls]
+    assert subjects == [
+        EventSubjects.PERCEPTION_EMBEDDINGS,
+        EventSubjects.PERCEPTION_IMAGE_EMBED,
+        EventSubjects.PERCEPTION_AUDIO_EMBED,
+    ]
+    event = calls[0].args[1]
+    assert event.payload is not None
+    assert event.payload.input_id == "input-3"
+    assert event.payload.author_id == "author-3"
+    assert event.payload.channel_id == "channel-3"
+    assert event.payload.confidence == 0.91
+    assert event.payload.modality_confidence == {"image": 0.8, "audio": 0.7}
