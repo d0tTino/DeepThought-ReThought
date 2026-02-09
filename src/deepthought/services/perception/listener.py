@@ -186,6 +186,10 @@ class PerceptionServiceListener:
 
             kwargs = {
                 "message_id": message_id,
+                "input_id": raw.get("input_id") or raw.get("message_id") or payload_input_id,
+                "author_id": raw.get("author_id"),
+                "channel_id": raw.get("channel_id"),
+                "confidence": raw.get("confidence"),
                 "user_id": user_id,
                 "spans": raw.get("spans"),
                 "embeddings": raw.get("embeddings"),
@@ -317,6 +321,10 @@ class PerceptionServiceListener:
 
             kwargs: Dict[str, Any] = {
                 "message_id": payload.message_id,
+                "input_id": payload.input_id or payload.message_id,
+                "author_id": payload.author_id,
+                "channel_id": payload.channel_id,
+                "confidence": payload.confidence,
                 "user_id": payload.user_id,
                 "spans": payload.spans,
                 "modality_mask": payload.modality_mask,

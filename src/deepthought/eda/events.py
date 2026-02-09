@@ -31,6 +31,9 @@ class EventSubjects:
 
     # Perception events
     PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings"
+    PERCEPTION_IMAGE_EMBED = "dtr.perception.image_embeddings"
+    PERCEPTION_AUDIO_EMBED = "dtr.perception.audio_embeddings"
+    PERCEPTION_VIDEO_EMBED = "dtr.perception.video_embeddings"
     PERCEPTION_EXTRACT = "dtr.perception.extract"
 
     # Raw chat message events
@@ -353,6 +356,11 @@ class PerceptionEmbeddingsPayload(EventPayload):
 
     message_id: str
     user_id: str
+    input_id: Optional[str] = None
+    author_id: Optional[str] = None
+    channel_id: Optional[str] = None
+    confidence: Optional[float] = None
+    modality_confidence: Dict[str, float] = field(default_factory=dict)
     fused: Optional[list[list[float]]] = None
     spans: list[list[int]] = field(default_factory=list)
     modality_mask: Dict[str, list[bool]] = field(default_factory=dict)
@@ -427,6 +435,19 @@ class PerceptionEmbeddingsPayload(EventPayload):
         return cls(
             message_id=data["message_id"],
             user_id=data["user_id"],
+            input_id=data.get("input_id"),
+            author_id=data.get("author_id"),
+            channel_id=data.get("channel_id"),
+            confidence=(
+                float(data["confidence"])
+                if data.get("confidence") is not None
+                else None
+            ),
+            modality_confidence={
+                str(name): float(value)
+                for name, value in (data.get("modality_confidence") or {}).items()
+                if value is not None
+            },
             fused=fused_vectors,
             spans=spans,
             modality_mask=modality_mask,
@@ -477,6 +498,11 @@ class PerceptionEmbeddingsEvent(EventPayload):
             payload_keys = {
                 "message_id",
                 "user_id",
+                "input_id",
+                "author_id",
+                "channel_id",
+                "confidence",
+                "modality_confidence",
                 "fused",
                 "spans",
                 "modality_mask",
@@ -505,6 +531,11 @@ class PerceptionExtractPayload(EventPayload):
 
     message_id: str
     user_id: str
+    input_id: Optional[str] = None
+    author_id: Optional[str] = None
+    channel_id: Optional[str] = None
+    confidence: Optional[float] = None
+    modality_confidence: Dict[str, float] = field(default_factory=dict)
     text: Optional[str] = None
     text_tokens: Optional[list[list[Any]]] = None
     embeddings: Optional[list[list[float]]] = None
@@ -605,6 +636,19 @@ class PerceptionExtractPayload(EventPayload):
         return cls(
             message_id=data["message_id"],
             user_id=data["user_id"],
+            input_id=data.get("input_id"),
+            author_id=data.get("author_id"),
+            channel_id=data.get("channel_id"),
+            confidence=(
+                float(data["confidence"])
+                if data.get("confidence") is not None
+                else None
+            ),
+            modality_confidence={
+                str(name): float(value)
+                for name, value in (data.get("modality_confidence") or {}).items()
+                if value is not None
+            },
             text=text,
             text_tokens=tokens,
             embeddings=cls._parse_embeddings(data.get("embeddings") or data.get("fused")),
@@ -649,6 +693,11 @@ class PerceptionExtractEvent(EventPayload):
             payload_keys = {
                 "message_id",
                 "user_id",
+                "input_id",
+                "author_id",
+                "channel_id",
+                "confidence",
+                "modality_confidence",
                 "text",
                 "text_tokens",
                 "tokens",
