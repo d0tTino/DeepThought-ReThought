@@ -854,7 +854,7 @@ async def emit_refusal(
         await enqueue(message.channel, _send_refusal)
 
 
-async def publish_input_received(text: str) -> None:
+async def publish_input_received(text: str, message: discord.Message | None = None) -> None:
     """Publish an INPUT_RECEIVED event using NATS JetStream."""
     if not is_allowed(text):  # noqa: F821 - defined in optional module
         logger.info("Dropping INPUT_RECEIVED due to banned content")
@@ -868,6 +868,33 @@ async def publish_input_received(text: str) -> None:
         user_input=text,
         input_id=str(uuid.uuid4()),
         timestamp=discord.utils.utcnow().replace(tzinfo=timezone.utc).isoformat(),
+        message_id=str(getattr(message, "id", "")) if message is not None and getattr(message, "id", None) is not None else None,
+        channel_id=(
+            str(getattr(getattr(message, "channel", None), "id", ""))
+            if message is not None and getattr(getattr(message, "channel", None), "id", None) is not None
+            else None
+        ),
+        guild_id=(
+            str(getattr(getattr(message, "guild", None), "id", ""))
+            if message is not None and getattr(getattr(message, "guild", None), "id", None) is not None
+            else None
+        ),
+        author_id=(
+            str(getattr(getattr(message, "author", None), "id", ""))
+            if message is not None and getattr(getattr(message, "author", None), "id", None) is not None
+            else None
+        ),
+        author_name=(
+            getattr(getattr(message, "author", None), "display_name", None)
+            or getattr(getattr(message, "author", None), "name", None)
+            if message is not None
+            else None
+        ),
+        author_is_bot=(
+            bool(getattr(getattr(message, "author", None), "bot", False))
+            if message is not None
+            else None
+        ),
     )
     try:
         await _input_publisher.publish(
@@ -1539,7 +1566,7 @@ class SocialGraphBot(commands.Bot):
                     exc,
                 )
             await self._log_interactions(message.author.id, target_ids)
-            await publish_input_received(message.content)
+            await publish_input_received(message.content, message=message)
             await send_to_prism(
                 {
                     "user_id": str(message.author.id),
@@ -1792,7 +1819,7 @@ class SocialGraphBot(commands.Bot):
         await self._log_interactions(message.author.id, target_ids)
 
         # Publish event and forward to Prism
-        await publish_input_received(message.content)
+        await publish_input_received(message.content, message=message)
 
         await send_to_prism(
             {

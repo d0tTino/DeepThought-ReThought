@@ -106,10 +106,18 @@ class BaseLLM(ABC):
             if not isinstance(data, dict):
                 raise ValueError("MemoryRetrieved payload must be a dict")
             input_id = data.get("input_id")
+            author_id = data.get("author_id")
+            if not isinstance(author_id, str):
+                author_id = None
             user_id = data.get("user_id")
             if not isinstance(user_id, str):
                 user_id = None
-            target_id = data.get("target_id") or (msg.headers.get("target_id") if msg.headers else None)
+            if author_id is None:
+                author_id = user_id
+            channel_id = data.get("channel_id")
+            if not isinstance(channel_id, str):
+                channel_id = None
+            target_id = data.get("target_id")
             if not isinstance(target_id, str):
                 target_id = None
             knowledge = data.get("retrieved_knowledge")
@@ -136,8 +144,12 @@ class BaseLLM(ABC):
             persona_desc = ""
             if self._persona_manager is not None:
                 try:
-                    persona_id = user_id if user_id is not None else input_id
-                    persona_desc = await self._persona_manager.get_description(persona_id, target_id)
+                    persona_id = author_id if author_id is not None else (user_id if user_id is not None else input_id)
+                    persona_desc = await self._persona_manager.get_description(
+                        persona_id,
+                        target_id,
+                        channel_id=channel_id,
+                    )
                 except Exception:
                     logger.error("Persona selection failed", exc_info=True)
 
@@ -175,7 +187,9 @@ class BaseLLM(ABC):
                     )
                 ],
                 input_id=input_id,
-                user_id=user_id,
+                user_id=author_id or user_id,
+                author_id=author_id,
+                channel_id=channel_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
             if self._publisher is not None:

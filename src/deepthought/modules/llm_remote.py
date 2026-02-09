@@ -60,9 +60,17 @@ class RemoteLLM:
             if not isinstance(data, dict):
                 raise ValueError("MemoryRetrieved payload must be a dict")
             input_id = data.get("input_id")
+            author_id = data.get("author_id")
+            if not isinstance(author_id, str):
+                author_id = None
             user_id = data.get("user_id")
             if not isinstance(user_id, str):
                 user_id = None
+            if author_id is None:
+                author_id = user_id
+            channel_id = data.get("channel_id")
+            if not isinstance(channel_id, str):
+                channel_id = None
             retrieved = data.get("retrieved_knowledge", {})
             facts = retrieved.get("facts", [])
             if facts:
@@ -82,7 +90,9 @@ class RemoteLLM:
                     )
                 ],
                 input_id=input_id,
-                user_id=user_id,
+                user_id=author_id or user_id,
+                author_id=author_id,
+                channel_id=channel_id,
                 timestamp=None,
             )
             await self._publisher.publish(

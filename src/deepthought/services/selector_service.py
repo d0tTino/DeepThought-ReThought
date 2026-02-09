@@ -55,7 +55,9 @@ class SelectorService:
             ranked_payload = ResponseRankedPayload(
                 final_response=selected.text,
                 input_id=payload.input_id,
-                user_id=payload.user_id,
+                user_id=payload.author_id or payload.user_id,
+                author_id=payload.author_id,
+                channel_id=payload.channel_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 confidence=selected.confidence,
                 source=selected.source,
