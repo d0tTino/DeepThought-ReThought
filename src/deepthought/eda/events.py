@@ -89,6 +89,12 @@ class InputReceivedPayload(EventPayload):
     input_id: Optional[str] = None
     timestamp: Optional[str] = None
     consent: Optional[bool] = None
+    message_id: Optional[str] = None
+    channel_id: Optional[str] = None
+    guild_id: Optional[str] = None
+    author_id: Optional[str] = None
+    author_name: Optional[str] = None
+    author_is_bot: Optional[bool] = None
 
 
 @dataclass
@@ -98,6 +104,8 @@ class MemoryRetrievedPayload(EventPayload):
     retrieved_knowledge: Dict[str, Any]
     input_id: Optional[str] = None
     user_id: Optional[str] = None
+    channel_id: Optional[str] = None
+    author_id: Optional[str] = None
     timestamp: Optional[str] = None
 
 
@@ -129,6 +137,8 @@ class ResponseCandidatesPayload(EventPayload):
     candidates: list[ResponseCandidate]
     input_id: Optional[str] = None
     user_id: Optional[str] = None
+    channel_id: Optional[str] = None
+    author_id: Optional[str] = None
     timestamp: Optional[str] = None
 
     @classmethod
@@ -145,6 +155,8 @@ class ResponseCandidatesPayload(EventPayload):
             candidates=candidates,
             input_id=data.get("input_id"),
             user_id=data.get("user_id"),
+            channel_id=data.get("channel_id"),
+            author_id=data.get("author_id"),
             timestamp=data.get("timestamp"),
         )
 
@@ -156,6 +168,8 @@ class ResponseRankedPayload(EventPayload):
     final_response: str
     input_id: Optional[str] = None
     user_id: Optional[str] = None
+    channel_id: Optional[str] = None
+    author_id: Optional[str] = None
     timestamp: Optional[str] = None
     confidence: Optional[float] = None
     source: Optional[str] = None
@@ -175,6 +189,8 @@ class ResponseRankedPayload(EventPayload):
             final_response=data["final_response"],
             input_id=data.get("input_id"),
             user_id=data.get("user_id"),
+            channel_id=data.get("channel_id"),
+            author_id=data.get("author_id"),
             timestamp=data.get("timestamp"),
             confidence=data.get("confidence"),
             source=data.get("source"),

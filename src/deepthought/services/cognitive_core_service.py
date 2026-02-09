@@ -172,26 +172,40 @@ class CognitiveCoreService(BaseService):
             input_id = data.get("input_id")
             user_input = data.get("user_input")
             headers = getattr(msg, "headers", None)
-            user_id = data.get("user_id") or (headers.get("user_id") if headers else None)
+            author_id = data.get("author_id")
+            if not isinstance(author_id, str):
+                author_id = None
+            user_id = data.get("user_id")
             if not isinstance(user_id, str):
                 user_id = None
+            if author_id is None:
+                author_id = user_id or (headers.get("user_id") if headers else None)
+            channel_id = data.get("channel_id")
+            if not isinstance(channel_id, str):
+                channel_id = None
+            if channel_id is None and headers:
+                channel_id = headers.get("channel_id")
+            if not isinstance(channel_id, str):
+                channel_id = None
+
             if not isinstance(input_id, str) or not isinstance(user_input, str):
                 raise ValueError("Invalid input payload fields")
             logger.info("CognitiveCoreService received input %s", input_id)
 
+            resolved_user_id = author_id or "user"
             self._memory.store_interaction(user_input)
-            await self._db.store_memory("user", user_input)
-            await self._db.log_interaction("user", None)
+            await self._db.store_memory(resolved_user_id, user_input)
+            await self._db.log_interaction(resolved_user_id, None)
             try:
                 perception = analyze_social(user_input)
             except Exception as e:  # pragma: no cover - defensive
                 logger.error("Failed to analyze social perception: %s", e, exc_info=True)
                 perception = {"flirtation": 0.0, "avoidance": 0.0, "manipulation": 0.0}
-            await self._db.store_memory("user", json.dumps(perception), topic="social_perception")
+            await self._db.store_memory(resolved_user_id, json.dumps(perception), topic="social_perception")
             delta = perception.get("flirtation", 0.0) - (
                 perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
             )
-            await self._db.adjust_affinity("user", delta)
+            await self._db.adjust_affinity(resolved_user_id, delta)
 
             mem_facts = self.retrieve_context(user_input)
             db_facts = await self._db_context()
@@ -204,7 +218,9 @@ class CognitiveCoreService(BaseService):
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "cognitive_core"},
                 input_id=input_id,
-                user_id=user_id,
+                user_id=author_id or user_id,
+                author_id=author_id,
+                channel_id=channel_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
 

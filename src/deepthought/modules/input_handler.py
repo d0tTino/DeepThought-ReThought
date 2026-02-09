@@ -21,14 +21,34 @@ class InputHandler:
         self._memory_service = cognitive_service
         logger.info("InputHandler initialized (JetStream enabled).")
 
-    async def process_input(self, user_input: str) -> str:
+    async def process_input(
+        self,
+        user_input: str,
+        *,
+        message_id: str | None = None,
+        channel_id: str | None = None,
+        guild_id: str | None = None,
+        author_id: str | None = None,
+        author_name: str | None = None,
+        author_is_bot: bool | None = None,
+    ) -> str:
         """Process input and publish via JetStream."""
         if not isinstance(user_input, str):
             raise ValueError("user_input must be a string")
 
         input_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat()
-        payload = InputReceivedPayload(user_input=user_input, input_id=input_id, timestamp=timestamp)
+        payload = InputReceivedPayload(
+            user_input=user_input,
+            input_id=input_id,
+            timestamp=timestamp,
+            message_id=message_id,
+            channel_id=channel_id,
+            guild_id=guild_id,
+            author_id=author_id,
+            author_name=author_name,
+            author_is_bot=author_is_bot,
+        )
         try:
             await self._publisher.publish(
                 EventSubjects.INPUT_RECEIVED,

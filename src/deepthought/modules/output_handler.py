@@ -10,7 +10,7 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 # Assuming eda modules are in parent dir relative to modules dir
-from ..eda.events import EventSubjects
+from ..eda.events import EventSubjects, ResponseRankedPayload
 from ..eda.subscriber import Subscriber
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ class OutputHandler:
         """Initialize with shared NATS client and JetStream context."""
         self._subscriber = Subscriber(nats_client, js_context)
         self._responses: "OrderedDict[str, str]" = OrderedDict()
+        self._response_context: "OrderedDict[str, dict[str, str | None]]" = OrderedDict()
         self._output_callback = output_callback
         self._max_responses = max_responses
         logger.info("OutputHandler initialized (JetStream enabled).")
@@ -41,21 +42,33 @@ class OutputHandler:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
                 raise ValueError("ResponseRanked payload must be a dict")
-            input_id = data.get("input_id")
-            final_response = data.get("final_response")
+            payload = ResponseRankedPayload.from_dict(data)
+            input_id = payload.input_id
+            final_response = payload.final_response
             if not isinstance(input_id, str) or not isinstance(final_response, str):
                 raise ValueError("Invalid response payload fields")
             logger.info(f"OutputHandler received response event ID {input_id}")
 
-            self._responses[input_id] = final_response  # Store response
-            if len(self._responses) > self._max_responses:
-                self._responses.popitem(last=False)
+            self._responses[input_id] = final_response
+            self._response_context[input_id] = {
+                "author_id": payload.author_id or payload.user_id,
+                "channel_id": payload.channel_id,
+            }
+            while len(self._responses) > self._max_responses:
+                oldest, _ = self._responses.popitem(last=False)
+                self._response_context.pop(oldest, None)
 
             # Use callback or log when no callback provided
             if self._output_callback:
                 self._output_callback(input_id, final_response)
             else:
-                logger.info(f"Output ({input_id}): {final_response}")
+                logger.info(
+                    "Output (%s) [author_id=%s channel_id=%s]: %s",
+                    input_id,
+                    payload.author_id or payload.user_id,
+                    payload.channel_id,
+                    final_response,
+                )
 
             # Acknowledge the received message
             await msg.ack()
@@ -135,3 +148,6 @@ class OutputHandler:
 
     def get_all_responses(self) -> Dict[str, str]:
         return self._responses
+
+    def get_response_context(self, input_id: str) -> Dict[str, str | None] | None:
+        return self._response_context.get(input_id)

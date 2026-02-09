@@ -131,6 +131,6 @@ async def test_handle_response_logs_when_no_callback(monkeypatch, caplog):
     assert (
         "deepthought.modules.output_handler",
         logging.INFO,
-        "Output (99): hello",
+        "Output (99) [author_id=None channel_id=None]: hello",
     ) in caplog.record_tuples
     assert not called
