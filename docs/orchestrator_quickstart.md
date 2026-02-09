@@ -55,6 +55,7 @@ The orchestrator starts multiple services with a single NATS connection. Each se
    services:
      - memory
      - knowledge_graph
+     - discord_gateway
    crews:
      - examples.crew_demo:create_demo_crew
    graphs:
@@ -63,6 +64,9 @@ The orchestrator starts multiple services with a single NATS connection. Each se
 
    `llm_remote` requires the `LLM_ENDPOINT` variable pointing to a running
    `/generate` endpoint.
+
+   When `discord_gateway` is enabled, it subscribes to `dtr.response.ranked` and forwards
+   final responses back to the originating Discord channel (using a durable consumer).
 
 4. **Run the orchestrator**
 
