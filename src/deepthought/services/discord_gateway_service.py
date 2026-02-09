@@ -63,6 +63,21 @@ class DiscordGatewayService(BaseService):
         author = getattr(message, "author", None)
         channel = getattr(message, "channel", None)
         guild = getattr(message, "guild", None)
+        raw_attachments = getattr(message, "attachments", None)
+        attachments = []
+        if isinstance(raw_attachments, (list, tuple)):
+            for attachment in raw_attachments:
+                descriptor = InputReceivedPayload.AttachmentDescriptor.from_dict(
+                    {
+                        "url": getattr(attachment, "url", None),
+                        "content_type": getattr(attachment, "content_type", None),
+                        "filename": getattr(attachment, "filename", None),
+                        "size": getattr(attachment, "size", None),
+                    }
+                )
+                if descriptor is not None:
+                    attachments.append(descriptor)
+
         return InputReceivedPayload(
             user_input=user_text,
             input_id=str(uuid.uuid4()),
@@ -73,6 +88,7 @@ class DiscordGatewayService(BaseService):
             author_id=(str(getattr(author, "id", "")) if getattr(author, "id", None) is not None else None),
             author_name=(getattr(author, "display_name", None) or getattr(author, "name", None)),
             author_is_bot=bool(getattr(author, "bot", False)) if author is not None else None,
+            attachments=attachments or None,
         )
 
     async def handle_discord_message(self, message: Any) -> str | None:

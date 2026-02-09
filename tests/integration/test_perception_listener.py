@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 import json
 import sys
 import types
@@ -316,3 +317,54 @@ async def test_listener_skips_asr_when_audio_consent_missing(monkeypatch):
     assert service.run.await_count == 1
     _, kwargs = service.run.await_args
     assert "text_tokens" not in kwargs
+
+@pytest.mark.asyncio
+async def test_listener_routes_attachment_descriptors_to_media_and_provenance(monkeypatch):
+    monkeypatch.setattr(
+        "deepthought.services.perception.listener.PerceptionConfig",
+        lambda: SimpleNamespace(enable_asr_transcription=False, text_hop_size=0.05),
+    )
+
+    service = SimpleNamespace(run=AsyncMock())
+    listener = PerceptionServiceListener(
+        service,
+        FakeNATS(),
+        object(),
+        default_user_id="user",
+    )
+
+    payload = {
+        "message_id": "m6",
+        "user_id": "u6",
+        "user_input": "look and listen",
+        "attachments": [
+            {
+                "url": "https://cdn.test/photo.jpg",
+                "content_type": "image/jpeg",
+                "filename": "photo.jpg",
+                "size": 100,
+            },
+            {
+                "url": "https://cdn.test/voice.mp3",
+                "content_type": "audio/mpeg",
+                "filename": "voice.mp3",
+                "size": 200,
+            },
+            {
+                "url": "https://cdn.test/clip.mp4",
+                "content_type": "video/mp4",
+                "filename": "clip.mp4",
+                "size": 300,
+            },
+            {"url": "", "content_type": "image/png"},
+        ],
+    }
+    msg = SimpleNamespace(data=json.dumps(payload).encode(), ack=AsyncMock(), headers=None)
+
+    await listener._handle(msg)
+
+    msg.ack.assert_awaited_once()
+    _, kwargs = service.run.await_args
+    assert kwargs["audio_path"] == "https://cdn.test/voice.mp3"
+    assert kwargs["video_path"] == "https://cdn.test/clip.mp4"
+    assert kwargs["provenance"]["attachments"]["image"][0]["url"] == "https://cdn.test/photo.jpg"

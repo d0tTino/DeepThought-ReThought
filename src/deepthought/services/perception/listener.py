@@ -26,6 +26,44 @@ logger = logging.getLogger(__name__)
 class PerceptionServiceListener:
     """Subscribe to input events and invoke :class:`PerceptionService`."""
 
+    @staticmethod
+    def _infer_attachment_modality(content_type: str | None, filename: str | None) -> str | None:
+        ctype = (content_type or "").strip().lower()
+        if ctype:
+            major = ctype.split("/", 1)[0]
+            if major in {"image", "audio", "video"}:
+                return major
+
+        name = (filename or "").strip().lower()
+        if not name:
+            return None
+
+        image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff"}
+        audio_exts = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".opus"}
+        video_exts = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+        for ext_set, modality in ((image_exts, "image"), (audio_exts, "audio"), (video_exts, "video")):
+            if any(name.endswith(ext) for ext in ext_set):
+                return modality
+        return None
+
+    @classmethod
+    def _attachment_route(
+        cls,
+        attachments: Sequence[InputReceivedPayload.AttachmentDescriptor] | None,
+    ) -> Dict[str, list[Dict[str, Any]]]:
+        routed: Dict[str, list[Dict[str, Any]]] = {"image": [], "audio": [], "video": []}
+        for item in attachments or []:
+            modality = cls._infer_attachment_modality(item.content_type, item.filename)
+            if modality in routed:
+                routed[modality].append({
+                    "url": item.url,
+                    "content_type": item.content_type,
+                    "filename": item.filename,
+                    "size": item.size,
+                })
+        return routed
+
     def __init__(
         self,
         service: PerceptionService,
@@ -120,6 +158,7 @@ class PerceptionServiceListener:
 
             payload_user_input: str | None = None
             payload_input_id: str | None = None
+            attachments: Sequence[InputReceivedPayload.AttachmentDescriptor] | None = None
             try:
                 payload = InputReceivedPayload.from_dict(raw)
             except Exception:
@@ -128,6 +167,9 @@ class PerceptionServiceListener:
             else:
                 payload_input_id = payload.input_id
                 payload_user_input = payload.user_input
+                attachments = payload.attachments
+
+            routed_attachments = self._attachment_route(attachments)
 
             message_id = (
                 payload_input_id
@@ -153,9 +195,21 @@ class PerceptionServiceListener:
                 "audio_path": raw.get("audio_path"),
                 "video_path": raw.get("video_path"),
             }
+            if kwargs["audio_path"] is None and routed_attachments["audio"]:
+                kwargs["audio_path"] = routed_attachments["audio"][0]["url"]
+            if kwargs["video_path"] is None and routed_attachments["video"]:
+                kwargs["video_path"] = routed_attachments["video"][0]["url"]
             if isinstance(consent, dict):
                 kwargs["audio_opt_in"] = consent.get("audio")
                 kwargs["video_opt_in"] = consent.get("video")
+
+            provenance = kwargs.get("provenance")
+            if not isinstance(provenance, dict):
+                provenance = {}
+            attachment_refs = {name: values for name, values in routed_attachments.items() if values}
+            if attachment_refs:
+                provenance["attachments"] = attachment_refs
+                kwargs["provenance"] = provenance
 
             if (
                 kwargs.get("text_tokens") is None
