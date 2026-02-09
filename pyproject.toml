@@ -23,6 +23,7 @@ cognitive_core = "deepthought.services.cognitive_core_service:CognitiveCoreServi
 reward_manager = "deepthought.motivate.reward_manager:RewardManager"
 planning = "deepthought.services.planning_service:PlanningService"
 reasoning = "deepthought.services.reasoning_service:ReasoningService"
+discord_gateway = "deepthought.services.discord_gateway_service:DiscordGatewayService"
 
 
 
