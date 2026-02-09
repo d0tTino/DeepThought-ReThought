@@ -26,6 +26,8 @@ class EventSubjects:
 
     # LLM events
     RESPONSE_GENERATED = "dtr.llm.response_generated"
+    RESPONSE_CANDIDATES = "dtr.response.candidates"
+    RESPONSE_RANKED = "dtr.response.ranked"
 
     # Perception events
     PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings"
@@ -108,6 +110,76 @@ class ResponseGeneratedPayload(EventPayload):
     user_id: Optional[str] = None
     timestamp: Optional[str] = None
     confidence: Optional[float] = None
+
+
+@dataclass
+class ResponseCandidate(EventPayload):
+    """A single candidate response produced by a responder."""
+
+    text: str
+    confidence: float = 0.0
+    source: Optional[str] = None
+    safety_passed: Optional[bool] = None
+
+
+@dataclass
+class ResponseCandidatesPayload(EventPayload):
+    """Payload for candidate response arrays produced by responders."""
+
+    candidates: list[ResponseCandidate]
+    input_id: Optional[str] = None
+    user_id: Optional[str] = None
+    timestamp: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ResponseCandidatesPayload":
+        raw_candidates = data.get("candidates") or []
+        candidates = [
+            candidate
+            if isinstance(candidate, ResponseCandidate)
+            else ResponseCandidate(**candidate)
+            for candidate in raw_candidates
+            if isinstance(candidate, (dict, ResponseCandidate))
+        ]
+        return cls(
+            candidates=candidates,
+            input_id=data.get("input_id"),
+            user_id=data.get("user_id"),
+            timestamp=data.get("timestamp"),
+        )
+
+
+@dataclass
+class ResponseRankedPayload(EventPayload):
+    """Payload for final response chosen from candidate responses."""
+
+    final_response: str
+    input_id: Optional[str] = None
+    user_id: Optional[str] = None
+    timestamp: Optional[str] = None
+    confidence: Optional[float] = None
+    source: Optional[str] = None
+    candidates: list[ResponseCandidate] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ResponseRankedPayload":
+        raw_candidates = data.get("candidates") or []
+        candidates = [
+            candidate
+            if isinstance(candidate, ResponseCandidate)
+            else ResponseCandidate(**candidate)
+            for candidate in raw_candidates
+            if isinstance(candidate, (dict, ResponseCandidate))
+        ]
+        return cls(
+            final_response=data["final_response"],
+            input_id=data.get("input_id"),
+            user_id=data.get("user_id"),
+            timestamp=data.get("timestamp"),
+            confidence=data.get("confidence"),
+            source=data.get("source"),
+            candidates=candidates,
+        )
 
 
 @dataclass

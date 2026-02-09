@@ -6,7 +6,7 @@ import pytest
 pytest.importorskip("nats")
 
 import deepthought.modules.output_handler as output_handler
-from deepthought.eda.events import ResponseGeneratedPayload
+from deepthought.eda.events import ResponseRankedPayload
 
 
 class DummyNATS:
@@ -56,7 +56,7 @@ async def test_handle_response_success(monkeypatch):
         received["resp"] = resp
 
     handler = create_handler(monkeypatch, cb)
-    payload = ResponseGeneratedPayload(final_response="ok", input_id="42")
+    payload = ResponseRankedPayload(final_response="ok", input_id="42")
     msg = DummyMsg(payload.to_json())
     await handler._handle_response_event(msg)
 
@@ -102,7 +102,7 @@ async def test_cache_limit(monkeypatch):
     handler = create_handler(monkeypatch, max_responses=2)
 
     for i in range(3):
-        payload = ResponseGeneratedPayload(final_response=f"r{i}", input_id=str(i))
+        payload = ResponseRankedPayload(final_response=f"r{i}", input_id=str(i))
         msg = DummyMsg(payload.to_json())
         await handler._handle_response_event(msg)
 
@@ -123,7 +123,7 @@ async def test_handle_response_logs_when_no_callback(monkeypatch, caplog):
         called = True
 
     monkeypatch.setattr("builtins.print", fake_print)
-    payload = ResponseGeneratedPayload(final_response="hello", input_id="99")
+    payload = ResponseRankedPayload(final_response="hello", input_id="99")
     msg = DummyMsg(payload.to_json())
     with caplog.at_level(logging.INFO):
         await handler._handle_response_event(msg)

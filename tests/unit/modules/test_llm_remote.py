@@ -1,6 +1,5 @@
 import asyncio
 import importlib.util
-import json
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,7 +15,7 @@ sys.modules[spec.name] = llm_remote
 assert spec.loader is not None
 spec.loader.exec_module(llm_remote)
 
-from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload
+from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload  # noqa: E402
 
 
 class DummyNATS:
@@ -107,6 +106,7 @@ async def test_generate_posts(monkeypatch):
 class DummyMsg:
     def __init__(self, data):
         self.data = data.encode()
+        self.headers = None
         self.acked = False
         self.nacked = False
 
@@ -135,8 +135,8 @@ async def test_handle_memory_event_publishes(monkeypatch):
     pub = llm._publisher
     assert pub.published
     subject, sent_payload = pub.published[0]
-    assert subject == EventSubjects.RESPONSE_GENERATED
-    assert sent_payload.final_response == "answer"
+    assert subject == EventSubjects.RESPONSE_CANDIDATES
+    assert sent_payload.candidates[0].text == "answer"
     assert sent_payload.input_id == "42"
 
 
@@ -276,8 +276,8 @@ async def test_handle_memory_event_with_mock_session(monkeypatch):
     assert msg.acked
     assert llm._publisher.published
     subject, sent_payload = llm._publisher.published[0]
-    assert subject == EventSubjects.RESPONSE_GENERATED
-    assert sent_payload.final_response == "resp"
+    assert subject == EventSubjects.RESPONSE_CANDIDATES
+    assert sent_payload.candidates[0].text == "resp"
 
 
 @pytest.mark.asyncio

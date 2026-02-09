@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class OutputHandler:
-    """Subscribes to ResponseGenerated via JetStream and handles output."""
+    """Subscribes to ranked responses via JetStream and handles output."""
 
     def __init__(
         self,
@@ -34,13 +34,13 @@ class OutputHandler:
         logger.info("OutputHandler initialized (JetStream enabled).")
 
     async def _handle_response_event(self, msg: Msg) -> None:
-        """Handles ResponseGenerated event from JetStream."""
+        """Handles ranked response events from JetStream."""
         input_id = "unknown"
         data = None
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
-                raise ValueError("ResponseGenerated payload must be a dict")
+                raise ValueError("ResponseRanked payload must be a dict")
             input_id = data.get("input_id")
             final_response = data.get("final_response")
             if not isinstance(input_id, str) or not isinstance(final_response, str):
@@ -62,7 +62,7 @@ class OutputHandler:
             logger.debug(f"Acked message for {input_id} in OutputHandler")
 
         except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Invalid ResponseGenerated payload: {e}", exc_info=True)
+            logger.error(f"Invalid ResponseRanked payload: {e}", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
@@ -89,7 +89,7 @@ class OutputHandler:
 
     async def start_listening(self, durable_name: str = "output_handler_listener") -> bool:
         """
-        Starts the NATS subscriber to listen for RESPONSE_GENERATED events.
+        Starts the NATS subscriber to listen for RESPONSE_RANKED events.
 
         Args:
             durable_name: Optional name for the durable consumer. Defaults to "output_handler_listener".
@@ -102,14 +102,14 @@ class OutputHandler:
             return False
 
         try:
-            logger.info(f"OutputHandler subscribing to {EventSubjects.RESPONSE_GENERATED}...")
+            logger.info(f"OutputHandler subscribing to {EventSubjects.RESPONSE_RANKED}...")
             await self._subscriber.subscribe(
-                subject=EventSubjects.RESPONSE_GENERATED,
+                subject=EventSubjects.RESPONSE_RANKED,
                 handler=self._handle_response_event,
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info(f"OutputHandler successfully subscribed to {EventSubjects.RESPONSE_GENERATED}.")
+            logger.info(f"OutputHandler successfully subscribed to {EventSubjects.RESPONSE_RANKED}.")
             return True
         except nats.errors.Error as e:
             logger.error(f"OutputHandler failed to subscribe: {e}", exc_info=True)

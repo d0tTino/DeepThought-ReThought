@@ -8,8 +8,9 @@ the message broker.
 
 from .events import (CodeGeneratedPayload, CodeTemplatePayload, EventPayload,
                      EventSubjects, InputReceivedPayload,
-                     MemoryRetrievedPayload, ResponseGeneratedPayload,
-                     WarningPayload)
+                     MemoryRetrievedPayload, ResponseCandidate,
+                     ResponseCandidatesPayload, ResponseGeneratedPayload,
+                     ResponseRankedPayload, WarningPayload)
 from .publisher import Publisher
 from .subscriber import Subscriber
 
@@ -19,6 +20,9 @@ __all__ = [
     "InputReceivedPayload",
     "MemoryRetrievedPayload",
     "ResponseGeneratedPayload",
+    "ResponseCandidate",
+    "ResponseCandidatesPayload",
+    "ResponseRankedPayload",
     "WarningPayload",
     "CodeTemplatePayload",
     "CodeGeneratedPayload",
