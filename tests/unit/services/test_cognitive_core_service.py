@@ -291,8 +291,7 @@ async def test_handle_input_prefers_payload_user_id_over_header(monkeypatch):
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
 
-    payload = InputReceivedPayload(user_input="hello", input_id="x", user_id="payload-user")
-    msg = DummyMsg(payload.to_json())
+    msg = DummyMsg(json.dumps({"user_input": "hello", "input_id": "x", "user_id": "payload-user"}))
     msg.headers = {"user_id": "header-user"}
 
     await service._handle_input(msg)
