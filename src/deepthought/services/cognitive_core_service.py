@@ -222,6 +222,7 @@ class CognitiveCoreService(BaseService):
                     facts.append(item)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "cognitive_core"},
+                user_input=user_input,
                 input_id=input_id,
                 user_id=author_id or user_id,
                 author_id=author_id,

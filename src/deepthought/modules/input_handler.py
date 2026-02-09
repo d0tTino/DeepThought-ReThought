@@ -73,7 +73,11 @@ class InputHandler:
 
                 mem_payload = MemoryRetrievedPayload(
                     retrieved_knowledge={"facts": context, "source": "hierarchical"},
+                    user_input=user_input,
                     input_id=input_id,
+                    channel_id=channel_id,
+                    author_id=author_id,
+                    author_name=author_name,
                     timestamp=datetime.now(timezone.utc).isoformat(),
                 )
 

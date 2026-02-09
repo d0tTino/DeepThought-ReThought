@@ -57,6 +57,7 @@ class BasicMemory:
             facts = self._memory.retrieve_context(user_input)
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "basic_memory"},
+                user_input=user_input,
                 input_id=input_id,
                 user_id=user_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),

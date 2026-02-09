@@ -126,7 +126,7 @@ async def test_handle_memory_event_publishes(monkeypatch):
 
     monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="42")
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, user_input="hello", input_id="42")
     msg = DummyMsg(payload.to_json())
 
     await llm._handle_memory_event(msg)
@@ -181,7 +181,7 @@ async def test_handle_memory_event_timeout(monkeypatch):
 
     monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="99")
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, user_input="hello", input_id="99")
     msg = DummyMsg(payload.to_json())
 
     await llm._handle_memory_event(msg)
@@ -199,7 +199,7 @@ async def test_handle_memory_event_bad_json(monkeypatch):
 
     monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="88")
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, user_input="hello", input_id="88")
     msg = DummyMsg(payload.to_json())
 
     await llm._handle_memory_event(msg)
@@ -246,7 +246,7 @@ async def test_handle_memory_event_http_error(monkeypatch):
 
     monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="77")
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, user_input="hello", input_id="77")
     msg = DummyMsg(payload.to_json())
 
     await llm._handle_memory_event(msg)
@@ -268,7 +268,7 @@ async def test_handle_memory_event_with_mock_session(monkeypatch):
 
     llm = create_llm(monkeypatch, session)
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["fact"]}, input_id="55")
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["fact"]}, user_input="hello", input_id="55")
     msg = DummyMsg(payload.to_json())
 
     await llm._handle_memory_event(msg)
@@ -288,3 +288,40 @@ async def test_generate_uses_dspy_pipeline(monkeypatch):
     result = await llm._generate("query")
     assert result == "pipe"
     await llm._session.close()
+
+
+def test_build_generation_prompt_includes_sections():
+    prompt = llm_remote._build_generation_prompt(
+        user_input="How are you?",
+        facts=["Fact A", "Fact B"],
+        author_name="Ada",
+        channel_context="discord/#general",
+        recent_turn_summary="The user asked about status.",
+    )
+
+    assert "[SYSTEM PERSONA]" in prompt
+    assert "[RELEVANT FACTS]" in prompt
+    assert "- Fact A" in prompt
+    assert "[LATEST USER MESSAGE]" in prompt
+    assert "How are you?" in prompt
+    assert "[SOCIAL/PERCEPTION HINTS]" in prompt
+    assert "- Author name: Ada" in prompt
+
+
+def test_build_generation_prompt_without_optional_hints():
+    prompt = llm_remote._build_generation_prompt(user_input="Hi", facts=[])
+    assert "[RELEVANT FACTS]" in prompt
+    assert "- None" in prompt
+
+
+@pytest.mark.asyncio
+async def test_handle_memory_event_missing_user_input_naks(monkeypatch):
+    llm = create_llm(monkeypatch)
+    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="no-input")
+    msg = DummyMsg(payload.to_json())
+
+    await llm._handle_memory_event(msg)
+
+    assert msg.nacked
+    assert not msg.acked
+    assert not llm._publisher.published

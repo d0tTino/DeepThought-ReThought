@@ -102,10 +102,14 @@ class MemoryRetrievedPayload(EventPayload):
     """Payload for memory retrieved events."""
 
     retrieved_knowledge: Dict[str, Any]
+    user_input: Optional[str] = None
     input_id: Optional[str] = None
     user_id: Optional[str] = None
     channel_id: Optional[str] = None
     author_id: Optional[str] = None
+    author_name: Optional[str] = None
+    channel_context: Optional[str] = None
+    recent_turn_summary: Optional[str] = None
     timestamp: Optional[str] = None
 
 
