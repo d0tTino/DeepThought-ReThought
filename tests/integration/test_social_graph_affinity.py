@@ -1,4 +1,3 @@
-import importlib
 import sys
 import types
 from types import SimpleNamespace
@@ -42,35 +41,32 @@ async def test_affinity_changes_after_processing(tmp_path, monkeypatch):
     db = DBManager(str(tmp_path / "sg.db"))
     await db.init_db()
     pm = PersonaManager(db, friendly=1, playful=1)
-    core = CognitiveCoreService(None, None, Settings(), memory=DummyMemory(), db=db)
     async def _noop(*a, **k):
         return None
-    core._publisher = SimpleNamespace(publish=_noop)
-    core._subscriber = SimpleNamespace()
 
-    svc = SocialGraphService(db_manager=db, persona_manager=pm, cognitive_core=core)
+    svc = SocialGraphService(db_manager=db, persona_manager=pm)
     svc._publisher = SimpleNamespace(publish=_noop)
     svc._subscriber = SimpleNamespace()
 
-    import deepthought.services.cognitive_core_service as ccsvc
+    import deepthought.services.social_graph_service as sgsvc
     monkeypatch.setattr(
-        ccsvc, "analyze_social", lambda _t: {"flirtation": 0.6, "avoidance": 0.2, "manipulation": 0.0}
+        sgsvc, "analyze_social", lambda _t: {"flirtation": 0.6, "avoidance": 0.2, "manipulation": 0.0}
     )
     pos = DummyMsg(InputReceivedPayload(user_input="I love this", input_id="1"))
     await svc._handle_input(pos)
     assert pos.acked
-    assert await db.get_affinity("user") == 2
-    assert await pm.get_persona("user") == "friendly"
+    assert await db.get_affinity("anonymous") == 1
+    assert await pm.get_persona("anonymous") == "friendly"
 
     monkeypatch.setattr(
-        ccsvc, "analyze_social", lambda _t: {"flirtation": 0.0, "avoidance": 0.4, "manipulation": 0.3}
+        sgsvc, "analyze_social", lambda _t: {"flirtation": 0.0, "avoidance": 0.4, "manipulation": 0.3}
     )
     neg = DummyMsg(InputReceivedPayload(user_input="I hate this", input_id="2"))
     await svc._handle_input(neg)
-    assert await db.get_affinity("user") == 2
-    assert await pm.get_persona("user") == "friendly"
+    assert await db.get_affinity("anonymous") == 0
+    assert await pm.get_persona("anonymous") == "snarky"
 
-    memories = await db.recall_user("user")
+    memories = await db.recall_user("anonymous")
     topics = [t for t, _ in memories]
     assert topics.count("social_perception") == 2
 
@@ -79,25 +75,24 @@ async def test_affinity_changes_after_processing(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cognitive_core_affinity_with_mocked_perception(tmp_path, monkeypatch):
-    sp_mod = types.ModuleType("deepthought.perception.social_perception")
-    sp_mod.analyze = lambda _t: {"flirtation": 0.6, "avoidance": 0.1, "manipulation": 0.0}
-    monkeypatch.setitem(sys.modules, "deepthought.perception.social_perception", sp_mod)
-
-    import deepthought.services.cognitive_core_service as cognitive_core_service
-    importlib.reload(cognitive_core_service)
-    CognitiveCoreService = cognitive_core_service.CognitiveCoreService
-    Settings = cognitive_core_service.Settings
-
     db = DBManager(str(tmp_path / "core.db"))
     await db.init_db()
     svc = CognitiveCoreService(None, None, Settings(), memory=DummyMemory(), db=db)
-    svc._publisher = SimpleNamespace(publish=lambda *a, **k: None)
+    import deepthought.services.cognitive_core_service as ccsvc
+    monkeypatch.setattr(
+        ccsvc, "analyze_social", lambda _t: {"flirtation": 0.6, "avoidance": 0.1, "manipulation": 0.0}
+    )
+
+    async def _noop(*a, **k):
+        return None
+
+    svc._publisher = SimpleNamespace(publish=_noop)
     svc._subscriber = SimpleNamespace()
 
     msg = DummyMsg(InputReceivedPayload(user_input="hello", input_id="1"))
     await svc._handle_input(msg)
 
     assert msg.acked
-    assert await db.get_affinity("user") == 2
+    assert await db.get_affinity("anonymous") == 2
 
     await db.close()

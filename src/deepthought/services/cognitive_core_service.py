@@ -25,6 +25,7 @@ from ..perception.social_perception import analyze as analyze_social
 from ..search import OfflineSearch
 from .base import BaseService
 from .db_manager import DBManager
+from .input_enrichment_service import InputEnrichmentService
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class CognitiveCoreService(BaseService):
                     search = OfflineSearch(db_path)
         self._search = search
         self._top_k = self._settings.memory_top_k
+        self._input_enrichment = InputEnrichmentService()
 
     @classmethod
     def from_config(
@@ -166,38 +168,15 @@ class CognitiveCoreService(BaseService):
         input_id = "unknown"
         start = time.perf_counter()
         try:
-            data = json.loads(msg.data.decode())
-            if not isinstance(data, dict):
-                raise ValueError("InputReceived payload must be a dict")
-            input_id = data.get("input_id")
-            user_input = data.get("user_input")
-            headers = getattr(msg, "headers", None)
-            def _normalized_identifier(value: object) -> str | None:
-                if not isinstance(value, str):
-                    return None
-                normalized = value.strip()
-                return normalized or None
-
-            user_id = _normalized_identifier(data.get("user_id"))
-            if user_id is None and headers:
-                user_id = _normalized_identifier(headers.get("user_id"))
-
-            author_id = _normalized_identifier(data.get("author_id"))
-            if author_id is None:
-                author_id = user_id
-            channel_id = data.get("channel_id")
-            if not isinstance(channel_id, str):
-                channel_id = None
-            if channel_id is None and headers:
-                channel_id = headers.get("channel_id")
-            if not isinstance(channel_id, str):
-                channel_id = None
-
-            if not isinstance(input_id, str) or not isinstance(user_input, str):
-                raise ValueError("Invalid input payload fields")
+            enriched = self._input_enrichment.parse_input_received(msg)
+            input_id = enriched.input_id
+            user_input = enriched.user_input
+            user_id = enriched.user_id
+            author_id = enriched.author_id
+            channel_id = enriched.channel_id
             logger.info("CognitiveCoreService received input %s", input_id)
 
-            resolved_user_id = author_id or user_id or "anonymous"
+            resolved_user_id = enriched.resolved_user_id
             self._memory.store_interaction(user_input)
             await self._db.store_memory(resolved_user_id, user_input)
             await self._db.log_interaction(resolved_user_id, None)
