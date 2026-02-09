@@ -85,6 +85,46 @@ class EventPayload:
 class InputReceivedPayload(EventPayload):
     """Payload for input received events."""
 
+    @dataclass
+    class AttachmentDescriptor(EventPayload):
+        """Normalized descriptor for a message attachment."""
+
+        url: str
+        content_type: Optional[str] = None
+        filename: Optional[str] = None
+        size: Optional[int] = None
+
+        @classmethod
+        def from_dict(
+            cls, data: Dict[str, Any]
+        ) -> "InputReceivedPayload.AttachmentDescriptor | None":
+            if not isinstance(data, dict):
+                return None
+            url = data.get("url")
+            if not isinstance(url, str) or not url.strip():
+                return None
+            content_type = data.get("content_type")
+            if content_type is not None and not isinstance(content_type, str):
+                content_type = None
+            filename = data.get("filename")
+            if filename is not None and not isinstance(filename, str):
+                filename = None
+            raw_size = data.get("size")
+            size: Optional[int] = None
+            if raw_size is not None:
+                try:
+                    parsed_size = int(raw_size)
+                except (TypeError, ValueError):
+                    parsed_size = -1
+                if parsed_size >= 0:
+                    size = parsed_size
+            return cls(
+                url=url.strip(),
+                content_type=content_type,
+                filename=filename,
+                size=size,
+            )
+
     user_input: str
     input_id: Optional[str] = None
     timestamp: Optional[str] = None
@@ -95,6 +135,36 @@ class InputReceivedPayload(EventPayload):
     author_id: Optional[str] = None
     author_name: Optional[str] = None
     author_is_bot: Optional[bool] = None
+    attachments: Optional[list[AttachmentDescriptor]] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "InputReceivedPayload":
+        normalized: Dict[str, Any] = {
+            "user_input": data.get("user_input", ""),
+            "input_id": data.get("input_id"),
+            "timestamp": data.get("timestamp"),
+            "consent": data.get("consent"),
+            "message_id": data.get("message_id"),
+            "channel_id": data.get("channel_id"),
+            "guild_id": data.get("guild_id"),
+            "author_id": data.get("author_id"),
+            "author_name": data.get("author_name"),
+            "author_is_bot": data.get("author_is_bot"),
+        }
+        raw_attachments = data.get("attachments")
+        if isinstance(raw_attachments, list):
+            attachments = [
+                parsed
+                for parsed in (
+                    InputReceivedPayload.AttachmentDescriptor.from_dict(item)
+                    for item in raw_attachments
+                )
+                if parsed is not None
+            ]
+            normalized["attachments"] = attachments or None
+        else:
+            normalized["attachments"] = None
+        return cls(**normalized)
 
 
 @dataclass

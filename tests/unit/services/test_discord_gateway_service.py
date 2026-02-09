@@ -80,6 +80,14 @@ async def test_handle_discord_message_publishes_input_received(service):
         author=SimpleNamespace(id=5, name="alice", display_name="Alice", bot=False),
         channel=SimpleNamespace(id=123),
         guild=SimpleNamespace(id=7),
+        attachments=[
+            SimpleNamespace(
+                url="https://cdn.discordapp.com/file.png",
+                content_type="image/png",
+                filename="file.png",
+                size=512,
+            )
+        ],
     )
 
     input_id = await service.handle_discord_message(message)
@@ -90,6 +98,8 @@ async def test_handle_discord_message_publishes_input_received(service):
     assert use_js is True
     assert payload.user_input == "hello"
     assert payload.channel_id == "123"
+    assert payload.attachments is not None
+    assert payload.attachments[0].url == "https://cdn.discordapp.com/file.png"
 
 
 @pytest.mark.asyncio
