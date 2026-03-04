@@ -61,6 +61,7 @@ class SelectorService:
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 confidence=selected.confidence,
                 source=selected.source,
+                interaction_policy=payload.interaction_policy,
                 candidates=ranked_candidates,
             )
             await self._publisher.publish(
