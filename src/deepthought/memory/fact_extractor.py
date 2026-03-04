@@ -103,6 +103,84 @@ def extract_user_facts(message: str) -> dict[str, Any]:
     return facts
 
 
+def extract_typed_fact_triples_from_turn(
+    *,
+    user_id: str,
+    message: str,
+    timestamp: str,
+    source_id: str,
+) -> list[dict[str, Any]]:
+    """Extract typed triples+attributes from a single conversation turn."""
+
+    facts = extract_user_facts(message)
+    triples: list[dict[str, Any]] = []
+    if "nickname" in facts:
+        triples.append(
+            {
+                "subject_id": str(user_id),
+                "subject_type": "user",
+                "predicate": "has_nickname",
+                "object_id": f"nickname:{facts['nickname'].lower()}",
+                "object_type": "nickname",
+                "object_value": str(facts["nickname"]),
+                "attributes": {"source_id": source_id, "timestamp": timestamp},
+                "confidence": 0.92,
+                "fact_type": "profile",
+            }
+        )
+    for hobby in facts.get("hobbies", []):
+        triples.append(
+            {
+                "subject_id": str(user_id),
+                "subject_type": "user",
+                "predicate": "likes_hobby",
+                "object_id": f"hobby:{str(hobby).lower()}",
+                "object_type": "hobby",
+                "object_value": str(hobby),
+                "attributes": {"source_id": source_id, "timestamp": timestamp},
+                "confidence": 0.8,
+                "fact_type": "preference",
+            }
+        )
+    favorites = facts.get("favorites", {})
+    if isinstance(favorites, Mapping):
+        for category, value in favorites.items():
+            values = value if isinstance(value, list) else [value]
+            for item in values:
+                triples.append(
+                    {
+                        "subject_id": str(user_id),
+                        "subject_type": "user",
+                        "predicate": "favorite",
+                        "object_id": f"favorite:{category}:{str(item).lower()}",
+                        "object_type": "favorite",
+                        "object_value": str(item),
+                        "attributes": {
+                            "category": category,
+                            "source_id": source_id,
+                            "timestamp": timestamp,
+                        },
+                        "confidence": 0.83,
+                        "fact_type": "preference",
+                    }
+                )
+    if message.strip():
+        triples.append(
+            {
+                "subject_id": str(user_id),
+                "subject_type": "user",
+                "predicate": "mentioned",
+                "object_id": None,
+                "object_type": "utterance",
+                "object_value": message.strip(),
+                "attributes": {"source_id": source_id, "timestamp": timestamp},
+                "confidence": 0.55,
+                "fact_type": "utterance",
+            }
+        )
+    return triples
+
+
 def _merge_list(existing: Iterable[str] | None, incoming: Iterable[str]) -> list[str]:
     merged = list(dict.fromkeys([*(existing or []), *incoming]))
     return [item for item in merged if item]
