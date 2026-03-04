@@ -74,14 +74,10 @@ async def test_affinity_changes_after_processing(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_cognitive_core_affinity_with_mocked_perception(tmp_path, monkeypatch):
+async def test_cognitive_core_does_not_mutate_social_state(tmp_path):
     db = DBManager(str(tmp_path / "core.db"))
     await db.init_db()
     svc = CognitiveCoreService(None, None, Settings(), memory=DummyMemory(), db=db)
-    import deepthought.services.cognitive_core_service as ccsvc
-    monkeypatch.setattr(
-        ccsvc, "analyze_social", lambda _t: {"flirtation": 0.6, "avoidance": 0.1, "manipulation": 0.0}
-    )
 
     async def _noop(*a, **k):
         return None
@@ -93,6 +89,8 @@ async def test_cognitive_core_affinity_with_mocked_perception(tmp_path, monkeypa
     await svc._handle_input(msg)
 
     assert msg.acked
-    assert await db.get_affinity("anonymous") == 2
+    assert await db.get_affinity("anonymous") == 0
+    topics = [topic for topic, _ in await db.recall_user("anonymous")]
+    assert topics.count("social_perception") == 0
 
     await db.close()
