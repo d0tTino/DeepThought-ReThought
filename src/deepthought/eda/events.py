@@ -23,7 +23,7 @@ class EventSubjects:
     Subject naming convention: dtr.<module>.<event_type>
     """
 
-    # Input events
+    # Primary cross-service events (canonical `.v1` subjects).
     INPUT_RECEIVED = CanonicalSubjects.INPUT_RECEIVED
 
     # Memory events
@@ -120,7 +120,9 @@ class InputReceivedPayload(EventPayload):
                 raise ValueError("Attachment url must be a non-empty string")
             content_type = data.get("content_type")
             if content_type is not None and not isinstance(content_type, str):
-                raise ValueError("Attachment content_type must be a string when provided")
+                raise ValueError(
+                    "Attachment content_type must be a string when provided"
+                )
             filename = data.get("filename")
             if filename is not None and not isinstance(filename, str):
                 raise ValueError("Attachment filename must be a string when provided")
@@ -190,6 +192,7 @@ class MemoryRetrievedPayload(EventPayload):
     def from_dict(cls, data: Dict[str, Any]) -> "MemoryRetrievedPayload":
         normalized = decode_payload(EventSubjects.MEMORY_RETRIEVED, data)
         return cls(**normalized)
+
     user_input: Optional[str] = None
     input_id: Optional[str] = None
     user_id: Optional[str] = None
@@ -417,7 +420,6 @@ class PerceptionEmbeddingsPayload(EventPayload):
     by_modality: Dict[str, ModalityEmbeddings] = field(default_factory=dict)
     contribution_mask: Dict[str, list[bool]] = field(default_factory=dict)
 
-
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsPayload":
         data = decode_payload(EventSubjects.PERCEPTION_EMBEDDINGS, data)
@@ -431,7 +433,9 @@ class PerceptionEmbeddingsPayload(EventPayload):
                     meta_dict = dict(meta) if isinstance(meta, dict) else {}
 
                 mask = meta_dict.get("mask")
-                mask_list = [bool(value) for value in mask] if mask is not None else None
+                mask_list = (
+                    [bool(value) for value in mask] if mask is not None else None
+                )
                 spans = [
                     [int(span[0]), int(span[1])]
                     for span in meta_dict.get("spans", [])
@@ -559,10 +563,13 @@ class PerceptionEmbeddingsEvent(EventPayload):
                 "modality_mask",
                 "by_modality",
                 "contribution_mask",
-
             }
             payload_data = {k: data[k] for k in payload_keys if k in data}
-        payload = PerceptionEmbeddingsPayload.from_dict(payload_data) if payload_data else None
+        payload = (
+            PerceptionEmbeddingsPayload.from_dict(payload_data)
+            if payload_data
+            else None
+        )
         return cls(
             event=data.get("event", EventSubjects.PERCEPTION_EMBEDDINGS),
             version=data.get("version", 1),
@@ -653,9 +660,7 @@ class PerceptionExtractPayload(EventPayload):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionExtractPayload":
         data = decode_payload(EventSubjects.PERCEPTION_EXTRACT, data)
-        tokens = cls._parse_tokens(
-            data.get("text_tokens") or data.get("tokens")
-        )
+        tokens = cls._parse_tokens(data.get("text_tokens") or data.get("tokens"))
         text = data.get("text")
         if text is None and isinstance(data.get("user_input"), str):
             text = data["user_input"]
@@ -682,8 +687,12 @@ class PerceptionExtractPayload(EventPayload):
         audio_opt_in = data.get("audio_opt_in")
         video_opt_in = data.get("video_opt_in")
         if isinstance(consent, dict):
-            audio_opt_in = consent.get("audio") if audio_opt_in is None else audio_opt_in
-            video_opt_in = consent.get("video") if video_opt_in is None else video_opt_in
+            audio_opt_in = (
+                consent.get("audio") if audio_opt_in is None else audio_opt_in
+            )
+            video_opt_in = (
+                consent.get("video") if video_opt_in is None else video_opt_in
+            )
 
         return cls(
             message_id=data["message_id"],
@@ -703,7 +712,9 @@ class PerceptionExtractPayload(EventPayload):
             },
             text=text,
             text_tokens=tokens,
-            embeddings=cls._parse_embeddings(data.get("embeddings") or data.get("fused")),
+            embeddings=cls._parse_embeddings(
+                data.get("embeddings") or data.get("fused")
+            ),
             spans=cls._parse_spans(data.get("spans")),
             modality_mask=modality_mask,
             contribution_mask=contribution_mask,
@@ -770,9 +781,7 @@ class PerceptionExtractEvent(EventPayload):
             }
             payload_data = {k: data[k] for k in payload_keys if k in data}
         payload = (
-            PerceptionExtractPayload.from_dict(payload_data)
-            if payload_data
-            else None
+            PerceptionExtractPayload.from_dict(payload_data) if payload_data else None
         )
         return cls(
             event=data.get("event", EventSubjects.PERCEPTION_EXTRACT),

@@ -19,13 +19,13 @@ service_bindings:
       - NATS_URL
       - DISCORD_TOKEN
     subscribe:
-      - subject: dtr.response.ranked
+      - subject: dtr.response.ranked.v1  # legacy alias: dtr.response.ranked
         event_subject: EventSubjects.RESPONSE_RANKED
         jetstream: true
         durable: discord_gateway_response_ranked
         required_reliability: true
     publish:
-      - subject: dtr.input.received
+      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
         event_subject: EventSubjects.INPUT_RECEIVED
         jetstream: true
 
@@ -37,12 +37,12 @@ service_bindings:
       - DT_SOCIAL_GRAPH_DB
       - DT_SEARCH_DB
     subscribe:
-      - subject: dtr.input.received
+      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
         event_subject: EventSubjects.INPUT_RECEIVED
         jetstream: true
         durable: cognitive_core_listener
         required_reliability: true
-      - subject: dtr.perception.embeddings
+      - subject: dtr.perception.embeddings.v1  # legacy alias: dtr.perception.embeddings
         event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
         jetstream: true
         durable: cognitive_core_listener_perception_fused
@@ -68,7 +68,7 @@ service_bindings:
         durable: cognitive_core_listener_bdi
         required_reliability: true
     publish:
-      - subject: dtr.memory.retrieved
+      - subject: dtr.memory.retrieved.v1  # legacy alias: dtr.memory.retrieved
         event_subject: EventSubjects.MEMORY_RETRIEVED
         jetstream: true
 
@@ -78,13 +78,13 @@ service_bindings:
       - NATS_URL
       - LLM_ENDPOINT
     subscribe:
-      - subject: dtr.memory.retrieved
+      - subject: dtr.memory.retrieved.v1  # legacy alias: dtr.memory.retrieved
         event_subject: EventSubjects.MEMORY_RETRIEVED
         jetstream: true
         durable: llm_remote_service
         required_reliability: true
     publish:
-      - subject: dtr.response.candidates
+      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
 
@@ -93,13 +93,13 @@ service_bindings:
     env:
       - NATS_URL
     subscribe:
-      - subject: dtr.response.candidates
+      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
         durable: selector_service
         required_reliability: true
     publish:
-      - subject: dtr.response.ranked
+      - subject: dtr.response.ranked.v1  # legacy alias: dtr.response.ranked
         event_subject: EventSubjects.RESPONSE_RANKED
         jetstream: true
 
@@ -110,7 +110,7 @@ service_bindings:
       - NATS_URL
       - DT_SOCIAL_GRAPH_DB
     subscribe:
-      - subject: dtr.input.received
+      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
         event_subject: EventSubjects.INPUT_RECEIVED
         jetstream: true
         durable: social_graph_service
@@ -125,18 +125,18 @@ service_bindings:
       - PERCEPTION_REQUIRE_CONSENT
       - PERCEPTION_MODEL_PATH
     subscribe:
-      - subject: dtr.input.received
+      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
         event_subject: EventSubjects.INPUT_RECEIVED
         jetstream: true
         durable: perception_listener
         required_reliability: true
-      - subject: dtr.perception.extract
+      - subject: dtr.perception.extract.v1  # legacy alias: dtr.perception.extract
         event_subject: EventSubjects.PERCEPTION_EXTRACT
         jetstream: true
         durable: perception-extract-listener
         required_reliability: true
     publish:
-      - subject: dtr.perception.embeddings
+      - subject: dtr.perception.embeddings.v1  # legacy alias: dtr.perception.embeddings
         event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
         jetstream: true
 
