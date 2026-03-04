@@ -27,6 +27,7 @@ __all__ = [
     "SelectorService",
     "DiscordGatewayService",
     "PerceptionInterpretService",
+    "ContextAssemblerService",
     "manipulation_score",
 ]
 
@@ -44,6 +45,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "SelectorService": ("selector_service", "SelectorService"),
     "DiscordGatewayService": ("discord_gateway_service", "DiscordGatewayService"),
     "PerceptionInterpretService": ("perception_interpret_service", "PerceptionInterpretService"),
+    "ContextAssemblerService": ("context_assembler_service", "ContextAssemblerService"),
     "manipulation_score": ("manipulative_detection", "manipulation_score"),
 }
 

@@ -8,6 +8,18 @@ The project follows an event driven architecture built on NATS/JetStream. Compon
 
 A canonical service-to-subject wiring reference (including durable consumers and required environment variables) is maintained in [`examples/orchestrator.yml`](../examples/orchestrator.yml).
 
+### Required orchestration DAG
+
+For the default orchestrator profile, the following event chain is **required**. If any publish/subscribe edge is removed, the runtime graph becomes disconnected and response generation will stall.
+
+1. `INPUT_RECEIVED` is published by `discord_gateway` and consumed by `context_assembler`.
+2. `MEMORY_RETRIEVED` is published by `cognitive_core` and consumed by `context_assembler`.
+3. Social context must come from either `SOCIAL_UPDATED` (from `social_graph`) **or** `SOCIAL_SIGNALS_RETRIEVED` (from alternative social providers) and be consumed by `context_assembler`.
+4. `PERCEPTION_INTERPRET_RETRIEVED` is published by `perception_interpret` and consumed by `context_assembler`.
+5. `CONTEXT_ASSEMBLED` is published by `context_assembler` and consumed by `llm_remote` (or another LLM responder).
+
+Operators should treat this as a deployment invariant and verify that each required subject has at least one publisher and one subscriber before startup.
+
 ```mermaid
 sequenceDiagram
     participant User
