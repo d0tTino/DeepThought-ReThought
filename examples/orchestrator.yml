@@ -6,6 +6,7 @@
 services:
   - discord_gateway
   - cognitive_core
+  # Optional services (enable as needed)
   - social_graph
   - perception
   - perception_interpret
@@ -74,7 +75,7 @@ service_bindings:
         jetstream: true
 
   llm_remote:
-    description: HTTP-backed responder that turns memory into candidates.
+    description: HTTP-backed responder that turns assembled context into candidates.
     env:
       - NATS_URL
       - LLM_ENDPOINT
@@ -166,7 +167,7 @@ service_bindings:
         jetstream: true
 
   context_assembler:
-    description: Fan out retrieval requests and assemble provider context for responders.
+    description: Assemble provider outputs into a single LLM-ready context payload.
     env:
       - NATS_URL
     subscribe:
@@ -185,6 +186,11 @@ service_bindings:
         jetstream: true
         durable: context_assembler_social
         required_reliability: true
+      - subject: dtr.social.signals.retrieved.v1  # legacy alias: dtr.social.signals.retrieved
+        event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
+        jetstream: true
+        durable: context_assembler_social_signals
+        required_reliability: false
       - subject: dtr.perception.interpret.retrieved.v1  # legacy alias: dtr.perception.interpret.retrieved
         event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
         jetstream: true
