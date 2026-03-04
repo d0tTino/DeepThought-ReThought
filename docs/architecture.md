@@ -8,6 +8,18 @@ The project follows an event driven architecture built on NATS/JetStream. Compon
 
 A canonical service-to-subject wiring reference (including durable consumers and required environment variables) is maintained in [`examples/orchestrator.yml`](../examples/orchestrator.yml).
 
+### Required event DAG (must stay connected)
+
+Operators should keep the default orchestration graph connected through `context_assembler`. The required runtime event DAG is:
+
+- `INPUT_RECEIVED` published by ingress (`discord_gateway`) and subscribed by provider services (`cognitive_core`, `social_graph`, `perception`) plus `context_assembler`.
+- `MEMORY_RETRIEVED` published by `cognitive_core` and subscribed by `context_assembler`.
+- `SOCIAL_UPDATED` (or `SOCIAL_SIGNALS_RETRIEVED` in alternate social providers) published by social services and subscribed by `context_assembler`.
+- `PERCEPTION_INTERPRET_RETRIEVED` published by `perception_interpret` and subscribed by `context_assembler`.
+- `CONTEXT_ASSEMBLED` published by `context_assembler` and subscribed by LLM responders (`llm_remote`) before selector/ranking.
+
+If any edge above is removed, responders can run with missing context or no upstream trigger. Validate the deployed wiring against `examples/orchestrator.yml` before promoting configuration changes.
+
 ```mermaid
 sequenceDiagram
     participant User
