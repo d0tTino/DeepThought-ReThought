@@ -13,6 +13,12 @@ class CanonicalSubjects:
 
     INPUT_RECEIVED = "dtr.input.received.v1"
     MEMORY_RETRIEVED = "dtr.memory.retrieved.v1"
+    MEMORY_RETRIEVAL_REQUESTED = "dtr.memory.retrieval.requested.v1"
+    SOCIAL_SIGNALS_REQUESTED = "dtr.social.signals.requested.v1"
+    PERCEPTION_INTERPRET_REQUESTED = "dtr.perception.interpret.requested.v1"
+    SOCIAL_SIGNALS_RETRIEVED = "dtr.social.signals.retrieved.v1"
+    PERCEPTION_INTERPRET_RETRIEVED = "dtr.perception.interpret.retrieved.v1"
+    CONTEXT_ASSEMBLED = "dtr.context.assembled.v1"
     RESPONSE_CANDIDATES = "dtr.response.candidates.v1"
     RESPONSE_RANKED = "dtr.response.ranked.v1"
     PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings.v1"
@@ -23,6 +29,12 @@ class CanonicalSubjects:
 LEGACY_SUBJECT_MAP: Dict[str, str] = {
     "dtr.input.received": CanonicalSubjects.INPUT_RECEIVED,
     "dtr.memory.retrieved": CanonicalSubjects.MEMORY_RETRIEVED,
+    "dtr.memory.retrieval.requested": CanonicalSubjects.MEMORY_RETRIEVAL_REQUESTED,
+    "dtr.social.signals.requested": CanonicalSubjects.SOCIAL_SIGNALS_REQUESTED,
+    "dtr.perception.interpret.requested": CanonicalSubjects.PERCEPTION_INTERPRET_REQUESTED,
+    "dtr.social.signals.retrieved": CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED,
+    "dtr.perception.interpret.retrieved": CanonicalSubjects.PERCEPTION_INTERPRET_RETRIEVED,
+    "dtr.context.assembled": CanonicalSubjects.CONTEXT_ASSEMBLED,
     "dtr.response.candidates": CanonicalSubjects.RESPONSE_CANDIDATES,
     "dtr.response.ranked": CanonicalSubjects.RESPONSE_RANKED,
     "dtr.perception.embeddings": CanonicalSubjects.PERCEPTION_EMBEDDINGS,

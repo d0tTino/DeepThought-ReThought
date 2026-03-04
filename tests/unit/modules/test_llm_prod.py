@@ -3,7 +3,6 @@ import importlib.util
 import logging
 import sys
 import types
-from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -11,7 +10,7 @@ import pytest
 if importlib.util.find_spec("nats") is None:
     pytest.skip("nats not installed", allow_module_level=True)
 
-from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload
+from deepthought.eda.events import MemoryRetrievedPayload
 
 
 class DummyNATS:
@@ -176,7 +175,7 @@ async def test_handle_memory_event_missing_facts(monkeypatch, caplog):
     assert msg.nacked
     pub = llm._publisher
     assert not pub.published
-    assert any("missing facts" in r.getMessage() for r in caplog.records)
+    assert any("Invalid ContextAssembled payload" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -190,7 +189,7 @@ async def test_handle_memory_event_facts_not_list(monkeypatch, caplog):
     assert msg.nacked
     pub = llm._publisher
     assert not pub.published
-    assert any("missing facts" in r.getMessage() for r in caplog.records)
+    assert any("Invalid ContextAssembled payload" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio

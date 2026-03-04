@@ -98,13 +98,13 @@ class BaseLLM(ABC):
             prompt = persona_desc.strip() + "\n" + prompt
         return prompt
 
-    async def _handle_memory_event(self, msg: Msg) -> None:
-        """Common handler for MEMORY_RETRIEVED events."""
+    async def _handle_context_event(self, msg: Msg) -> None:
+        """Common handler for CONTEXT_ASSEMBLED events."""
         input_id = "unknown"
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
-                raise ValueError("MemoryRetrieved payload must be a dict")
+                raise ValueError("ContextAssembled payload must be a dict")
             input_id = data.get("input_id")
             author_id = data.get("author_id")
             if not isinstance(author_id, str):
@@ -120,24 +120,13 @@ class BaseLLM(ABC):
             target_id = data.get("target_id")
             if not isinstance(target_id, str):
                 target_id = None
-            knowledge = data.get("retrieved_knowledge")
-            if not isinstance(input_id, str) or not isinstance(knowledge, dict):
-                raise ValueError("Invalid memory payload fields")
-
-            facts = knowledge.get("facts")
+            facts = data.get("retrieved_facts")
             if not isinstance(facts, list):
-                logger.error("retrieved_knowledge missing facts list for input_id %s", input_id)
-                if hasattr(msg, "nak") and callable(msg.nak):
-                    try:
-                        await msg.nak()
-                    except Exception:
-                        logger.error("Failed to NAK message", exc_info=True)
-                elif hasattr(msg, "ack") and callable(msg.ack):
-                    try:
-                        await msg.ack()
-                    except Exception:
-                        logger.error("Failed to ack message after error", exc_info=True)
-                return
+                knowledge = data.get("retrieved_knowledge")
+                if isinstance(knowledge, dict):
+                    facts = knowledge.get("facts")
+            if not isinstance(input_id, str) or not isinstance(facts, list):
+                raise ValueError("Invalid MemoryRetrieved payload fields")
 
             logger.info("%s received memory event ID %s", self.__class__.__name__, input_id)
 
@@ -207,7 +196,7 @@ class BaseLLM(ABC):
                 )
             await msg.ack()
         except (json.JSONDecodeError, ValueError) as e:
-            logger.error("Invalid MemoryRetrieved payload: %s", e, exc_info=True)
+            logger.error("Invalid ContextAssembled payload: %s", e, exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
@@ -231,6 +220,10 @@ class BaseLLM(ABC):
                     await msg.ack()
                 except nats.errors.Error:
                     logger.error("Failed to ack message after error", exc_info=True)
+
+    async def _handle_memory_event(self, msg: Msg) -> None:
+        """Backward-compatible alias for legacy tests and producers."""
+        await self._handle_context_event(msg)
 
     async def _handle_reward_event(self, msg: Msg) -> None:
         """Store rewards published on ``agent.reward``."""

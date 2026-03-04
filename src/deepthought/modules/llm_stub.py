@@ -39,14 +39,14 @@ class LLMStub:
         self._persona_descriptions = get_settings().persona_descriptions
         logger.info("LLMStub initialized (JetStream enabled).")
 
-    async def _handle_memory_event(self, msg: Msg) -> None:
-        """Handles MemoryRetrieved event from JetStream."""
+    async def _handle_context_event(self, msg: Msg) -> None:
+        """Handles ContextAssembled event from JetStream."""
         input_id = "unknown"
         data = None
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
-                raise ValueError(f"Unexpected MemoryRetrieved payload format: {type(data)}")
+                raise ValueError(f"Unexpected ContextAssembled payload format: {type(data)}")
             input_id = data.get("input_id")
             author_id = data.get("author_id")
             if not isinstance(author_id, str):
@@ -62,30 +62,18 @@ class LLMStub:
             target_id = data.get("target_id")
             if not isinstance(target_id, str):
                 target_id = None
-            retrieved = data.get("retrieved_knowledge")
-            if not isinstance(input_id, str) or retrieved is None:
-                raise ValueError("Invalid memory payload fields")
-            if isinstance(retrieved, dict) and "retrieved_knowledge" in retrieved:
-                knowledge = retrieved.get("retrieved_knowledge", {})
-            elif isinstance(retrieved, dict):
-                knowledge = retrieved
-            else:
-                logger.error("retrieved_knowledge is not a dict for input_id %s", input_id)
-                if hasattr(msg, "nak") and callable(msg.nak):
-                    try:
-                        await msg.nak()
-                    except Exception:
-                        logger.error("Failed to NAK message", exc_info=True)
-                elif hasattr(msg, "ack") and callable(msg.ack):
-                    try:
-                        await msg.ack()
-                    except Exception:
-                        logger.error("Failed to ack message after error", exc_info=True)
-                return
-
-            facts = knowledge.get("facts")
+            facts = data.get("retrieved_facts")
             if not isinstance(facts, list):
-                logger.error("retrieved_knowledge missing facts list for input_id %s", input_id)
+                retrieved = data.get("retrieved_knowledge")
+                if isinstance(retrieved, dict) and "retrieved_knowledge" in retrieved:
+                    knowledge = retrieved.get("retrieved_knowledge", {})
+                elif isinstance(retrieved, dict):
+                    knowledge = retrieved
+                else:
+                    knowledge = {}
+                facts = knowledge.get("facts")
+            if not isinstance(input_id, str) or not isinstance(facts, list):
+                logger.error("context payload missing facts list for input_id %s", input_id)
                 if hasattr(msg, "nak") and callable(msg.nak):
                     try:
                         await msg.nak()
@@ -98,7 +86,7 @@ class LLMStub:
                         logger.error("Failed to ack message after error", exc_info=True)
                 return
 
-            logger.info(f"LLMStub received memory event ID {input_id}")
+            logger.info(f"LLMStub received context event ID {input_id}")
 
             await asyncio.sleep(0.5)  # Simulate work
 
@@ -160,7 +148,7 @@ class LLMStub:
                 # Do not ack/nak on failure; leave to message broker
 
         except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Invalid MemoryRetrieved payload: {e}", exc_info=True)
+            logger.error(f"Invalid ContextAssembled payload: {e}", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):
                 try:
                     await msg.nak()
@@ -175,6 +163,10 @@ class LLMStub:
         except Exception as e:
             logger.error(f"Error in LLMStub handler: {e}", exc_info=True)
             # Do not ack/nak on unexpected errors
+
+    async def _handle_memory_event(self, msg: Msg) -> None:
+        """Backward-compatible alias for legacy producers and tests."""
+        await self._handle_context_event(msg)
 
     async def _handle_reward_event(self, msg: Msg) -> None:
         """Store rewards published on ``agent.reward``."""
@@ -195,7 +187,7 @@ class LLMStub:
 
     async def start_listening(self, durable_name: str = "llm_stub_listener") -> bool:
         """
-        Starts the NATS subscriber to listen for MEMORY_RETRIEVED events.
+        Starts the NATS subscriber to listen for CONTEXT_ASSEMBLED events.
 
         Args:
             durable_name: Optional name for the durable consumer. Defaults to "llm_stub_listener".
@@ -208,10 +200,10 @@ class LLMStub:
             return False
 
         try:
-            logger.info(f"LLMStub subscribing to {EventSubjects.MEMORY_RETRIEVED}...")
+            logger.info(f"LLMStub subscribing to {EventSubjects.CONTEXT_ASSEMBLED}...")
             await self._subscriber.subscribe(
-                subject=EventSubjects.MEMORY_RETRIEVED,
-                handler=self._handle_memory_event,
+                subject=EventSubjects.CONTEXT_ASSEMBLED,
+                handler=self._handle_context_event,
                 use_jetstream=True,
                 durable=durable_name,
             )
@@ -221,7 +213,7 @@ class LLMStub:
                 use_jetstream=True,
                 durable=f"{durable_name}_reward",
             )
-            logger.info(f"LLMStub successfully subscribed to {EventSubjects.MEMORY_RETRIEVED}.")
+            logger.info(f"LLMStub successfully subscribed to {EventSubjects.CONTEXT_ASSEMBLED}.")
             return True
         except nats.errors.Error as e:
             logger.error(f"LLMStub failed to subscribe: {e}", exc_info=True)

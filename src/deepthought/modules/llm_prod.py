@@ -52,8 +52,8 @@ class ProductionLLM(BaseLLM):
             return False
         try:
             await self._subscriber.subscribe(
-                subject=EventSubjects.MEMORY_RETRIEVED,
-                handler=self._handle_memory_event,
+                subject=EventSubjects.CONTEXT_ASSEMBLED,
+                handler=self._handle_context_event,
                 use_jetstream=True,
                 durable=durable_name,
             )
@@ -63,7 +63,7 @@ class ProductionLLM(BaseLLM):
                 use_jetstream=True,
                 durable=f"{durable_name}_reward",
             )
-            logger.info("ProductionLLM subscribed to %s", EventSubjects.MEMORY_RETRIEVED)
+            logger.info("ProductionLLM subscribed to %s", EventSubjects.CONTEXT_ASSEMBLED)
             return True
         except nats.errors.Error as e:
             logger.error("ProductionLLM failed to subscribe: %s", e, exc_info=True)

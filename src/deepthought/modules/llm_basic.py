@@ -43,8 +43,8 @@ class BasicLLM(BaseLLM):
             return False
         try:
             await self._subscriber.subscribe(
-                subject=EventSubjects.MEMORY_RETRIEVED,
-                handler=self._handle_memory_event,
+                subject=EventSubjects.CONTEXT_ASSEMBLED,
+                handler=self._handle_context_event,
                 use_jetstream=True,
                 durable=durable_name,
             )
@@ -54,7 +54,7 @@ class BasicLLM(BaseLLM):
                 use_jetstream=True,
                 durable=f"{durable_name}_reward",
             )
-            logger.info("BasicLLM subscribed to %s", EventSubjects.MEMORY_RETRIEVED)
+            logger.info("BasicLLM subscribed to %s", EventSubjects.CONTEXT_ASSEMBLED)
             return True
         except nats.errors.Error as e:
             logger.error("BasicLLM failed to subscribe: %s", e, exc_info=True)

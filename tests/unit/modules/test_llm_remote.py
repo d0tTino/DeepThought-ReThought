@@ -15,7 +15,7 @@ sys.modules[spec.name] = llm_remote
 assert spec.loader is not None
 spec.loader.exec_module(llm_remote)
 
-from deepthought.eda.events import EventSubjects, MemoryRetrievedPayload  # noqa: E402
+from deepthought.eda.events import ContextAssembledPayload, EventSubjects  # noqa: E402
 
 
 class DummyNATS:
@@ -118,7 +118,7 @@ class DummyMsg:
 
 
 @pytest.mark.asyncio
-async def test_handle_memory_event_publishes(monkeypatch):
+async def test_handle_context_event_publishes(monkeypatch):
     llm = create_llm(monkeypatch)
 
     async def fake_generate(self, prompt):
@@ -126,10 +126,10 @@ async def test_handle_memory_event_publishes(monkeypatch):
 
     monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, user_input="hello", input_id="42")
+    payload = ContextAssembledPayload(input_id="42", user_input="hello", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
 
-    await llm._handle_memory_event(msg)
+    await llm._handle_context_event(msg)
 
     assert msg.acked
     pub = llm._publisher
@@ -173,7 +173,7 @@ async def test_generate_malformed_json(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_memory_event_timeout(monkeypatch):
+async def test_handle_context_event_timeout(monkeypatch):
     llm = create_llm(monkeypatch)
 
     async def fake_generate(self, prompt):
@@ -181,17 +181,17 @@ async def test_handle_memory_event_timeout(monkeypatch):
 
     monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, user_input="hello", input_id="99")
+    payload = ContextAssembledPayload(input_id="99", user_input="hello", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
 
-    await llm._handle_memory_event(msg)
+    await llm._handle_context_event(msg)
 
     assert msg.nacked
     assert not msg.acked
 
 
 @pytest.mark.asyncio
-async def test_handle_memory_event_bad_json(monkeypatch):
+async def test_handle_context_event_bad_json(monkeypatch):
     llm = create_llm(monkeypatch)
 
     async def fake_generate(self, prompt):
@@ -199,10 +199,10 @@ async def test_handle_memory_event_bad_json(monkeypatch):
 
     monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, user_input="hello", input_id="88")
+    payload = ContextAssembledPayload(input_id="88", user_input="hello", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
 
-    await llm._handle_memory_event(msg)
+    await llm._handle_context_event(msg)
 
     assert msg.nacked
     assert not msg.acked
@@ -233,7 +233,7 @@ async def test_generate_http_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_memory_event_http_error(monkeypatch):
+async def test_handle_context_event_http_error(monkeypatch):
     llm = create_llm(monkeypatch)
 
     async def fake_generate(self, prompt):
@@ -246,17 +246,17 @@ async def test_handle_memory_event_http_error(monkeypatch):
 
     monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, user_input="hello", input_id="77")
+    payload = ContextAssembledPayload(input_id="77", user_input="hello", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
 
-    await llm._handle_memory_event(msg)
+    await llm._handle_context_event(msg)
 
     assert msg.nacked
     assert not msg.acked
 
 
 @pytest.mark.asyncio
-async def test_handle_memory_event_with_mock_session(monkeypatch):
+async def test_handle_context_event_with_mock_session(monkeypatch):
     mock_response = AsyncMock()
     mock_response.__aenter__.return_value = mock_response
     mock_response.__aexit__.return_value = False
@@ -268,10 +268,10 @@ async def test_handle_memory_event_with_mock_session(monkeypatch):
 
     llm = create_llm(monkeypatch, session)
 
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["fact"]}, user_input="hello", input_id="55")
+    payload = ContextAssembledPayload(input_id="55", user_input="hello", retrieved_facts=["fact"])
     msg = DummyMsg(payload.to_json())
 
-    await llm._handle_memory_event(msg)
+    await llm._handle_context_event(msg)
 
     assert msg.acked
     assert llm._publisher.published
@@ -315,12 +315,12 @@ def test_build_generation_prompt_without_optional_hints():
 
 
 @pytest.mark.asyncio
-async def test_handle_memory_event_missing_user_input_naks(monkeypatch):
+async def test_handle_context_event_missing_user_input_naks(monkeypatch):
     llm = create_llm(monkeypatch)
-    payload = MemoryRetrievedPayload(retrieved_knowledge={"facts": ["f1"]}, input_id="no-input")
+    payload = ContextAssembledPayload(input_id="no-input", user_input="", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
 
-    await llm._handle_memory_event(msg)
+    await llm._handle_context_event(msg)
 
     assert msg.nacked
     assert not msg.acked
