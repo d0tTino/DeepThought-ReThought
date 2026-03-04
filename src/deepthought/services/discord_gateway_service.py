@@ -217,7 +217,10 @@ class DiscordGatewayService(BaseService):
         target_id = thread_id or channel_id
         try:
             channel = self._discord_client.get_channel(int(target_id))
-        except (TypeError, ValueError):
+        except TypeError:
+            logger.warning("Invalid channel id type: %s", target_id)
+            return True
+        except ValueError:
             logger.warning("Invalid channel id: %s", target_id)
             return True
         if channel is None:
@@ -243,6 +246,7 @@ class DiscordGatewayService(BaseService):
         return True
 
     async def _handle_ranked_response(self, msg: Msg) -> None:
+        action = "ack"
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
@@ -258,32 +262,33 @@ class DiscordGatewayService(BaseService):
             author_id = payload.author_id or (route.author_id if route else None)
             if not channel_id:
                 logger.warning("No channel mapping found for ranked response input_id=%s", payload.input_id)
-                await msg.ack()
-                return
-
-            sent = await self._send_channel_message(
-                channel_id,
-                content=payload.final_response,
-                reply_to_message_id=reply_to_message_id,
-                thread_id=thread_id,
-                author_id=author_id,
-                interaction_metadata=payload.interaction_policy,
-            )
-            if sent:
-                if payload.input_id:
-                    self._pending_routes.pop(payload.input_id, None)
-                await msg.ack()
-            elif hasattr(msg, "nak") and callable(msg.nak):
-                await msg.nak()
             else:
-                await msg.ack()
-        except (json.JSONDecodeError, ValueError):
+                sent = await self._send_channel_message(
+                    channel_id,
+                    content=payload.final_response,
+                    reply_to_message_id=reply_to_message_id,
+                    thread_id=thread_id,
+                    author_id=author_id,
+                    interaction_metadata=payload.interaction_policy,
+                )
+                if sent:
+                    if payload.input_id:
+                        self._pending_routes.pop(payload.input_id, None)
+                elif hasattr(msg, "nak") and callable(msg.nak):
+                    action = "nak"
+                else:
+                    action = "ack"
+        except json.JSONDecodeError:
             logger.error("Invalid ranked response payload", exc_info=True)
-            if hasattr(msg, "nak") and callable(msg.nak):
-                await msg.nak()
-            elif hasattr(msg, "ack") and callable(msg.ack):
-                await msg.ack()
+            action = "nak"
+        except ValueError:
+            logger.error("Invalid ranked response payload", exc_info=True)
+            action = "nak"
         except Exception:
             logger.error("Failed to handle ranked response", exc_info=True)
-            if hasattr(msg, "nak") and callable(msg.nak):
-                await msg.nak()
+            action = "nak"
+
+        if action == "nak" and hasattr(msg, "nak") and callable(msg.nak):
+            await msg.nak()
+        elif hasattr(msg, "ack") and callable(msg.ack):
+            await msg.ack()
