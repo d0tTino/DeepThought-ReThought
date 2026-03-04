@@ -54,6 +54,7 @@ class ContextAssemblerService:
             "channel_id": payload.get("channel_id"),
             "author_name": payload.get("author_name"),
             "timestamp": payload.get("timestamp"),
+            "attachments": payload.get("attachments"),
         }
         await self._publisher.publish(EventSubjects.MEMORY_RETRIEVAL_REQUESTED, fanout_payload, use_jetstream=True)
         await self._publisher.publish(EventSubjects.PERCEPTION_INTERPRET_REQUESTED, fanout_payload, use_jetstream=True)
