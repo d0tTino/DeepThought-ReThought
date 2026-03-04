@@ -1,0 +1,208 @@
+"""Canonical EDA event contracts and migration compatibility helpers."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict
+from uuid import UUID, uuid4
+
+
+class CanonicalSubjects:
+    """Canonical, versioned subject names used by production traffic."""
+
+    INPUT_RECEIVED = "dtr.input.received.v1"
+    MEMORY_RETRIEVED = "dtr.memory.retrieved.v1"
+    RESPONSE_CANDIDATES = "dtr.response.candidates.v1"
+    RESPONSE_RANKED = "dtr.response.ranked.v1"
+    PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings.v1"
+    PERCEPTION_EXTRACT = "dtr.perception.extract.v1"
+    SOCIAL_PERCEPTION = "dtr.social.perception.v1"
+
+
+LEGACY_SUBJECT_MAP: Dict[str, str] = {
+    "dtr.input.received": CanonicalSubjects.INPUT_RECEIVED,
+    "dtr.memory.retrieved": CanonicalSubjects.MEMORY_RETRIEVED,
+    "dtr.response.candidates": CanonicalSubjects.RESPONSE_CANDIDATES,
+    "dtr.response.ranked": CanonicalSubjects.RESPONSE_RANKED,
+    "dtr.perception.embeddings": CanonicalSubjects.PERCEPTION_EMBEDDINGS,
+    "dtr.perception.extract": CanonicalSubjects.PERCEPTION_EXTRACT,
+    "dtr.social.perception": CanonicalSubjects.SOCIAL_PERCEPTION,
+}
+
+
+@dataclass(frozen=True)
+class EventEnvelope:
+    schema_version: str
+    event_id: str
+    trace_id: str
+    causation_id: str | None
+    created_at: str
+    producer: str
+    subject: str
+    payload: Dict[str, Any]
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        subject: str,
+        payload: Dict[str, Any],
+        producer: str,
+        trace_id: str | None = None,
+        causation_id: str | None = None,
+        schema_version: str = "1.0.0",
+    ) -> "EventEnvelope":
+        return cls(
+            schema_version=schema_version,
+            event_id=str(uuid4()),
+            trace_id=trace_id or str(uuid4()),
+            causation_id=causation_id,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            producer=producer,
+            subject=to_canonical_subject(subject),
+            payload=payload,
+        )
+
+
+def _expect_type(data: dict[str, Any], key: str, expected: type, optional: bool = False) -> Any:
+    value = data.get(key)
+    if value is None:
+        if optional:
+            return None
+        raise ValueError(f"Missing required key '{key}'")
+    if not isinstance(value, expected):
+        raise ValueError(f"Field '{key}' must be {expected.__name__}")
+    return value
+
+
+def _expect_uuid(value: str, field_name: str) -> None:
+    try:
+        UUID(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"Field '{field_name}' must be a valid UUID") from exc
+
+
+def validate_envelope(data: Dict[str, Any]) -> EventEnvelope:
+    schema_version = _expect_type(data, "schema_version", str)
+    event_id = _expect_type(data, "event_id", str)
+    trace_id = _expect_type(data, "trace_id", str)
+    causation_id = _expect_type(data, "causation_id", str, optional=True)
+    created_at = _expect_type(data, "created_at", str)
+    producer = _expect_type(data, "producer", str)
+    subject = _expect_type(data, "subject", str)
+    payload = _expect_type(data, "payload", dict)
+
+    _expect_uuid(event_id, "event_id")
+    _expect_uuid(trace_id, "trace_id")
+    if causation_id is not None:
+        _expect_uuid(causation_id, "causation_id")
+    try:
+        datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("Field 'created_at' must be ISO-8601") from exc
+
+    return EventEnvelope(
+        schema_version=schema_version,
+        event_id=event_id,
+        trace_id=trace_id,
+        causation_id=causation_id,
+        created_at=created_at,
+        producer=producer,
+        subject=to_canonical_subject(subject),
+        payload=payload,
+    )
+
+
+def to_canonical_subject(subject: str) -> str:
+    return LEGACY_SUBJECT_MAP.get(subject, subject)
+
+
+def normalize_legacy_payload(subject: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    canonical = to_canonical_subject(subject)
+    if canonical == CanonicalSubjects.INPUT_RECEIVED and "user_input" not in payload and "text" in payload:
+        payload = {**payload, "user_input": payload["text"]}
+    if canonical == CanonicalSubjects.MEMORY_RETRIEVED and "retrieved_knowledge" not in payload and "memory" in payload:
+        payload = {**payload, "retrieved_knowledge": payload["memory"]}
+    if canonical == CanonicalSubjects.RESPONSE_RANKED and "final_response" not in payload and "response" in payload:
+        payload = {**payload, "final_response": payload["response"]}
+    if canonical == CanonicalSubjects.PERCEPTION_EXTRACT and "text_tokens" not in payload and "tokens" in payload:
+        payload = {**payload, "text_tokens": payload["tokens"]}
+    return payload
+
+
+def validate_input_received_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    _expect_type(data, "user_input", str)
+    attachments = data.get("attachments")
+    if attachments is not None:
+        if not isinstance(attachments, list):
+            raise ValueError("Field 'attachments' must be a list")
+        for idx, item in enumerate(attachments):
+            if not isinstance(item, dict):
+                raise ValueError(f"Attachment at index {idx} must be an object")
+            url = item.get("url")
+            if not isinstance(url, str) or not url.strip():
+                raise ValueError(f"Attachment at index {idx} has invalid url")
+            if "size" in item and item["size"] is not None and not isinstance(item["size"], int):
+                raise ValueError(f"Attachment at index {idx} has invalid size")
+    return data
+
+
+def validate_memory_retrieved_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    _expect_type(data, "retrieved_knowledge", dict)
+    return data
+
+
+def validate_response_candidates_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    candidates = _expect_type(data, "candidates", list)
+    for idx, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            raise ValueError(f"Candidate at index {idx} must be an object")
+        _expect_type(candidate, "text", str)
+        confidence = candidate.get("confidence", 0.0)
+        if not isinstance(confidence, (float, int)):
+            raise ValueError(f"Candidate at index {idx} has invalid confidence")
+    return data
+
+
+def validate_response_ranked_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    _expect_type(data, "final_response", str)
+    if "candidates" in data:
+        validate_response_candidates_payload({"candidates": data["candidates"]})
+    return data
+
+
+def validate_perception_embeddings_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    _expect_type(data, "message_id", str)
+    _expect_type(data, "user_id", str)
+    if "by_modality" in data and not isinstance(data["by_modality"], dict):
+        raise ValueError("Field 'by_modality' must be an object")
+    return data
+
+
+def validate_perception_extract_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    _expect_type(data, "message_id", str)
+    _expect_type(data, "user_id", str)
+    tokens = data.get("text_tokens")
+    if tokens is not None and not isinstance(tokens, list):
+        raise ValueError("Field 'text_tokens' must be a list")
+    return data
+
+
+PAYLOAD_VALIDATORS = {
+    CanonicalSubjects.INPUT_RECEIVED: validate_input_received_payload,
+    CanonicalSubjects.MEMORY_RETRIEVED: validate_memory_retrieved_payload,
+    CanonicalSubjects.RESPONSE_CANDIDATES: validate_response_candidates_payload,
+    CanonicalSubjects.RESPONSE_RANKED: validate_response_ranked_payload,
+    CanonicalSubjects.PERCEPTION_EMBEDDINGS: validate_perception_embeddings_payload,
+    CanonicalSubjects.PERCEPTION_EXTRACT: validate_perception_extract_payload,
+}
+
+
+def decode_payload(subject: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    canonical = to_canonical_subject(subject)
+    normalized = normalize_legacy_payload(canonical, payload)
+    validator = PAYLOAD_VALIDATORS.get(canonical)
+    if validator is None:
+        return normalized
+    return validator(normalized)
