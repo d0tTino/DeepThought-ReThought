@@ -50,12 +50,16 @@ class DummyMsg:
         self.data = data.encode()
         self.acked = False
         self.nacked = False
+        self.ack_calls = 0
+        self.nak_calls = 0
 
     async def ack(self):
         self.acked = True
+        self.ack_calls += 1
 
     async def nak(self):
         self.nacked = True
+        self.nak_calls += 1
 
 
 class DummyTypingScope:
@@ -209,3 +213,76 @@ async def test_ranked_response_invalid_payload_naks(service):
     await service._handle_ranked_response(msg)
 
     assert msg.nacked
+    assert msg.nak_calls == 1
+    assert msg.ack_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_send_channel_message_invalid_channel_or_thread_id_returns_true(service):
+    sent_channel = await service._send_channel_message(
+        "not-a-channel-id",
+        content="ignored",
+        reply_to_message_id=None,
+        thread_id=None,
+        author_id=None,
+        interaction_metadata=None,
+    )
+    sent_thread = await service._send_channel_message(
+        "123",
+        content="ignored",
+        reply_to_message_id=None,
+        thread_id="not-a-thread-id",
+        author_id=None,
+        interaction_metadata=None,
+    )
+
+    assert sent_channel is True
+    assert sent_thread is True
+    assert service._discord_client.channel.messages == []
+    assert service._discord_client.thread.messages == []
+
+
+@pytest.mark.asyncio
+async def test_send_channel_message_missing_channel_lookup_returns_true(service):
+    sent = await service._send_channel_message(
+        "321",
+        content="ignored",
+        reply_to_message_id=None,
+        thread_id=None,
+        author_id=None,
+        interaction_metadata=None,
+    )
+
+    assert sent is True
+    assert service._discord_client.channel.messages == []
+
+
+@pytest.mark.asyncio
+async def test_send_channel_message_applies_typing_delay_and_cooldown(service, fake_clock):
+    sent = await service._send_channel_message(
+        "123",
+        content="hello",
+        reply_to_message_id="orig-1",
+        thread_id=None,
+        author_id="42",
+        interaction_metadata={"delay_seconds": 0.4, "typing_seconds": 0.2, "cooldown_seconds": 0.5},
+    )
+
+    assert sent is True
+    assert fake_clock.now == pytest.approx(100.6, abs=0.001)
+    assert service._discord_client.channel.typing_entries == 1
+    assert service._discord_client.channel.messages == [("hello", {"reference": "orig-1"})]
+    assert service._cooldown_until["channel:123"] == pytest.approx(101.1, abs=0.001)
+    assert service._cooldown_until["user:42"] == pytest.approx(101.1, abs=0.001)
+
+
+@pytest.mark.asyncio
+async def test_ranked_response_missing_channel_mapping_acks_once(service):
+    msg = DummyMsg(ResponseRankedPayload(final_response="done", input_id="unknown").to_json())
+
+    await service._handle_ranked_response(msg)
+
+    assert msg.acked is True
+    assert msg.nacked is False
+    assert msg.ack_calls == 1
+    assert msg.nak_calls == 0
