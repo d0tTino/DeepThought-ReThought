@@ -184,7 +184,7 @@ async def test_handle_memory_event_missing_facts(monkeypatch, caplog):
     assert msg.nacked
     pub = llm._publisher
     assert not pub.published
-    assert any("missing facts" in r.getMessage() for r in caplog.records)
+    assert any("Invalid ContextAssembled payload" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -198,7 +198,7 @@ async def test_handle_memory_event_facts_not_list(monkeypatch, caplog):
     assert msg.nacked
     pub = llm._publisher
     assert not pub.published
-    assert any("missing facts" in r.getMessage() for r in caplog.records)
+    assert any("Invalid ContextAssembled payload" in r.getMessage() for r in caplog.records)
 
 
 @pytest.mark.asyncio

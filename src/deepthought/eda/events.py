@@ -28,6 +28,12 @@ class EventSubjects:
 
     # Memory events
     MEMORY_RETRIEVED = CanonicalSubjects.MEMORY_RETRIEVED
+    MEMORY_RETRIEVAL_REQUESTED = CanonicalSubjects.MEMORY_RETRIEVAL_REQUESTED
+    SOCIAL_SIGNALS_REQUESTED = CanonicalSubjects.SOCIAL_SIGNALS_REQUESTED
+    PERCEPTION_INTERPRET_REQUESTED = CanonicalSubjects.PERCEPTION_INTERPRET_REQUESTED
+    SOCIAL_SIGNALS_RETRIEVED = CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED
+    PERCEPTION_INTERPRET_RETRIEVED = CanonicalSubjects.PERCEPTION_INTERPRET_RETRIEVED
+    CONTEXT_ASSEMBLED = CanonicalSubjects.CONTEXT_ASSEMBLED
 
     # LLM events
     RESPONSE_GENERATED = "dtr.llm.response_generated"
@@ -188,6 +194,31 @@ class MemoryRetrievedPayload(EventPayload):
     channel_context: Optional[str] = None
     recent_turn_summary: Optional[str] = None
     timestamp: Optional[str] = None
+
+
+@dataclass
+class ContextAssembledPayload(EventPayload):
+    """Canonical payload for fully assembled responder context."""
+
+    input_id: str
+    user_input: str
+    conversation_window: list[Dict[str, Any]] = field(default_factory=list)
+    retrieved_facts: list[str] = field(default_factory=list)
+    social_signals: Dict[str, Any] = field(default_factory=dict)
+    multimodal_interpretations: Dict[str, Any] = field(default_factory=dict)
+    confidence: Dict[str, Any] = field(default_factory=dict)
+    user_id: Optional[str] = None
+    author_id: Optional[str] = None
+    author_name: Optional[str] = None
+    channel_id: Optional[str] = None
+    channel_context: Optional[str] = None
+    recent_turn_summary: Optional[str] = None
+    timestamp: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ContextAssembledPayload":
+        data = decode_payload(EventSubjects.CONTEXT_ASSEMBLED, data)
+        return cls(**data)
 
 
 @dataclass

@@ -13,7 +13,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
-from ..eda.events import EventSubjects, ResponseCandidate, ResponseCandidatesPayload
+from ..eda.events import ContextAssembledPayload, EventSubjects, ResponseCandidate, ResponseCandidatesPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from ..pipeline.dspy_pipeline import build_qa_pipeline
@@ -28,13 +28,17 @@ def _normalized_optional_text(value: object) -> str | None:
     return normalized if normalized else None
 
 
-def _extract_memory_facts(retrieved: object) -> list[str]:
+def _extract_memory_facts(data: dict[str, object]) -> list[str]:
+    facts = data.get("retrieved_facts")
+    if isinstance(facts, list):
+        return [str(fact) for fact in facts]
+    retrieved = data.get("retrieved_knowledge")
     if not isinstance(retrieved, dict):
         return []
-    facts = retrieved.get("facts")
-    if not isinstance(facts, list):
+    fallback_facts = retrieved.get("facts")
+    if not isinstance(fallback_facts, list):
         return []
-    return [str(fact) for fact in facts]
+    return [str(fact) for fact in fallback_facts]
 
 
 def _build_generation_prompt(
@@ -103,31 +107,38 @@ class RemoteLLM:
                 raise ValueError("Invalid generate response")
             return text
 
-    async def _handle_memory_event(self, msg: Msg) -> None:
+    async def _handle_context_event(self, msg: Msg) -> None:
         input_id = "unknown"
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
-                raise ValueError("MemoryRetrieved payload must be a dict")
-            input_id = data.get("input_id")
-            author_id = data.get("author_id")
-            if not isinstance(author_id, str):
-                author_id = None
-            user_id = data.get("user_id")
-            if not isinstance(user_id, str):
-                user_id = None
+                raise ValueError("ContextAssembled payload must be a dict")
+            if "retrieved_facts" in data:
+                payload = ContextAssembledPayload.from_dict(data)
+                input_id = payload.input_id
+                user_input = _normalized_optional_text(payload.user_input)
+                author_id = payload.author_id
+                user_id = payload.user_id
+                channel_id = payload.channel_id
+                author_name = _normalized_optional_text(payload.author_name)
+                channel_context = _normalized_optional_text(payload.channel_context)
+                recent_turn_summary = _normalized_optional_text(payload.recent_turn_summary)
+                facts = [str(item) for item in payload.retrieved_facts]
+            else:
+                input_id = data.get("input_id")
+                author_id = data.get("author_id") if isinstance(data.get("author_id"), str) else None
+                user_id = data.get("user_id") if isinstance(data.get("user_id"), str) else None
+                channel_id = data.get("channel_id") if isinstance(data.get("channel_id"), str) else None
+                user_input = _normalized_optional_text(data.get("user_input"))
+                author_name = _normalized_optional_text(data.get("author_name"))
+                channel_context = _normalized_optional_text(data.get("channel_context"))
+                recent_turn_summary = _normalized_optional_text(data.get("recent_turn_summary"))
+                facts = _extract_memory_facts(data)
+
             if author_id is None:
                 author_id = user_id
-            channel_id = data.get("channel_id")
-            if not isinstance(channel_id, str):
-                channel_id = None
-            user_input = _normalized_optional_text(data.get("user_input"))
             if user_input is None:
-                raise ValueError("MemoryRetrieved payload missing required non-empty user_input")
-            author_name = _normalized_optional_text(data.get("author_name"))
-            channel_context = _normalized_optional_text(data.get("channel_context"))
-            recent_turn_summary = _normalized_optional_text(data.get("recent_turn_summary"))
-            facts = _extract_memory_facts(data.get("retrieved_knowledge", {}))
+                raise ValueError("ContextAssembled payload missing required non-empty user_input")
             prompt = _build_generation_prompt(
                 user_input=user_input,
                 facts=facts,
@@ -173,12 +184,12 @@ class RemoteLLM:
             return False
         try:
             await self._subscriber.subscribe(
-                subject=EventSubjects.MEMORY_RETRIEVED,
-                handler=self._handle_memory_event,
+                subject=EventSubjects.CONTEXT_ASSEMBLED,
+                handler=self._handle_context_event,
                 use_jetstream=True,
                 durable=durable_name,
             )
-            logger.info("RemoteLLM subscribed to %s", EventSubjects.MEMORY_RETRIEVED)
+            logger.info("RemoteLLM subscribed to %s", EventSubjects.CONTEXT_ASSEMBLED)
             return True
         except nats.errors.Error as e:
             logger.error("RemoteLLM failed to subscribe: %s", e, exc_info=True)
