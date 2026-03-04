@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from deepthought.eda.events import InputReceivedPayload
+from deepthought.eda.events import EventSubjects, InputReceivedPayload
 from deepthought.services import social_graph_service
 from deepthought.services.db_manager import DBManager
 from deepthought.services.persona_manager import PersonaManager
@@ -24,6 +24,14 @@ class DummyMsg:
         self.naked = True
 
 
+class RecordingPublisher:
+    def __init__(self):
+        self.calls = []
+
+    async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
+        self.calls.append((subject, payload, use_jetstream, timeout))
+
+
 @pytest.mark.asyncio
 async def test_handle_input_resolves_identity_from_payload_and_headers(tmp_path, monkeypatch):
     db = DBManager(str(tmp_path / "sg.db"))
@@ -37,7 +45,7 @@ async def test_handle_input_resolves_identity_from_payload_and_headers(tmp_path,
     )
 
     service = SocialGraphService(db_manager=db, persona_manager=pm)
-    service._publisher = SimpleNamespace()
+    service._publisher = RecordingPublisher()
     service._subscriber = SimpleNamespace()
 
     payload = InputReceivedPayload(user_input="hello", input_id="1", author_id="author-42")
@@ -51,6 +59,12 @@ async def test_handle_input_resolves_identity_from_payload_and_headers(tmp_path,
     assert await pm.get_persona("author-42", channel_id="chan-1") == "friendly"
     topics = [topic for topic, _ in await db.recall_user("author-42")]
     assert "social_perception" in topics
+    assert len(service._publisher.calls) == 1
+    event_subject, payload, _, _ = service._publisher.calls[0]
+    assert event_subject == EventSubjects.SOCIAL_UPDATED
+    assert payload["input_id"] == "1"
+    assert payload["social_signals"]["affinity"] == 1
+    assert payload["social_signals"]["persona"] == "friendly"
 
     await db.close()
 
@@ -67,5 +81,40 @@ async def test_handle_input_invalid_payload_naks(tmp_path):
 
     assert msg.naked
     assert not msg.acked
+
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_each_input_updates_social_state_exactly_once(tmp_path, monkeypatch):
+    db = DBManager(str(tmp_path / "sg.db"))
+    await db.init_db()
+    pm = PersonaManager(db)
+    service = SocialGraphService(db_manager=db, persona_manager=pm)
+    service._publisher = RecordingPublisher()
+
+    adjust_calls = []
+    original_adjust = db.adjust_affinity
+
+    async def _counting_adjust(user_id, delta, target_id=None):
+        adjust_calls.append((user_id, delta, target_id))
+        await original_adjust(user_id, delta, target_id)
+
+    monkeypatch.setattr(db, "adjust_affinity", _counting_adjust)
+    monkeypatch.setattr(
+        social_graph_service,
+        "analyze_social",
+        lambda _text: {"flirtation": 0.7, "avoidance": 0.0, "manipulation": 0.0},
+    )
+
+    msg = DummyMsg(InputReceivedPayload(user_input="hello", input_id="in-1", author_id="u-1").to_json())
+    await service._handle_input(msg)
+
+    assert msg.acked
+    assert len(adjust_calls) == 1
+    memories = await db.recall_user("u-1")
+    assert [topic for topic, _ in memories].count("social_perception") == 1
+    assert len(service._publisher.calls) == 1
+    assert service._publisher.calls[0][1]["input_id"] == "in-1"
 
     await db.close()

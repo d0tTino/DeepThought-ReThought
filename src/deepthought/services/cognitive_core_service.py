@@ -28,7 +28,6 @@ from ..memory.graph import (
 )
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
-from ..perception.social_perception import analyze as analyze_social
 from ..search import OfflineSearch
 from .base import BaseService
 from .db_manager import DBManager
@@ -203,17 +202,6 @@ class CognitiveCoreService(BaseService):
             resolved_user_id = enriched.resolved_user_id
             self._memory.store_interaction(user_input)
             await self._db.store_memory(resolved_user_id, user_input)
-            await self._db.log_interaction(resolved_user_id, None)
-            try:
-                perception = analyze_social(user_input)
-            except Exception as e:  # pragma: no cover - defensive
-                logger.error("Failed to analyze social perception: %s", e, exc_info=True)
-                perception = {"flirtation": 0.0, "avoidance": 0.0, "manipulation": 0.0}
-            await self._db.store_memory(resolved_user_id, json.dumps(perception), topic="social_perception")
-            delta = perception.get("flirtation", 0.0) - (
-                perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
-            )
-            await self._db.adjust_affinity(resolved_user_id, delta)
 
             ingest_conversation_turns(
                 [

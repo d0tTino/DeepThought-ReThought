@@ -150,8 +150,6 @@ from deepthought.config import Settings
 from deepthought.eda.events import (
     EventSubjects,
     InputReceivedPayload,
-    ModalityEmbeddings,
-    PerceptionEmbeddingsEvent,
     PerceptionEmbeddingsPayload,
 )
 from deepthought.services.cognitive_core_service import CognitiveCoreService
@@ -240,11 +238,6 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     memory = DummyMemory()
     db = DummyDB()
     monkeypatch.setattr(
-        cognitive_core_service,
-        "analyze_social",
-        lambda text: {"flirtation": 0.2, "avoidance": 0.1, "manipulation": 0.0},
-    )
-    monkeypatch.setattr(
         CognitiveCoreService,
         "_publisher",
         DummyPublisher(DummyNATS(), DummyJS()),
@@ -263,15 +256,8 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     assert msg.acked
     assert memory.interactions == ["hello"]
     assert db.memories == ["hello"]
-    assert db.perceptions
-    perception = db.perceptions[0]
-    assert perception.get("flirtation") == pytest.approx(0.2)
-    assert "avoidance" in perception
-    assert "manipulation" in perception
-    expected_delta = perception.get("flirtation", 0.0) - (
-        perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
-    )
-    assert db.affinity == pytest.approx(expected_delta)
+    assert db.perceptions == []
+    assert db.affinity == pytest.approx(0.0)
     subject, sent_payload = service._publisher.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
@@ -280,14 +266,9 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_input_prefers_payload_user_id_over_header(monkeypatch):
+async def test_handle_input_prefers_payload_user_id_over_header():
     memory = DummyMemory()
     db = DummyDB()
-    monkeypatch.setattr(
-        cognitive_core_service,
-        "analyze_social",
-        lambda text: {"flirtation": 0.0, "avoidance": 0.0, "manipulation": 0.0},
-    )
     service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
@@ -298,20 +279,15 @@ async def test_handle_input_prefers_payload_user_id_over_header(monkeypatch):
     await service._handle_input(msg)
 
     assert msg.acked
-    assert db.memory_user_ids == ["payload-user", "payload-user"]
-    assert db.interaction_user_ids == ["payload-user"]
-    assert db.affinity_user_ids == ["payload-user"]
+    assert db.memory_user_ids == ["payload-user"]
+    assert db.interaction_user_ids == []
+    assert db.affinity_user_ids == []
 
 
 @pytest.mark.asyncio
-async def test_handle_input_uses_header_user_id_then_anonymous(monkeypatch):
+async def test_handle_input_uses_header_user_id_then_anonymous():
     memory = DummyMemory()
     db = DummyDB()
-    monkeypatch.setattr(
-        cognitive_core_service,
-        "analyze_social",
-        lambda text: {"flirtation": 0.0, "avoidance": 0.0, "manipulation": 0.0},
-    )
     service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
     service._publisher = DummyPublisher()
     service._subscriber = DummySubscriber()
@@ -327,8 +303,8 @@ async def test_handle_input_uses_header_user_id_then_anonymous(monkeypatch):
 
     assert msg_with_header.acked
     assert msg_without_user.acked
-    assert db.interaction_user_ids == ["header-user", "anonymous"]
-    assert db.affinity_user_ids == ["header-user", "anonymous"]
+    assert db.interaction_user_ids == []
+    assert db.affinity_user_ids == []
 
 
 class DummyStore:

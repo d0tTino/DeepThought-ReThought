@@ -70,11 +70,25 @@ class SocialGraphService(BaseService):
                 perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
             )
             await self._db.adjust_affinity(resolved_user_id, delta)
-            await self._persona.get_persona(
+            affinity = await self._db.get_affinity(resolved_user_id)
+            persona = await self._persona.get_persona(
                 resolved_user_id,
                 None,
                 channel_id=enriched.channel_id,
             )
+            social_snapshot = {
+                "input_id": enriched.input_id,
+                "user_id": enriched.user_id,
+                "author_id": enriched.author_id,
+                "channel_id": enriched.channel_id,
+                "social_signals": {
+                    "perception": perception,
+                    "delta": delta,
+                    "affinity": affinity,
+                    "persona": persona,
+                },
+            }
+            await self._publisher.publish(EventSubjects.SOCIAL_UPDATED, social_snapshot, use_jetstream=True)
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except (json.JSONDecodeError, ValueError):
