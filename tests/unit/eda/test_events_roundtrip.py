@@ -1,5 +1,6 @@
 import pytest
 
+from deepthought.eda.contracts import CanonicalSubjects
 from deepthought.eda.events import (
     EncoderMetadata,
     ModalityEmbeddings,
@@ -49,8 +50,63 @@ def test_input_received_payload_rejects_malformed_attachments():
             {
                 "user_input": "hello",
                 "attachments": [
-                    {"url": "https://x.test/a.png", "content_type": "image/png", "filename": "a.png", "size": 7},
+                    {
+                        "url": "https://x.test/a.png",
+                        "content_type": "image/png",
+                        "filename": "a.png",
+                        "size": 7,
+                    },
                     {"url": "", "content_type": "image/png"},
                 ],
             }
         )
+
+
+@pytest.mark.parametrize(
+    ("legacy_subject", "legacy_payload", "canonical_subject", "expected_key"),
+    [
+        (
+            "dtr.input.received",
+            {"text": "hello"},
+            CanonicalSubjects.INPUT_RECEIVED,
+            "user_input",
+        ),
+        (
+            "dtr.memory.retrieved",
+            {"memory": {"k": "v"}},
+            CanonicalSubjects.MEMORY_RETRIEVED,
+            "retrieved_knowledge",
+        ),
+        (
+            "dtr.response.ranked",
+            {"response": "ok"},
+            CanonicalSubjects.RESPONSE_RANKED,
+            "final_response",
+        ),
+        (
+            "dtr.perception.extract",
+            {"message_id": "m1", "user_id": "u1", "tokens": ["a"]},
+            CanonicalSubjects.PERCEPTION_EXTRACT,
+            "text_tokens",
+        ),
+    ],
+)
+def test_legacy_decode_support_and_canonical_subject_roundtrip(
+    legacy_subject, legacy_payload, canonical_subject, expected_key
+):
+    from deepthought.eda.contracts import decode_payload, to_canonical_subject
+
+    normalized = decode_payload(legacy_subject, legacy_payload)
+
+    assert to_canonical_subject(legacy_subject) == canonical_subject
+    assert expected_key in normalized
+
+
+def test_publish_defaults_use_canonical_v1_subjects():
+    assert InputReceivedPayload.from_dict({"user_input": "hello"}).to_json()
+    assert CanonicalSubjects.INPUT_RECEIVED.endswith(".v1")
+    assert CanonicalSubjects.MEMORY_RETRIEVED.endswith(".v1")
+    assert CanonicalSubjects.RESPONSE_CANDIDATES.endswith(".v1")
+    assert CanonicalSubjects.RESPONSE_RANKED.endswith(".v1")
+    assert CanonicalSubjects.PERCEPTION_EMBEDDINGS.endswith(".v1")
+    assert CanonicalSubjects.PERCEPTION_EXTRACT.endswith(".v1")
