@@ -145,6 +145,10 @@ def normalize_legacy_payload(subject: str, payload: Dict[str, Any]) -> Dict[str,
 
 def validate_input_received_payload(data: Dict[str, Any]) -> Dict[str, Any]:
     _expect_type(data, "user_input", str)
+    for optional_text_field in ("message_id", "channel_id", "guild_id", "author_id", "reference_message_id", "thread_id"):
+        value = data.get(optional_text_field)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"Field '{optional_text_field}' must be a string")
     attachments = data.get("attachments")
     if attachments is not None:
         if not isinstance(attachments, list):
@@ -179,6 +183,13 @@ def validate_response_candidates_payload(data: Dict[str, Any]) -> Dict[str, Any]
 
 def validate_response_ranked_payload(data: Dict[str, Any]) -> Dict[str, Any]:
     _expect_type(data, "final_response", str)
+    for optional_text_field in ("reply_to_message_id", "thread_id"):
+        value = data.get(optional_text_field)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"Field '{optional_text_field}' must be a string")
+    policy = data.get("interaction_policy")
+    if policy is not None and not isinstance(policy, dict):
+        raise ValueError("Field 'interaction_policy' must be an object")
     if "candidates" in data:
         validate_response_candidates_payload({"candidates": data["candidates"]})
     return data

@@ -147,6 +147,8 @@ class InputReceivedPayload(EventPayload):
     author_id: Optional[str] = None
     author_name: Optional[str] = None
     author_is_bot: Optional[bool] = None
+    reference_message_id: Optional[str] = None
+    thread_id: Optional[str] = None
     attachments: Optional[list[AttachmentDescriptor]] = None
 
     @classmethod
@@ -163,6 +165,8 @@ class InputReceivedPayload(EventPayload):
             "author_id": data.get("author_id"),
             "author_name": data.get("author_name"),
             "author_is_bot": data.get("author_is_bot"),
+            "reference_message_id": data.get("reference_message_id"),
+            "thread_id": data.get("thread_id"),
         }
         raw_attachments = data.get("attachments")
         if isinstance(raw_attachments, list):
@@ -253,6 +257,7 @@ class ResponseCandidatesPayload(EventPayload):
     channel_id: Optional[str] = None
     author_id: Optional[str] = None
     timestamp: Optional[str] = None
+    interaction_policy: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ResponseCandidatesPayload":
@@ -272,6 +277,7 @@ class ResponseCandidatesPayload(EventPayload):
             channel_id=data.get("channel_id"),
             author_id=data.get("author_id"),
             timestamp=data.get("timestamp"),
+            interaction_policy=data.get("interaction_policy"),
         )
 
 
@@ -287,6 +293,9 @@ class ResponseRankedPayload(EventPayload):
     timestamp: Optional[str] = None
     confidence: Optional[float] = None
     source: Optional[str] = None
+    reply_to_message_id: Optional[str] = None
+    thread_id: Optional[str] = None
+    interaction_policy: Optional[Dict[str, Any]] = None
     candidates: list[ResponseCandidate] = field(default_factory=list)
 
     @classmethod
@@ -309,6 +318,9 @@ class ResponseRankedPayload(EventPayload):
             timestamp=data.get("timestamp"),
             confidence=data.get("confidence"),
             source=data.get("source"),
+            reply_to_message_id=data.get("reply_to_message_id"),
+            thread_id=data.get("thread_id"),
+            interaction_policy=data.get("interaction_policy"),
             candidates=candidates,
         )
 
