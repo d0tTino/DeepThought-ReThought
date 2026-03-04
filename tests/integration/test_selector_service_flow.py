@@ -52,7 +52,7 @@ async def test_start_uses_durable_and_subject(monkeypatch):
     monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
     monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
 
-    svc = SelectorService(DummyNATS(), DummyJS())
+    svc = SelectorService(DummyNATS(), DummyJS(), early_exit_confidence=0.0)
     ok = await svc.start(durable_name="selector_durable")
     assert ok is True
     assert svc._subscriber.calls[0]["subject"] == EventSubjects.RESPONSE_CANDIDATES
@@ -67,7 +67,7 @@ async def test_candidates_publish_and_ack(monkeypatch):
     monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
     monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
 
-    svc = SelectorService(DummyNATS(), DummyJS())
+    svc = SelectorService(DummyNATS(), DummyJS(), early_exit_confidence=0.0)
     payload = ResponseCandidatesPayload(
         input_id="i-1",
         candidates=[
@@ -85,3 +85,4 @@ async def test_candidates_publish_and_ack(monkeypatch):
     assert subject == EventSubjects.RESPONSE_RANKED
     assert use_jetstream is True
     assert ranked_payload.final_response == "high"
+    assert svc._publisher.calls[1][0] == "dtr.telemetry.selector_ranking.v1"

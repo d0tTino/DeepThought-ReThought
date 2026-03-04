@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -52,7 +53,7 @@ def service(monkeypatch):
 
     monkeypatch.setattr(mod, "Publisher", DummyPublisher)
     monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
-    return SelectorService(DummyNATS(), DummyJS())
+    return SelectorService(DummyNATS(), DummyJS(), window_seconds=0.0, early_exit_confidence=0.0)
 
 
 @pytest.mark.asyncio
@@ -72,6 +73,9 @@ async def test_rank_by_confidence(service):
     subject, ranked = service._publisher.published[0]
     assert subject == EventSubjects.RESPONSE_RANKED
     assert ranked.final_response == "high"
+    telemetry_subject, telemetry_payload = service._publisher.published[1]
+    assert telemetry_subject == "dtr.telemetry.selector_ranking.v1"
+    assert telemetry_payload["chosen_source"] is None
 
 
 @pytest.mark.asyncio
@@ -79,9 +83,11 @@ async def test_empty_candidates_ack_without_publish(service):
     payload = ResponseCandidatesPayload(input_id="2", candidates=[])
     msg = DummyMsg(payload.to_json())
     await service._handle_candidates_event(msg)
+    await asyncio.sleep(0.02)
 
     assert msg.acked
-    assert service._publisher.published == []
+    assert len(service._publisher.published) == 2
+    assert service._publisher.published[0][1].source == "selector_fallback"
 
 
 @pytest.mark.asyncio
@@ -89,3 +95,88 @@ async def test_invalid_payload_nak(service):
     msg = DummyMsg(json.dumps(["bad"]))
     await service._handle_candidates_event(msg)
     assert msg.nacked
+
+
+@pytest.mark.asyncio
+async def test_window_aggregates_candidates_before_flush(monkeypatch):
+    import deepthought.services.selector_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
+    svc = SelectorService(DummyNATS(), DummyJS(), window_seconds=0.03, early_exit_confidence=0.99)
+
+    msg1 = DummyMsg(
+        ResponseCandidatesPayload(
+            input_id="window-1",
+            candidates=[ResponseCandidate(text="one", confidence=0.6)],
+        ).to_json()
+    )
+    msg2 = DummyMsg(
+        ResponseCandidatesPayload(
+            input_id="window-1",
+            candidates=[ResponseCandidate(text="two", confidence=0.8)],
+        ).to_json()
+    )
+    await svc._handle_candidates_event(msg1)
+    await svc._handle_candidates_event(msg2)
+    assert svc._publisher.published == []
+
+    await asyncio.sleep(0.05)
+    assert svc._publisher.published[0][1].final_response == "two"
+
+
+@pytest.mark.asyncio
+async def test_unsafe_only_candidates_use_clarifying_fallback(monkeypatch):
+    import deepthought.services.selector_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
+    svc = SelectorService(
+        DummyNATS(),
+        DummyJS(),
+        early_exit_confidence=0.0,
+        safety_filter=lambda _: False,
+        window_seconds=0.0,
+    )
+
+    msg = DummyMsg(
+        ResponseCandidatesPayload(
+            input_id="unsafe-1",
+            candidates=[ResponseCandidate(text="risky", confidence=0.9, source="x")],
+        ).to_json()
+    )
+    await svc._handle_candidates_event(msg)
+    await asyncio.sleep(0.02)
+
+    ranked_payload = svc._publisher.published[0][1]
+    assert ranked_payload.source == "selector_fallback"
+    assert "clarify" in ranked_payload.final_response.lower()
+
+
+@pytest.mark.asyncio
+async def test_source_calibration_changes_ranking(monkeypatch):
+    import deepthought.services.selector_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
+    svc = SelectorService(
+        DummyNATS(),
+        DummyJS(),
+        early_exit_confidence=0.0,
+        source_confidence_weights={"default": 1.0, "trusted": 1.6},
+    )
+
+    msg = DummyMsg(
+        ResponseCandidatesPayload(
+            input_id="cal-1",
+            candidates=[
+                ResponseCandidate(text="base", confidence=0.7, source="default"),
+                ResponseCandidate(text="weighted", confidence=0.5, source="trusted"),
+            ],
+        ).to_json()
+    )
+    await svc._handle_candidates_event(msg)
+
+    assert svc._publisher.published[0][1].final_response == "weighted"
+    diagnostics = svc._publisher.published[1][1]["diagnostics"]
+    assert diagnostics[0]["source"] == "trusted"
