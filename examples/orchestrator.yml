@@ -6,12 +6,13 @@
 services:
   - discord_gateway
   - cognitive_core
-  - llm_remote
-  - selector
   # Optional services (enable as needed)
   - social_graph
   - perception
   - perception_interpret
+  - context_assembler
+  - llm_remote
+  - selector
 
 service_bindings:
   discord_gateway:
@@ -74,13 +75,13 @@ service_bindings:
         jetstream: true
 
   llm_remote:
-    description: HTTP-backed responder that turns memory into candidates.
+    description: HTTP-backed responder that turns assembled context into candidates.
     env:
       - NATS_URL
       - LLM_ENDPOINT
     subscribe:
-      - subject: dtr.memory.retrieved.v1  # legacy alias: dtr.memory.retrieved
-        event_subject: EventSubjects.MEMORY_RETRIEVED
+      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+        event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
         durable: llm_remote_service
         required_reliability: true
@@ -116,7 +117,10 @@ service_bindings:
         jetstream: true
         durable: social_graph_service
         required_reliability: true
-    publish: []
+    publish:
+      - subject: dtr.social.updated
+        event_subject: EventSubjects.SOCIAL_UPDATED
+        jetstream: true
 
   perception:
     optional: true
@@ -160,6 +164,41 @@ service_bindings:
     publish:
       - subject: dtr.perception.interpret.retrieved.v1  # legacy alias: dtr.perception.interpret.retrieved
         event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
+        jetstream: true
+
+  context_assembler:
+    description: Assemble provider outputs into a single LLM-ready context payload.
+    env:
+      - NATS_URL
+    subscribe:
+      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
+        event_subject: EventSubjects.INPUT_RECEIVED
+        jetstream: true
+        durable: context_assembler_input
+        required_reliability: true
+      - subject: dtr.memory.retrieved.v1  # legacy alias: dtr.memory.retrieved
+        event_subject: EventSubjects.MEMORY_RETRIEVED
+        jetstream: true
+        durable: context_assembler_memory
+        required_reliability: true
+      - subject: dtr.social.updated
+        event_subject: EventSubjects.SOCIAL_UPDATED
+        jetstream: true
+        durable: context_assembler_social
+        required_reliability: true
+      - subject: dtr.social.signals.retrieved.v1  # legacy alias: dtr.social.signals.retrieved
+        event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
+        jetstream: true
+        durable: context_assembler_social_signals
+        required_reliability: false
+      - subject: dtr.perception.interpret.retrieved.v1  # legacy alias: dtr.perception.interpret.retrieved
+        event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
+        jetstream: true
+        durable: context_assembler_perception
+        required_reliability: true
+    publish:
+      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+        event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
 
 environment:
