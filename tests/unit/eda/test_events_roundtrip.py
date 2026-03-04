@@ -1,3 +1,5 @@
+import pytest
+
 from deepthought.eda.events import (
     EncoderMetadata,
     ModalityEmbeddings,
@@ -41,21 +43,14 @@ def test_perception_embeddings_event_from_json_roundtrip():
     assert decoded.provenance == event.provenance
 
 
-def test_input_received_payload_ignores_malformed_attachments():
-    payload = InputReceivedPayload.from_dict(
-        {
-            "user_input": "hello",
-            "attachments": [
-                {"url": "https://x.test/a.png", "content_type": "image/png", "filename": "a.png", "size": 7},
-                {"url": "", "content_type": "image/png"},
-                {"url": "https://x.test/b.mp3", "size": "bad"},
-                "invalid",
-            ],
-        }
-    )
-
-    assert payload.user_input == "hello"
-    assert payload.attachments is not None
-    assert len(payload.attachments) == 2
-    assert payload.attachments[0].size == 7
-    assert payload.attachments[1].size is None
+def test_input_received_payload_rejects_malformed_attachments():
+    with pytest.raises(ValueError):
+        InputReceivedPayload.from_dict(
+            {
+                "user_input": "hello",
+                "attachments": [
+                    {"url": "https://x.test/a.png", "content_type": "image/png", "filename": "a.png", "size": 7},
+                    {"url": "", "content_type": "image/png"},
+                ],
+            }
+        )

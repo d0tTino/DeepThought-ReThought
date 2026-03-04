@@ -9,6 +9,11 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional
 
+from .contracts import (
+    CanonicalSubjects,
+    decode_payload,
+)
+
 
 # Subject naming convention: dtr.<module>.<event_type>
 class EventSubjects:
@@ -19,22 +24,22 @@ class EventSubjects:
     """
 
     # Input events
-    INPUT_RECEIVED = "dtr.input.received"
+    INPUT_RECEIVED = CanonicalSubjects.INPUT_RECEIVED
 
     # Memory events
-    MEMORY_RETRIEVED = "dtr.memory.retrieved"
+    MEMORY_RETRIEVED = CanonicalSubjects.MEMORY_RETRIEVED
 
     # LLM events
     RESPONSE_GENERATED = "dtr.llm.response_generated"
-    RESPONSE_CANDIDATES = "dtr.response.candidates"
-    RESPONSE_RANKED = "dtr.response.ranked"
+    RESPONSE_CANDIDATES = CanonicalSubjects.RESPONSE_CANDIDATES
+    RESPONSE_RANKED = CanonicalSubjects.RESPONSE_RANKED
 
     # Perception events
-    PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings"
+    PERCEPTION_EMBEDDINGS = CanonicalSubjects.PERCEPTION_EMBEDDINGS
     PERCEPTION_IMAGE_EMBED = "dtr.perception.image_embeddings"
     PERCEPTION_AUDIO_EMBED = "dtr.perception.audio_embeddings"
     PERCEPTION_VIDEO_EMBED = "dtr.perception.video_embeddings"
-    PERCEPTION_EXTRACT = "dtr.perception.extract"
+    PERCEPTION_EXTRACT = CanonicalSubjects.PERCEPTION_EXTRACT
 
     # Raw chat message events
     CHAT_RAW = "chat.raw"
@@ -76,7 +81,7 @@ class EventPayload:
     def from_json(cls, json_str: str) -> "EventPayload":
         """Create a payload instance from a JSON string."""
         data = json.loads(json_str)
-        return cls(**data)
+        return cls.from_dict(data)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EventPayload":
@@ -102,25 +107,22 @@ class InputReceivedPayload(EventPayload):
             cls, data: Dict[str, Any]
         ) -> "InputReceivedPayload.AttachmentDescriptor | None":
             if not isinstance(data, dict):
-                return None
+                raise ValueError("Attachment must be an object")
             url = data.get("url")
             if not isinstance(url, str) or not url.strip():
-                return None
+                raise ValueError("Attachment url must be a non-empty string")
             content_type = data.get("content_type")
             if content_type is not None and not isinstance(content_type, str):
-                content_type = None
+                raise ValueError("Attachment content_type must be a string when provided")
             filename = data.get("filename")
             if filename is not None and not isinstance(filename, str):
-                filename = None
+                raise ValueError("Attachment filename must be a string when provided")
             raw_size = data.get("size")
             size: Optional[int] = None
             if raw_size is not None:
-                try:
-                    parsed_size = int(raw_size)
-                except (TypeError, ValueError):
-                    parsed_size = -1
-                if parsed_size >= 0:
-                    size = parsed_size
+                if not isinstance(raw_size, int) or raw_size < 0:
+                    raise ValueError("Attachment size must be a non-negative integer")
+                size = raw_size
             return cls(
                 url=url.strip(),
                 content_type=content_type,
@@ -142,6 +144,7 @@ class InputReceivedPayload(EventPayload):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "InputReceivedPayload":
+        data = decode_payload(EventSubjects.INPUT_RECEIVED, data)
         normalized: Dict[str, Any] = {
             "user_input": data.get("user_input", ""),
             "input_id": data.get("input_id"),
@@ -157,12 +160,8 @@ class InputReceivedPayload(EventPayload):
         raw_attachments = data.get("attachments")
         if isinstance(raw_attachments, list):
             attachments = [
-                parsed
-                for parsed in (
-                    InputReceivedPayload.AttachmentDescriptor.from_dict(item)
-                    for item in raw_attachments
-                )
-                if parsed is not None
+                InputReceivedPayload.AttachmentDescriptor.from_dict(item)
+                for item in raw_attachments
             ]
             normalized["attachments"] = attachments or None
         else:
@@ -175,6 +174,11 @@ class MemoryRetrievedPayload(EventPayload):
     """Payload for memory retrieved events."""
 
     retrieved_knowledge: Dict[str, Any]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "MemoryRetrievedPayload":
+        normalized = decode_payload(EventSubjects.MEMORY_RETRIEVED, data)
+        return cls(**normalized)
     user_input: Optional[str] = None
     input_id: Optional[str] = None
     user_id: Optional[str] = None
@@ -220,6 +224,7 @@ class ResponseCandidatesPayload(EventPayload):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ResponseCandidatesPayload":
+        data = decode_payload(EventSubjects.RESPONSE_CANDIDATES, data)
         raw_candidates = data.get("candidates") or []
         candidates = [
             candidate
@@ -254,6 +259,7 @@ class ResponseRankedPayload(EventPayload):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ResponseRankedPayload":
+        data = decode_payload(EventSubjects.RESPONSE_RANKED, data)
         raw_candidates = data.get("candidates") or []
         candidates = [
             candidate
@@ -370,6 +376,7 @@ class PerceptionEmbeddingsPayload(EventPayload):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionEmbeddingsPayload":
+        data = decode_payload(EventSubjects.PERCEPTION_EMBEDDINGS, data)
         raw_by_modality = data.get("by_modality") or {}
         by_modality: Dict[str, ModalityEmbeddings] = {}
         if isinstance(raw_by_modality, dict):
@@ -601,6 +608,7 @@ class PerceptionExtractPayload(EventPayload):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PerceptionExtractPayload":
+        data = decode_payload(EventSubjects.PERCEPTION_EXTRACT, data)
         tokens = cls._parse_tokens(
             data.get("text_tokens") or data.get("tokens")
         )
