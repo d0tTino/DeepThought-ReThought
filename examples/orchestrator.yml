@@ -11,6 +11,7 @@ services:
   # Optional services (enable as needed)
   - social_graph
   - perception
+  - perception_interpret
 
 service_bindings:
   discord_gateway:
@@ -138,6 +139,27 @@ service_bindings:
     publish:
       - subject: dtr.perception.embeddings.v1  # legacy alias: dtr.perception.embeddings
         event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
+        jetstream: true
+
+  perception_interpret:
+    optional: true
+    description: Convert cached perception embeddings into compact prompt interpretations.
+    env:
+      - NATS_URL
+    subscribe:
+      - subject: dtr.perception.interpret.requested.v1  # legacy alias: dtr.perception.interpret.requested
+        event_subject: EventSubjects.PERCEPTION_INTERPRET_REQUESTED
+        jetstream: true
+        durable: perception_interpret_requests
+        required_reliability: true
+      - subject: dtr.perception.embeddings.v1  # legacy alias: dtr.perception.embeddings
+        event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
+        jetstream: true
+        durable: perception_interpret_embeddings
+        required_reliability: false
+    publish:
+      - subject: dtr.perception.interpret.retrieved.v1  # legacy alias: dtr.perception.interpret.retrieved
+        event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
         jetstream: true
 
 environment:
