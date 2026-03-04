@@ -19,6 +19,13 @@ from ..eda.events import (
     PerceptionEmbeddingsPayload,
 )
 from ..memory import create_memory_backend
+from ..memory.graph import (
+    CypherGraphMemoryStore,
+    InMemoryGraphMemoryStore,
+    ingest_conversation_turns,
+    retrieve_topic_context,
+    retrieve_user_context,
+)
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ..perception.social_perception import analyze as analyze_social
@@ -72,6 +79,23 @@ class CognitiveCoreService(BaseService):
         self._search = search
         self._top_k = self._settings.memory_top_k
         self._input_enrichment = InputEnrichmentService()
+        self._graph_memory = self._build_graph_memory_store()
+
+    def _build_graph_memory_store(self):
+        backend = (self._settings.graph_backend or "").lower()
+        if backend in {"memgraph", "neo4j"}:
+            try:
+                graph_backend = getattr(self._memory, "graph_backend", None)
+                connector = None
+                if hasattr(graph_backend, "_dal"):
+                    connector = getattr(getattr(graph_backend, "_dal", None), "_connector", None)
+                elif graph_backend is not None and hasattr(graph_backend, "_connector"):
+                    connector = getattr(graph_backend, "_connector", None)
+                if connector is not None:
+                    return CypherGraphMemoryStore(connector)
+            except Exception:
+                logger.warning("Falling back to in-memory graph store", exc_info=True)
+        return InMemoryGraphMemoryStore()
 
     @classmethod
     def from_config(
@@ -191,11 +215,27 @@ class CognitiveCoreService(BaseService):
             )
             await self._db.adjust_affinity(resolved_user_id, delta)
 
+            ingest_conversation_turns(
+                [
+                    {
+                        "user_id": resolved_user_id,
+                        "text": user_input,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "input_id": input_id,
+                    }
+                ],
+                self._graph_memory,
+                default_user_id=str(resolved_user_id),
+            )
+
             mem_facts = self.retrieve_context(user_input)
             db_facts = await self._db_context()
+            graph_user_evidence = retrieve_user_context(self._graph_memory, str(resolved_user_id), limit=self._top_k)
+            graph_topic_evidence = retrieve_topic_context(self._graph_memory, user_input, limit=self._top_k)
+            graph_facts = [ev.summary for ev in [*graph_user_evidence, *graph_topic_evidence]]
             facts: List[str] = []
             seen = set()
-            for item in mem_facts + db_facts:
+            for item in mem_facts + db_facts + graph_facts:
                 if item not in seen:
                     seen.add(item)
                     facts.append(item)

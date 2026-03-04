@@ -276,6 +276,7 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
     assert "hello" in sent_payload.retrieved_knowledge["facts"]
+    assert service._graph_memory.retrieve_user_evidence("anonymous", limit=5)
 
 
 @pytest.mark.asyncio

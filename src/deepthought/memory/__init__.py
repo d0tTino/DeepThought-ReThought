@@ -14,6 +14,7 @@ from .vector_store import (
     create_vector_store,
 )
 from .fact_extractor import (
+    extract_typed_fact_triples_from_turn,
     build_user_fact_context,
     extract_and_store_user_facts,
     extract_user_facts,
@@ -32,6 +33,7 @@ __all__ = [
     "TieredMemory",
     "create_memory_backend",
     "build_user_fact_context",
+    "extract_typed_fact_triples_from_turn",
     "extract_and_store_user_facts",
     "extract_user_facts",
     "format_user_facts_for_prompt",
