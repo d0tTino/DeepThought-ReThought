@@ -49,8 +49,8 @@ class SocialGraphService(BaseService):
         self._prism = prism_adapter or PrismAdapter(self._memory)
         self._input_enrichment = input_enrichment or InputEnrichmentService()
 
-    async def _handle_input(self, msg: Msg) -> None:
-        """Process a SOCIAL_SIGNALS_REQUESTED message."""
+    async def _handle_social_signals_requested(self, msg: Msg) -> None:
+        """Respond to SOCIAL_SIGNALS_REQUESTED with context and telemetry events."""
         try:
             enriched = self._input_enrichment.parse_input_received(msg)
             logger.info("SocialGraphService received input %s", enriched.input_id)
@@ -88,6 +88,17 @@ class SocialGraphService(BaseService):
                     "persona": persona,
                 },
             }
+            social_update = {
+                "input_id": enriched.input_id,
+                "user_id": enriched.user_id,
+                "author_id": enriched.author_id,
+                "channel_id": enriched.channel_id,
+                "delta": delta,
+                "affinity": affinity,
+                "persona": persona,
+                "perception": perception,
+            }
+            await self._publisher.publish(EventSubjects.SOCIAL_UPDATED, social_update, use_jetstream=True)
             await self._publisher.publish(EventSubjects.SOCIAL_SIGNALS_RETRIEVED, social_snapshot, use_jetstream=True)
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
@@ -104,11 +115,16 @@ class SocialGraphService(BaseService):
             elif hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
 
+
+    async def _handle_input(self, msg: Msg) -> None:
+        """Backward-compatible alias for social signal request handling."""
+        await self._handle_social_signals_requested(msg)
+
     async def start(self, durable_name: str = "social_graph_service") -> bool:
         self._subscriptions.clear()
         self.add_subscription(
             subject=EventSubjects.SOCIAL_SIGNALS_REQUESTED,
-            handler=self._handle_input,
+            handler=self._handle_social_signals_requested,
             use_jetstream=True,
             durable=durable_name,
         )
