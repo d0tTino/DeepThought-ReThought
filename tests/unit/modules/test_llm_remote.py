@@ -297,6 +297,18 @@ def test_build_generation_prompt_includes_sections():
         author_name="Ada",
         channel_context="discord/#general",
         recent_turn_summary="The user asked about status.",
+        multimodal_interpretations={
+            "notes": [
+                {
+                    "modality": "image",
+                    "what": "2 embedding vectors across 1 spans",
+                    "where": "attachment regions",
+                    "who": "unknown",
+                    "confidence": 0.81,
+                }
+            ],
+            "confidence": {"aggregate": 0.81, "low_confidence": False},
+        },
     )
 
     assert "[SYSTEM PERSONA]" in prompt
@@ -306,6 +318,9 @@ def test_build_generation_prompt_includes_sections():
     assert "How are you?" in prompt
     assert "[SOCIAL/PERCEPTION HINTS]" in prompt
     assert "- Author name: Ada" in prompt
+    assert "[MULTIMODAL INTERPRETATIONS]" in prompt
+    assert "[image]" in prompt
+    assert "[UNCERTAINTY CUES]" in prompt
 
 
 def test_build_generation_prompt_without_optional_hints():
@@ -348,3 +363,63 @@ async def test_generate_candidates_uses_scores_and_safety(monkeypatch):
     assert result[0].safety_passed is True
     assert result[1].safety_passed is False
     assert "kill" in result[1].safety_metadata["matched_terms"]
+
+
+@pytest.mark.asyncio
+async def test_handle_context_event_falls_back_to_clarifying_question_on_low_confidence(monkeypatch):
+    llm = create_llm(monkeypatch)
+    called = {"generate": False}
+
+    async def fake_generate_candidates(self, prompt):
+        called["generate"] = True
+        return [llm_remote.ResponseCandidate(text="answer", confidence=0.8, source="stub", safety_passed=True)]
+
+    monkeypatch.setattr(llm, "_generate_candidates", fake_generate_candidates.__get__(llm, type(llm)))
+
+    payload = ContextAssembledPayload(
+        input_id="low-conf",
+        user_input="what's in this clip?",
+        retrieved_facts=["f1"],
+        multimodal_interpretations={
+            "notes": [{"modality": "audio"}],
+            "confidence": {"aggregate": 0.2, "low_confidence": True},
+            "fallback": {"ask_clarifying_question": True, "reason": "low multimodal confidence"},
+        },
+    )
+    msg = DummyMsg(payload.to_json())
+
+    await llm._handle_context_event(msg)
+
+    assert msg.acked
+    assert called["generate"] is False
+    _, sent_payload = llm._publisher.published[0]
+    assert "Could you clarify" in sent_payload.candidates[0].text
+
+
+def test_build_generation_prompt_includes_image_and_audio_interpretations():
+    prompt = llm_remote._build_generation_prompt(
+        user_input="Please summarize these attachments",
+        facts=[],
+        multimodal_interpretations={
+            "notes": [
+                {
+                    "modality": "image",
+                    "what": "1 embedding vectors across 1 spans",
+                    "where": "attachment regions",
+                    "who": "unknown",
+                    "confidence": 0.73,
+                },
+                {
+                    "modality": "audio",
+                    "what": "3 embedding vectors across 2 spans",
+                    "where": "temporal spans",
+                    "who": "speaker unknown",
+                    "confidence": 0.52,
+                },
+            ],
+            "confidence": {"aggregate": 0.62, "low_confidence": False},
+        },
+    )
+
+    assert "[image] what=1 embedding vectors across 1 spans" in prompt
+    assert "[audio] what=3 embedding vectors across 2 spans" in prompt

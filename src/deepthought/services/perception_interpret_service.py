@@ -12,6 +12,7 @@ from nats.js.client import JetStreamContext
 from ..eda.events import EventSubjects, PerceptionEmbeddingsEvent
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from .perception.summarization import build_semantic_notes
 
 logger = logging.getLogger(__name__)
 
@@ -23,54 +24,6 @@ class PerceptionInterpretService:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._embeddings_by_input_id: dict[str, dict[str, Any]] = {}
-
-    @staticmethod
-    def _attachment_summary(attachments: Any) -> str | None:
-        if not isinstance(attachments, list) or not attachments:
-            return None
-        counts: dict[str, int] = {}
-        for raw_attachment in attachments:
-            if not isinstance(raw_attachment, dict):
-                continue
-            content_type = raw_attachment.get("content_type")
-            if isinstance(content_type, str) and "/" in content_type:
-                media_type = content_type.split("/", maxsplit=1)[0].strip().lower()
-            else:
-                media_type = "file"
-            counts[media_type] = counts.get(media_type, 0) + 1
-        if not counts:
-            return None
-        parts = [f"{media}:{count}" for media, count in sorted(counts.items())]
-        return f"attachments[{', '.join(parts)}]"
-
-    @staticmethod
-    def _embedding_summary(embeddings_payload: dict[str, Any]) -> dict[str, str]:
-        raw_modalities = embeddings_payload.get("by_modality")
-        modalities = raw_modalities if isinstance(raw_modalities, dict) else {}
-        raw_modality_conf = embeddings_payload.get("modality_confidence")
-        modality_conf = raw_modality_conf if isinstance(raw_modality_conf, dict) else {}
-
-        summaries: dict[str, str] = {}
-        for modality_name, modality_payload in modalities.items():
-            if not isinstance(modality_payload, dict):
-                continue
-            vectors = modality_payload.get("embeddings")
-            span_count = len(modality_payload.get("spans") or [])
-            vector_count = len(vectors) if isinstance(vectors, list) else 0
-            dim = 0
-            if vector_count and isinstance(vectors[0], list):
-                dim = len(vectors[0])
-            confidence = modality_conf.get(modality_name)
-            conf_text = (
-                f", conf={float(confidence):.2f}"
-                if isinstance(confidence, (int, float))
-                else ""
-            )
-            summaries[str(modality_name)] = (
-                f"{modality_name}: {vector_count} vectors"
-                f" @dim{dim}, spans={span_count}{conf_text}"
-            )
-        return summaries
 
     async def _handle_embeddings(self, msg: Msg) -> None:
         try:
@@ -109,24 +62,14 @@ class PerceptionInterpretService:
                 raise ValueError("Interpret request missing input_id")
 
             cached = self._embeddings_by_input_id.get(input_id, {})
-            modality_summaries = self._embedding_summary(cached)
-            attachments_summary = self._attachment_summary(payload.get("attachments"))
-
-            compact_lines: list[str] = []
-            if modality_summaries:
-                compact_lines.extend(modality_summaries.values())
-            if attachments_summary:
-                compact_lines.append(attachments_summary)
-            if not compact_lines:
-                compact_lines.append("no multimodal signals")
+            multimodal_notes = build_semantic_notes(
+                attachments=payload.get("attachments"),
+                embeddings_payload=cached,
+            )
 
             out_payload = {
                 "input_id": input_id,
-                "multimodal_interpretations": {
-                    "summary": " | ".join(compact_lines),
-                    "by_modality": modality_summaries,
-                    "attachments": attachments_summary,
-                },
+                "multimodal_interpretations": multimodal_notes,
             }
             await self._publisher.publish(
                 EventSubjects.PERCEPTION_INTERPRET_RETRIEVED,

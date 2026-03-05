@@ -49,6 +49,7 @@ def _build_generation_prompt(
     author_name: str | None = None,
     channel_context: str | None = None,
     recent_turn_summary: str | None = None,
+    multimodal_interpretations: dict[str, object] | None = None,
 ) -> str:
     facts_block = "\n".join(f"- {fact}" for fact in facts) if facts else "- None"
 
@@ -61,6 +62,34 @@ def _build_generation_prompt(
         hints.append(f"- Recent turn summary: {recent_turn_summary}")
     hints_block = "\n".join(hints) if hints else "- None"
 
+    multimodal = multimodal_interpretations if isinstance(multimodal_interpretations, dict) else {}
+    modality_notes = multimodal.get("notes")
+    notes = modality_notes if isinstance(modality_notes, list) else []
+    note_lines: list[str] = []
+    for raw_note in notes:
+        if not isinstance(raw_note, dict):
+            continue
+        modality = str(raw_note.get("modality", "unknown"))
+        what = str(raw_note.get("what", "unknown signal"))
+        where = str(raw_note.get("where", "unknown location"))
+        who = str(raw_note.get("who", "unknown actor"))
+        confidence = raw_note.get("confidence")
+        conf_txt = f"{float(confidence):.2f}" if isinstance(confidence, (int, float)) else "n/a"
+        note_lines.append(f"- [{modality}] what={what}; where={where}; who={who}; confidence={conf_txt}")
+    multimodal_block = "\n".join(note_lines) if note_lines else "- None"
+
+    multimodal_confidence = multimodal.get("confidence") if isinstance(multimodal.get("confidence"), dict) else {}
+    aggregate = multimodal_confidence.get("aggregate")
+    low_confidence = bool(multimodal_confidence.get("low_confidence"))
+    uncertainty_line = (
+        f"Multimodal confidence={float(aggregate):.2f}; low_confidence={low_confidence}."
+        if isinstance(aggregate, (int, float))
+        else f"Multimodal confidence unknown; low_confidence={low_confidence}."
+    )
+
+    fallback = multimodal.get("fallback") if isinstance(multimodal.get("fallback"), dict) else {}
+    clarify = bool(fallback.get("ask_clarifying_question"))
+
     return (
         "[SYSTEM PERSONA]\n"
         "You are DeepThought, a conversational assistant.\n"
@@ -71,9 +100,28 @@ def _build_generation_prompt(
         f"{user_input}\n\n"
         "[SOCIAL/PERCEPTION HINTS]\n"
         f"{hints_block}\n\n"
+        "[MULTIMODAL INTERPRETATIONS]\n"
+        f"{multimodal_block}\n\n"
+        "[UNCERTAINTY CUES]\n"
+        f"- {uncertainty_line}\n\n"
         "[TASK]\n"
-        "Generate a helpful response to the user message."
+        + (
+            "Ask a focused clarifying question before making claims about image/audio details."
+            if clarify or low_confidence
+            else "Generate a helpful response to the user message."
+        )
     )
+
+
+def _build_clarifying_question(multimodal_interpretations: dict[str, object] | None) -> str:
+    multimodal = multimodal_interpretations if isinstance(multimodal_interpretations, dict) else {}
+    notes = multimodal.get("notes")
+    if isinstance(notes, list):
+        modalities = [str(item.get("modality")) for item in notes if isinstance(item, dict) and item.get("modality")]
+        if modalities:
+            joined = ", ".join(sorted(set(modalities)))
+            return f"I might be missing details from the {joined} signal. Could you clarify what you want me to focus on?"
+    return "I may be missing key details from the attachment. Could you clarify what is most important for me to analyze?"
 
 
 class RemoteLLM:
@@ -197,6 +245,11 @@ class RemoteLLM:
                 channel_context = _normalized_optional_text(payload.channel_context)
                 recent_turn_summary = _normalized_optional_text(payload.recent_turn_summary)
                 facts = [str(item) for item in payload.retrieved_facts]
+                multimodal_interpretations = (
+                    payload.multimodal_interpretations
+                    if isinstance(payload.multimodal_interpretations, dict)
+                    else {}
+                )
             else:
                 input_id = data.get("input_id")
                 author_id = data.get("author_id") if isinstance(data.get("author_id"), str) else None
@@ -207,6 +260,11 @@ class RemoteLLM:
                 channel_context = _normalized_optional_text(data.get("channel_context"))
                 recent_turn_summary = _normalized_optional_text(data.get("recent_turn_summary"))
                 facts = _extract_memory_facts(data)
+                multimodal_interpretations = (
+                    data.get("multimodal_interpretations")
+                    if isinstance(data.get("multimodal_interpretations"), dict)
+                    else {}
+                )
 
             if author_id is None:
                 author_id = user_id
@@ -218,9 +276,29 @@ class RemoteLLM:
                 author_name=author_name,
                 channel_context=channel_context,
                 recent_turn_summary=recent_turn_summary,
+                multimodal_interpretations=multimodal_interpretations,
             )
+
+            fallback = multimodal_interpretations.get("fallback") if isinstance(multimodal_interpretations.get("fallback"), dict) else {}
+            should_clarify = bool(fallback.get("ask_clarifying_question"))
+            confidence_obj = multimodal_interpretations.get("confidence")
+            if isinstance(confidence_obj, dict):
+                should_clarify = should_clarify or bool(confidence_obj.get("low_confidence"))
+
             logger.info("RemoteLLM generating for %s", input_id)
-            candidates = await self._generate_candidates(prompt)
+            if should_clarify:
+                candidates = [
+                    ResponseCandidate(
+                        text=_build_clarifying_question(multimodal_interpretations),
+                        confidence=0.95,
+                        source=f"{self._source_name}:clarifying_fallback",
+                        safety_passed=True,
+                        confidence_components={"fallback": 1.0},
+                        safety_metadata={"rule": "low_multimodal_confidence"},
+                    )
+                ]
+            else:
+                candidates = await self._generate_candidates(prompt)
             payload = ResponseCandidatesPayload(
                 candidates=candidates,
                 input_id=input_id,
