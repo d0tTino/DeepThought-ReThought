@@ -56,7 +56,11 @@ owlready2.World.get_ontology = lambda self, iri: types.SimpleNamespace(
     load=lambda fileobj=None: types.SimpleNamespace(individuals=lambda: [])
 )
 
-from deepthought.eda.events import EventSubjects, ResponseGeneratedPayload
+from deepthought.eda.events import (
+    EventSubjects,
+    ResponseCandidatesPayload,
+    ResponseRankedPayload,
+)
 from deepthought.services.reasoning_service import ReasoningService
 
 
@@ -107,9 +111,9 @@ async def test_handle_response_publishes_facts(monkeypatch):
     svc._publisher = DummyPublisher()
     svc._subscriber = DummySubscriber()
 
-    payload = ResponseGeneratedPayload(final_response="A is B", input_id="1")
+    payload = ResponseRankedPayload(final_response="A is B", input_id="1")
     msg = DummyMsg(payload.to_json())
-    await svc._handle_response(msg)
+    await svc._handle_ranked_response(msg)
 
     assert msg.acked
     # Ontology stubs may produce no inferred facts
@@ -134,9 +138,9 @@ async def test_handle_response_emits_input_event(monkeypatch):
     svc._publisher = DummyPublisher()
     svc._subscriber = DummySubscriber()
 
-    payload = ResponseGeneratedPayload(final_response="A is B", input_id="1")
+    payload = ResponseRankedPayload(final_response="A is B", input_id="1")
     msg = DummyMsg(payload.to_json())
-    await svc._handle_response(msg)
+    await svc._handle_ranked_response(msg)
 
     assert msg.acked
     assert svc._publisher.published
@@ -144,6 +148,32 @@ async def test_handle_response_emits_input_event(monkeypatch):
     assert subj == EventSubjects.INPUT_RECEIVED
     assert out.user_input == "A B C"
 
+
+
+
+@pytest.mark.asyncio
+async def test_handle_candidates_emits_input_event(monkeypatch):
+    class DummyOntology:
+        def add_triples(self, triples):
+            pass
+
+        def infer_facts(self):
+            return [("A", "B", "C")]
+
+        def verify_triples(self, triples):
+            return triples, []
+
+    svc = ReasoningService(DummyNATS(), DummyJS(), ontology=DummyOntology())
+    svc._publisher = DummyPublisher()
+    svc._subscriber = DummySubscriber()
+
+    payload = ResponseCandidatesPayload(candidates=[{"text": "A is B", "confidence": 0.8}])
+    msg = DummyMsg(payload.to_json())
+    await svc._handle_response_candidates(msg)
+
+    assert msg.acked
+    subjects = [s for s, _ in svc._publisher.published]
+    assert EventSubjects.INPUT_RECEIVED in subjects
 
 def test_extract_triples_simple():
     svc = ReasoningService(DummyNATS(), DummyJS())
@@ -182,9 +212,9 @@ async def test_warning_on_contradiction(monkeypatch):
     svc._publisher = DummyPublisher()
     svc._subscriber = DummySubscriber()
 
-    payload = ResponseGeneratedPayload(final_response="X is Y", input_id="1")
+    payload = ResponseRankedPayload(final_response="X is Y", input_id="1")
     msg = DummyMsg(payload.to_json())
-    await svc._handle_response(msg)
+    await svc._handle_ranked_response(msg)
 
     assert msg.acked
     subjects = [s for s, _ in svc._publisher.published]

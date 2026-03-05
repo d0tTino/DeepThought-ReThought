@@ -37,6 +37,7 @@ LEGACY_SUBJECT_MAP: Dict[str, str] = {
     "dtr.context.assembled": CanonicalSubjects.CONTEXT_ASSEMBLED,
     "dtr.response.candidates": CanonicalSubjects.RESPONSE_CANDIDATES,
     "dtr.response.ranked": CanonicalSubjects.RESPONSE_RANKED,
+    "dtr.llm.response_generated": CanonicalSubjects.RESPONSE_RANKED,
     "dtr.perception.embeddings": CanonicalSubjects.PERCEPTION_EMBEDDINGS,
     "dtr.perception.extract": CanonicalSubjects.PERCEPTION_EXTRACT,
     "dtr.social.perception": CanonicalSubjects.SOCIAL_PERCEPTION,

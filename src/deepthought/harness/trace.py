@@ -110,8 +110,11 @@ class TraceRecorder:
     async def _handle_input(self, msg: Msg) -> None:
         await self._append("INPUT_RECEIVED", msg)
 
-    async def _handle_response(self, msg: Msg) -> None:
-        await self._append("RESPONSE_GENERATED", msg)
+    async def _handle_response_ranked(self, msg: Msg) -> None:
+        await self._append("RESPONSE_RANKED", msg)
+
+    async def _handle_response_candidates(self, msg: Msg) -> None:
+        await self._append("RESPONSE_CANDIDATES", msg)
 
     async def _handle_chat_raw(self, msg: Msg) -> None:
         await self._append_raw("CHAT_RAW", msg)
@@ -125,10 +128,16 @@ class TraceRecorder:
                 durable=f"{durable_name}_input",
             )
             await self._subscriber.subscribe(
-                subject=EventSubjects.RESPONSE_GENERATED,
-                handler=self._handle_response,
+                subject=EventSubjects.RESPONSE_RANKED,
+                handler=self._handle_response_ranked,
                 use_jetstream=True,
-                durable=f"{durable_name}_response",
+                durable=f"{durable_name}_ranked",
+            )
+            await self._subscriber.subscribe(
+                subject=EventSubjects.RESPONSE_CANDIDATES,
+                handler=self._handle_response_candidates,
+                use_jetstream=True,
+                durable=f"{durable_name}_candidates",
             )
             await self._subscriber.subscribe(
                 subject=EventSubjects.CHAT_RAW,

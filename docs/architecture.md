@@ -24,20 +24,23 @@ Operators should treat this as a deployment invariant and verify that each requi
 sequenceDiagram
     participant User
     participant Bot
-    participant CognitiveCoreService
+    participant ContextAssembler
     participant LLM
+    participant Selector
 
     User->>Bot: Message
     Bot->>NATS: INPUT_RECEIVED
-    NATS->>CognitiveCoreService: INPUT_RECEIVED
-    CognitiveCoreService->>LLM: Query
-    LLM-->>CognitiveCoreService: Response
-    CognitiveCoreService->>NATS: RESPONSE_GENERATED
-    NATS->>Bot: RESPONSE_GENERATED
+    NATS->>ContextAssembler: INPUT_RECEIVED (+ provider outputs)
+    ContextAssembler->>NATS: CONTEXT_ASSEMBLED
+    NATS->>LLM: CONTEXT_ASSEMBLED
+    LLM->>NATS: RESPONSE_CANDIDATES
+    NATS->>Selector: RESPONSE_CANDIDATES
+    Selector->>NATS: RESPONSE_RANKED
+    NATS->>Bot: RESPONSE_RANKED
     Bot-->>User: Reply
 ```
 
-The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events, retrieves knowledge from the `CognitiveCoreService` and ultimately receives a `RESPONSE_GENERATED` message containing the model output.
+The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events and receives the final reply on `RESPONSE_RANKED` after the responder publishes `RESPONSE_CANDIDATES` and the selector picks the winner.
 
 ## Unified CognitiveCoreService
 
@@ -50,7 +53,7 @@ augment memory with local documents.
 When an `INPUT_RECEIVED` event arrives the service stores the text in each
 backend, queries for relevant context and publishes `MEMORY_RETRIEVED`. Downstream
 services subscribe to this subject and may then respond with
-`RESPONSE_GENERATED` or other events.
+`RESPONSE_CANDIDATES` and `RESPONSE_RANKED` (or other downstream events).
 
 ```python
 from deepthought.eda.events import EventSubjects

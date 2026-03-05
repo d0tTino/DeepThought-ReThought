@@ -420,7 +420,7 @@ Clients can then connect using the `NATS_TLS_CERT` and `NATS_TLS_KEY` environmen
 
 ## Recording Event Traces
 
-Use `tools/record.py` to capture `INPUT_RECEIVED` and `RESPONSE_GENERATED` events:
+Use `tools/record.py` to capture `INPUT_RECEIVED`, `RESPONSE_CANDIDATES`, and `RESPONSE_RANKED` events:
 ```bash
 python tools/record.py --output traces.jsonl
 ```
@@ -899,14 +899,15 @@ For the comprehensive plan outlining each phase, see [docs/discord_bot_phase_rep
 Two lightweight reference modules show how components can interact through NATS:
 
 * **BasicMemory** -- subscribes to `INPUT_RECEIVED` events, stores each user input in a local `memory.json` file and then publishes a `MEMORY_RETRIEVED` event containing the most recent entries.
-* **BasicLLM** -- listens for `MEMORY_RETRIEVED`, runs a small language model to generate a reply, and publishes `RESPONSE_GENERATED`. This module requires the optional heavy dependencies `transformers` and `torch`.
+* **BasicLLM** -- listens for `MEMORY_RETRIEVED`, runs a small language model to generate one or more reply candidates, and publishes `RESPONSE_CANDIDATES`. A selector then publishes `RESPONSE_RANKED` for delivery. This module requires the optional heavy dependencies `transformers` and `torch`.
 
 ### Example Workflow
 
 1. The `InputHandler` emits an `INPUT_RECEIVED` event when it receives a message.
 2. `BasicMemory` logs the text to `memory.json` and publishes a `MEMORY_RETRIEVED` event with the last few inputs.
-3. `BasicLLM` generates a response from those facts and publishes a `RESPONSE_GENERATED` event.
-4. The `OutputHandler` (or another consumer) can then deliver the response to the user.
+3. `BasicLLM` generates response candidates from those facts and publishes a `RESPONSE_CANDIDATES` event.
+4. A selector consumes candidates and publishes `RESPONSE_RANKED`.
+5. The `OutputHandler` (or another consumer) can then deliver the ranked response to the user.
 
 
 

@@ -13,6 +13,7 @@ services:
   - context_assembler
   - llm_remote
   - selector
+  - reasoning
 
 service_bindings:
   discord_gateway:
@@ -103,6 +104,30 @@ service_bindings:
     publish:
       - subject: dtr.response.ranked.v1  # legacy alias: dtr.response.ranked
         event_subject: EventSubjects.RESPONSE_RANKED
+        jetstream: true
+
+  reasoning:
+    optional: true
+    description: Infer and re-inject structured facts from ranked responses and candidates.
+    env:
+      - NATS_URL
+    subscribe:
+      - subject: dtr.response.ranked.v1  # legacy aliases: dtr.response.ranked, dtr.llm.response_generated
+        event_subject: EventSubjects.RESPONSE_RANKED
+        jetstream: true
+        durable: reasoning_service_ranked
+        required_reliability: false
+      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+        event_subject: EventSubjects.RESPONSE_CANDIDATES
+        jetstream: true
+        durable: reasoning_service_candidates
+        required_reliability: false
+    publish:
+      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
+        event_subject: EventSubjects.INPUT_RECEIVED
+        jetstream: true
+      - subject: dtr.warning
+        event_subject: EventSubjects.WARNING
         jetstream: true
 
   social_graph:
