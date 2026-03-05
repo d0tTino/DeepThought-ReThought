@@ -146,9 +146,6 @@ class DiscordGatewayService(BaseService):
     async def handle_discord_message(self, message: Any) -> str | None:
         """Publish human-authored Discord messages as INPUT_RECEIVED events."""
 
-        author = getattr(message, "author", None)
-        if getattr(author, "bot", False):
-            return None
         if not self._publisher:
             logger.warning("DiscordGatewayService publisher unavailable; dropping message")
             return None
