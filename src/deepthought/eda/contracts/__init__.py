@@ -24,6 +24,9 @@ class CanonicalSubjects:
     PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings.v1"
     PERCEPTION_EXTRACT = "dtr.perception.extract.v1"
     SOCIAL_PERCEPTION = "dtr.social.perception.v1"
+    OUTCOME_SIGNAL = "dtr.feedback.outcome_signal.v1"
+    CORRECTION_SIGNAL = "dtr.feedback.correction_signal.v1"
+    USER_SUMMARY_REFRESH = "dtr.memory.user_summary.refresh.v1"
 
 
 LEGACY_SUBJECT_MAP: Dict[str, str] = {
@@ -41,6 +44,9 @@ LEGACY_SUBJECT_MAP: Dict[str, str] = {
     "dtr.perception.embeddings": CanonicalSubjects.PERCEPTION_EMBEDDINGS,
     "dtr.perception.extract": CanonicalSubjects.PERCEPTION_EXTRACT,
     "dtr.social.perception": CanonicalSubjects.SOCIAL_PERCEPTION,
+    "dtr.feedback.outcome_signal": CanonicalSubjects.OUTCOME_SIGNAL,
+    "dtr.feedback.correction_signal": CanonicalSubjects.CORRECTION_SIGNAL,
+    "dtr.memory.user_summary.refresh": CanonicalSubjects.USER_SUMMARY_REFRESH,
 }
 
 

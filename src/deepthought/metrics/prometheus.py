@@ -85,6 +85,33 @@ if "missing_modality_total" not in REGISTRY._names_to_collectors:
 else:  # pragma: no cover - already registered
     MISSING_MODALITY_TOTAL = REGISTRY._names_to_collectors["missing_modality_total"]  # type: ignore
 
+if "response_feedback_signals_total" not in REGISTRY._names_to_collectors:
+    RESPONSE_FEEDBACK_SIGNALS_TOTAL = Counter(
+        "response_feedback_signals_total",
+        "Total response feedback signals processed",
+        labelnames=["signal_type", "signal", "source"],
+    )
+else:  # pragma: no cover - already registered
+    RESPONSE_FEEDBACK_SIGNALS_TOTAL = REGISTRY._names_to_collectors["response_feedback_signals_total"]  # type: ignore
+
+if "response_quality_score" not in REGISTRY._names_to_collectors:
+    RESPONSE_QUALITY_SCORE = Histogram(
+        "response_quality_score",
+        "Distribution of response quality outcomes used for adaptation",
+        labelnames=["source"],
+    )
+else:  # pragma: no cover - already registered
+    RESPONSE_QUALITY_SCORE = REGISTRY._names_to_collectors["response_quality_score"]  # type: ignore
+
+if "adaptation_effect_delta" not in REGISTRY._names_to_collectors:
+    ADAPTATION_EFFECT_DELTA = Histogram(
+        "adaptation_effect_delta",
+        "Observed adaptation deltas applied to affinity and memory confidence",
+        labelnames=["target"],
+    )
+else:  # pragma: no cover - already registered
+    ADAPTATION_EFFECT_DELTA = REGISTRY._names_to_collectors["adaptation_effect_delta"]  # type: ignore
+
 __all__ = [
     "INPUTS_TOTAL",
     "INPUT_LATENCY_SECONDS",
@@ -92,4 +119,7 @@ __all__ = [
     "RULE_EVALUATIONS_TOTAL",
     "RULE_EVALUATION_ERRORS_TOTAL",
     "MISSING_MODALITY_TOTAL",
+    "RESPONSE_FEEDBACK_SIGNALS_TOTAL",
+    "RESPONSE_QUALITY_SCORE",
+    "ADAPTATION_EFFECT_DELTA",
 ]

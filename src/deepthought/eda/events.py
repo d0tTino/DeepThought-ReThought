@@ -40,6 +40,9 @@ class EventSubjects:
     RESPONSE_GENERATED = "dtr.llm.response_generated"
     RESPONSE_CANDIDATES = CanonicalSubjects.RESPONSE_CANDIDATES
     RESPONSE_RANKED = CanonicalSubjects.RESPONSE_RANKED
+    OUTCOME_SIGNAL = CanonicalSubjects.OUTCOME_SIGNAL
+    CORRECTION_SIGNAL = CanonicalSubjects.CORRECTION_SIGNAL
+    USER_SUMMARY_REFRESH = CanonicalSubjects.USER_SUMMARY_REFRESH
 
     # Perception events
     PERCEPTION_EMBEDDINGS = CanonicalSubjects.PERCEPTION_EMBEDDINGS
@@ -329,6 +332,36 @@ class ResponseRankedPayload(EventPayload):
             candidates=candidates,
         )
 
+
+
+
+@dataclass
+class OutcomeSignalPayload(EventPayload):
+    """Payload for post-response positive/negative outcome signals."""
+
+    signal: str
+    input_id: Optional[str] = None
+    user_id: Optional[str] = None
+    author_id: Optional[str] = None
+    response_source: Optional[str] = None
+    confidence_delta: float = 0.0
+    affinity_delta: float = 0.0
+    timestamp: Optional[str] = None
+
+
+@dataclass
+class CorrectionSignalPayload(EventPayload):
+    """Payload for explicit correction events following a response."""
+
+    correction: str
+    input_id: Optional[str] = None
+    user_id: Optional[str] = None
+    author_id: Optional[str] = None
+    prior_response: Optional[str] = None
+    response_source: Optional[str] = None
+    confidence_delta: float = -0.1
+    affinity_delta: float = 0.0
+    timestamp: Optional[str] = None
 
 @dataclass
 class ReminderTriggeredPayload(EventPayload):
