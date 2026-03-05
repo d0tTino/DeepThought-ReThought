@@ -101,6 +101,10 @@ async def test_race_safe_assembly_collects_all_providers(monkeypatch):
     assert payload.multimodal_interpretations["summary"] == "no multimodal signals"
     assert payload.confidence["partial"] is False
     assert payload.confidence["completed_providers"] == ["memory", "social", "perception"]
+    assert payload.confidence["publish_reason"] == "all_providers_received"
+    assert payload.confidence["assembly_state"] == "COMPLETE"
+    assert payload.confidence["correlation"] == {"input_id": "i-race", "trace_id": None}
+    assert payload.confidence["provider_timings"]["memory"]["timed_out"] is False
 
 
 @pytest.mark.asyncio
@@ -137,7 +141,42 @@ async def test_partial_result_when_provider_missing_is_deterministic(monkeypatch
     assert payload.confidence["partial"] is True
     assert payload.confidence["missing_providers"] == ["perception"]
     assert payload.confidence["completed_providers"] == ["memory", "social"]
+    assert payload.confidence["publish_reason"] == "timeout_partial"
+    assert payload.confidence["assembly_state"] == "TIMEOUT_PUBLISHED"
+    assert payload.confidence["provider_timings"]["perception"]["timed_out"] is True
 
+
+
+
+@pytest.mark.asyncio
+async def test_context_assembler_correlates_by_input_and_trace_id(monkeypatch):
+    import deepthought.services.context_assembler_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = ContextAssemblerService(DummyNATS(), DummyJS(), wait_window_seconds=0.04)
+
+    await svc._handle_input_received(DummyMsg({"input_id": "i-trace", "user_input": "hello", "trace_id": "trace-A"}))
+
+    await svc._handle_provider_response(
+        DummyMsg({"input_id": "i-trace", "trace_id": "trace-B", "retrieved_knowledge": {"facts": ["wrong"]}}),
+        "memory",
+    )
+    await svc._handle_provider_response(
+        DummyMsg({"input_id": "i-trace", "trace_id": "trace-A", "social_signals": {"sentiment": 0.9}}),
+        "social",
+    )
+
+    await asyncio.sleep(0.07)
+
+    assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
+    assert len(assembled) == 1
+    payload = assembled[0][1]
+    assert payload.retrieved_facts == []
+    assert payload.social_signals == {"sentiment": 0.9}
+    assert payload.confidence["correlation"] == {"input_id": "i-trace", "trace_id": "trace-A"}
+    assert payload.confidence["provider_timings"]["memory"]["timed_out"] is True
 
 @pytest.mark.asyncio
 async def test_context_assembler_merges_perception_interpretations_within_wait_window(monkeypatch):

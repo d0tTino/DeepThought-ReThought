@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from enum import Enum
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -23,8 +24,22 @@ logger = logging.getLogger(__name__)
 class _PendingAssembly:
     request: dict[str, Any]
     provider_payloads: dict[str, dict[str, Any]] = field(default_factory=dict)
+    trace_id: str | None = None
+    required_providers: set[str] = field(default_factory=set)
+    provider_deadlines: dict[str, float] = field(default_factory=dict)
+    provider_received_at: dict[str, float] = field(default_factory=dict)
+    started_at: float = 0.0
+    published_reason: str | None = None
+    state: "_AssemblyState" = field(default_factory=lambda: _AssemblyState.OPEN)
     published: bool = False
     event: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+class _AssemblyState(str, Enum):
+    OPEN = "OPEN"
+    PARTIAL_READY = "PARTIAL_READY"
+    COMPLETE = "COMPLETE"
+    TIMEOUT_PUBLISHED = "TIMEOUT_PUBLISHED"
 
 
 class ContextAssemblerService:
@@ -72,6 +87,7 @@ class ContextAssemblerService:
     async def _publish_fanout_requests(self, payload: dict[str, Any]) -> None:
         fanout_payload = {
             "input_id": payload.get("input_id"),
+            "trace_id": payload.get("trace_id"),
             "user_input": payload.get("user_input"),
             "user_id": payload.get("user_id"),
             "author_id": payload.get("author_id"),
@@ -94,7 +110,17 @@ class ContextAssemblerService:
             if not isinstance(input_id, str) or not isinstance(user_input, str):
                 raise ValueError("Input payload missing required fields")
 
-            pending = _PendingAssembly(request=payload)
+            loop_time = asyncio.get_running_loop().time()
+            provider_deadlines = {
+                provider: loop_time + self._wait_window_seconds for provider in self._PROVIDER_ORDER
+            }
+            pending = _PendingAssembly(
+                request=payload,
+                trace_id=payload.get("trace_id") if isinstance(payload.get("trace_id"), str) else None,
+                required_providers=set(self._PROVIDER_ORDER),
+                provider_deadlines=provider_deadlines,
+                started_at=loop_time,
+            )
             async with self._lock:
                 self._pending[input_id] = pending
 
@@ -114,11 +140,29 @@ class ContextAssemblerService:
             input_id = payload.get("input_id")
             if not isinstance(input_id, str):
                 raise ValueError("Provider payload missing input_id")
+            response_trace_id = payload.get("trace_id")
+            if response_trace_id is not None and not isinstance(response_trace_id, str):
+                raise ValueError("Provider payload trace_id must be a string when provided")
 
             async with self._lock:
                 pending = self._pending.get(input_id)
                 if pending is not None and not pending.published:
+                    if pending.trace_id and response_trace_id and pending.trace_id != response_trace_id:
+                        logger.debug(
+                            "Ignoring %s provider response due to trace mismatch input_id=%s expected=%s actual=%s",
+                            provider_name,
+                            input_id,
+                            pending.trace_id,
+                            response_trace_id,
+                        )
+                        await msg.ack()
+                        return
                     pending.provider_payloads[provider_name] = payload
+                    pending.provider_received_at[provider_name] = asyncio.get_running_loop().time()
+                    if len(pending.provider_payloads) == len(pending.required_providers):
+                        pending.state = _AssemblyState.COMPLETE
+                    else:
+                        pending.state = _AssemblyState.PARTIAL_READY
                     pending.event.set()
             await msg.ack()
         except Exception:
@@ -148,6 +192,17 @@ class ContextAssemblerService:
 
         completed = [name for name in self._PROVIDER_ORDER if name in pending.provider_payloads]
         missing = [name for name in self._PROVIDER_ORDER if name not in pending.provider_payloads]
+        provider_timings = {}
+        for provider in self._PROVIDER_ORDER:
+            deadline_offset_ms = int((pending.provider_deadlines[provider] - pending.started_at) * 1000)
+            received_at = pending.provider_received_at.get(provider)
+            received_offset_ms = int((received_at - pending.started_at) * 1000) if received_at is not None else None
+            provider_timings[provider] = {
+                "deadline_offset_ms": deadline_offset_ms,
+                "received_offset_ms": received_offset_ms,
+                "timed_out": provider in missing,
+            }
+
         confidence = {
             "provider_coverage": len(completed) / len(self._PROVIDER_ORDER),
             "completed_providers": completed,
@@ -155,6 +210,10 @@ class ContextAssemblerService:
             "window_ms": int(self._wait_window_seconds * 1000),
             "elapsed_ms": int(elapsed * 1000),
             "partial": bool(missing),
+            "publish_reason": pending.published_reason,
+            "assembly_state": pending.state.value,
+            "correlation": {"input_id": input_id, "trace_id": pending.trace_id},
+            "provider_timings": provider_timings,
         }
 
         return ContextAssembledPayload(
@@ -175,14 +234,17 @@ class ContextAssemblerService:
         )
 
     async def _await_and_publish(self, input_id: str) -> None:
-        started = asyncio.get_running_loop().time()
-        deadline = started + self._wait_window_seconds
-        while asyncio.get_running_loop().time() < deadline:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._wait_window_seconds
+        publish_reason = "timeout_partial"
+        while loop.time() < deadline:
             async with self._lock:
                 pending = self._pending.get(input_id)
                 if pending is None or pending.published:
                     return
                 if len(pending.provider_payloads) == len(self._PROVIDER_ORDER):
+                    pending.state = _AssemblyState.COMPLETE
+                    publish_reason = "all_providers_received"
                     break
             await asyncio.sleep(0.005)
 
@@ -190,8 +252,11 @@ class ContextAssemblerService:
             pending = self._pending.get(input_id)
             if pending is None or pending.published:
                 return
+            if publish_reason == "timeout_partial":
+                pending.state = _AssemblyState.TIMEOUT_PUBLISHED
+            pending.published_reason = publish_reason
             pending.published = True
-            elapsed = asyncio.get_running_loop().time() - started
+            elapsed = loop.time() - pending.started_at
             payload = self._build_context_payload(input_id, pending, elapsed)
             del self._pending[input_id]
 
