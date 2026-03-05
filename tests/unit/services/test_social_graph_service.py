@@ -61,7 +61,7 @@ async def test_handle_input_resolves_identity_from_payload_and_headers(tmp_path,
     assert "social_perception" in topics
     assert len(service._publisher.calls) == 1
     event_subject, payload, _, _ = service._publisher.calls[0]
-    assert event_subject == EventSubjects.SOCIAL_UPDATED
+    assert event_subject == EventSubjects.SOCIAL_SIGNALS_RETRIEVED
     assert payload["input_id"] == "1"
     assert payload["social_signals"]["affinity"] == 1
     assert payload["social_signals"]["persona"] == "friendly"

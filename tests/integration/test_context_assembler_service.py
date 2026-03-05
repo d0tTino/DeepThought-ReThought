@@ -212,7 +212,7 @@ async def test_context_assembler_merges_perception_interpretations_within_wait_w
         {"input_id": "i-embed", "retrieved_knowledge": {"facts": ["fact-a"]}},
     )
     await bus.publish(
-        EventSubjects.SOCIAL_UPDATED,
+        EventSubjects.SOCIAL_SIGNALS_RETRIEVED,
         {"input_id": "i-embed", "social_signals": {"tone": "positive"}},
     )
 

@@ -50,7 +50,7 @@ class SocialGraphService(BaseService):
         self._input_enrichment = input_enrichment or InputEnrichmentService()
 
     async def _handle_input(self, msg: Msg) -> None:
-        """Process an INPUT_RECEIVED message."""
+        """Process a SOCIAL_SIGNALS_REQUESTED message."""
         try:
             enriched = self._input_enrichment.parse_input_received(msg)
             logger.info("SocialGraphService received input %s", enriched.input_id)
@@ -88,7 +88,7 @@ class SocialGraphService(BaseService):
                     "persona": persona,
                 },
             }
-            await self._publisher.publish(EventSubjects.SOCIAL_UPDATED, social_snapshot, use_jetstream=True)
+            await self._publisher.publish(EventSubjects.SOCIAL_SIGNALS_RETRIEVED, social_snapshot, use_jetstream=True)
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except (json.JSONDecodeError, ValueError):
@@ -107,7 +107,7 @@ class SocialGraphService(BaseService):
     async def start(self, durable_name: str = "social_graph_service") -> bool:
         self._subscriptions.clear()
         self.add_subscription(
-            subject=EventSubjects.INPUT_RECEIVED,
+            subject=EventSubjects.SOCIAL_SIGNALS_REQUESTED,
             handler=self._handle_input,
             use_jetstream=True,
             durable=durable_name,

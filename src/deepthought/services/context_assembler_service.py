@@ -57,6 +57,7 @@ class ContextAssemblerService:
             "attachments": payload.get("attachments"),
         }
         await self._publisher.publish(EventSubjects.MEMORY_RETRIEVAL_REQUESTED, fanout_payload, use_jetstream=True)
+        await self._publisher.publish(EventSubjects.SOCIAL_SIGNALS_REQUESTED, fanout_payload, use_jetstream=True)
         await self._publisher.publish(EventSubjects.PERCEPTION_INTERPRET_REQUESTED, fanout_payload, use_jetstream=True)
 
     async def _handle_input_received(self, msg: Msg) -> None:
@@ -189,7 +190,7 @@ class ContextAssemblerService:
                 durable=f"{durable_name}_memory",
             )
             await self._subscriber.subscribe(
-                subject=EventSubjects.SOCIAL_UPDATED,
+                subject=EventSubjects.SOCIAL_SIGNALS_RETRIEVED,
                 handler=lambda msg: self._handle_provider_response(msg, "social"),
                 use_jetstream=True,
                 durable=f"{durable_name}_social",
