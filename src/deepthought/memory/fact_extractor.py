@@ -49,6 +49,11 @@ FAVORITE_PATTERNS = [
     ),
 ]
 
+TEMPORAL_EVENT_PATTERNS = [
+    re.compile(r"\b(?:tomorrow|next week|next month|on \w+)\b[^.!?]*", re.IGNORECASE),
+    re.compile(r"\bi\s+(?:will|am going to)\s+([^.!?]+)", re.IGNORECASE),
+]
+
 
 def _split_list(text: str) -> list[str]:
     parts = re.split(r"\s*(?:,|and|&|/)\s*", text.strip())
@@ -178,6 +183,29 @@ def extract_typed_fact_triples_from_turn(
                 "fact_type": "utterance",
             }
         )
+    for pattern in TEMPORAL_EVENT_PATTERNS:
+        match = pattern.search(message)
+        if not match:
+            continue
+        event_text = match.group(0).strip()
+        triples.append(
+            {
+                "subject_id": str(user_id),
+                "subject_type": "user",
+                "predicate": "plans_event",
+                "object_id": None,
+                "object_type": "event",
+                "object_value": event_text,
+                "attributes": {
+                    "source_id": source_id,
+                    "timestamp": timestamp,
+                    "temporal": True,
+                },
+                "confidence": 0.76,
+                "fact_type": "temporal_fact",
+            }
+        )
+        break
     return triples
 
 

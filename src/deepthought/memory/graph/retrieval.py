@@ -20,5 +20,14 @@ def _rank_dedup(items: Sequence[GraphEvidence], limit: int) -> list[GraphEvidenc
         prev = dedup.get(key)
         if prev is None or item.score > prev.score:
             dedup[key] = item
-    ranked = sorted(dedup.values(), key=lambda i: (i.score, i.confidence), reverse=True)
+    ranked = sorted(
+        dedup.values(),
+        key=lambda i: (
+            bool(i.attributes.get("user_scoped")),
+            i.confidence >= 0.8,
+            i.score,
+            i.confidence,
+        ),
+        reverse=True,
+    )
     return ranked[:limit]

@@ -19,6 +19,7 @@ from ..eda.events import (
     PerceptionEmbeddingsPayload,
 )
 from ..memory import create_memory_backend
+from ..memory.fact_extractor import extract_typed_fact_triples_from_turn
 from ..memory.graph import (
     CypherGraphMemoryStore,
     InMemoryGraphMemoryStore,
@@ -26,6 +27,7 @@ from ..memory.graph import (
     retrieve_topic_context,
     retrieve_user_context,
 )
+from ..memory.graph.pipeline import ingest_fact_triples
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ..search import OfflineSearch
@@ -203,18 +205,33 @@ class CognitiveCoreService(BaseService):
             self._memory.store_interaction(user_input)
             await self._db.store_memory(resolved_user_id, user_input)
 
+            turn_timestamp = datetime.now(timezone.utc).isoformat()
             ingest_conversation_turns(
                 [
                     {
                         "user_id": resolved_user_id,
                         "text": user_input,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "timestamp": turn_timestamp,
                         "input_id": input_id,
                     }
                 ],
                 self._graph_memory,
                 default_user_id=str(resolved_user_id),
             )
+
+            extracted_triples = extract_typed_fact_triples_from_turn(
+                user_id=str(resolved_user_id),
+                message=user_input,
+                timestamp=turn_timestamp,
+                source_id=input_id,
+            )
+            if extracted_triples:
+                ingest_fact_triples(
+                    extracted_triples,
+                    self._graph_memory,
+                    timestamp=turn_timestamp,
+                    source_id=input_id,
+                )
 
             mem_facts = self.retrieve_context(user_input)
             db_facts = await self._db_context()
