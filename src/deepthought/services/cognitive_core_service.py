@@ -375,7 +375,7 @@ class CognitiveCoreService(BaseService):
     async def start(self, durable_name: str = "cognitive_core_listener") -> bool:
         self._subscriptions.clear()
         self.add_subscription(
-            subject=EventSubjects.INPUT_RECEIVED,
+            subject=EventSubjects.MEMORY_RETRIEVAL_REQUESTED,
             handler=self._handle_input,
             use_jetstream=True,
             durable=durable_name,
@@ -400,7 +400,7 @@ class CognitiveCoreService(BaseService):
         )
         started = await super().start()
         if started:
-            logger.info("CognitiveCoreService subscribed to %s", EventSubjects.INPUT_RECEIVED)
+            logger.info("CognitiveCoreService subscribed to %s", EventSubjects.MEMORY_RETRIEVAL_REQUESTED)
         return started
 
     async def stop(self) -> None:

@@ -39,10 +39,10 @@ service_bindings:
       - DT_SOCIAL_GRAPH_DB
       - DT_SEARCH_DB
     subscribe:
-      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
-        event_subject: EventSubjects.INPUT_RECEIVED
+      - subject: dtr.memory.retrieval.requested.v1  # legacy alias: dtr.memory.retrieval.requested
+        event_subject: EventSubjects.MEMORY_RETRIEVAL_REQUESTED
         jetstream: true
-        durable: cognitive_core_listener
+        durable: cognitive_core_memory_requests
         required_reliability: true
       - subject: dtr.perception.embeddings.v1  # legacy alias: dtr.perception.embeddings
         event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
@@ -112,14 +112,14 @@ service_bindings:
       - NATS_URL
       - DT_SOCIAL_GRAPH_DB
     subscribe:
-      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
-        event_subject: EventSubjects.INPUT_RECEIVED
+      - subject: dtr.social.signals.requested.v1  # legacy alias: dtr.social.signals.requested
+        event_subject: EventSubjects.SOCIAL_SIGNALS_REQUESTED
         jetstream: true
-        durable: social_graph_service
+        durable: social_graph_requests
         required_reliability: true
     publish:
-      - subject: dtr.social.updated
-        event_subject: EventSubjects.SOCIAL_UPDATED
+      - subject: dtr.social.signals.retrieved.v1  # legacy alias: dtr.social.signals.retrieved
+        event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
         jetstream: true
 
   perception:
@@ -181,16 +181,11 @@ service_bindings:
         jetstream: true
         durable: context_assembler_memory
         required_reliability: true
-      - subject: dtr.social.updated
-        event_subject: EventSubjects.SOCIAL_UPDATED
-        jetstream: true
-        durable: context_assembler_social
-        required_reliability: true
       - subject: dtr.social.signals.retrieved.v1  # legacy alias: dtr.social.signals.retrieved
         event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
         jetstream: true
-        durable: context_assembler_social_signals
-        required_reliability: false
+        durable: context_assembler_social
+        required_reliability: true
       - subject: dtr.perception.interpret.retrieved.v1  # legacy alias: dtr.perception.interpret.retrieved
         event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
         jetstream: true
