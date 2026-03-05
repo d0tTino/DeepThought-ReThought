@@ -151,6 +151,10 @@ class DiscordGatewayService(BaseService):
             return None
 
         payload = self.build_input_payload(message)
+        if payload.author_is_bot:
+            logger.debug("Ignoring bot-authored Discord message", extra={"author_id": payload.author_id})
+            return None
+
         self._record_inbound_activity(channel_id=payload.channel_id, author_id=payload.author_id)
         if payload.input_id and payload.channel_id:
             self._pending_routes[payload.input_id] = _PendingRoute(
