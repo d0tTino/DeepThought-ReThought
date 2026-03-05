@@ -177,6 +177,14 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS user_summaries (
+            user_id TEXT PRIMARY KEY,
+            summary TEXT,
+            source_count INTEGER DEFAULT 0,
+            updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS sentiment_trends (
             user_id TEXT,
             channel_id TEXT,
@@ -649,6 +657,68 @@ class DBManager:
             (str(subject_id), theory, confidence),
         )
         await self._db.commit()
+
+
+    async def adjust_theory_confidence(self, subject_id: int | str, delta: float) -> None:
+        """Adjust confidence for all theories associated with ``subject_id``."""
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            UPDATE theories
+            SET confidence = MIN(1.0, MAX(0.0, confidence + ?)),
+                updated=CURRENT_TIMESTAMP
+            WHERE subject_id=?
+            """,
+            (float(delta), str(subject_id)),
+        )
+        await self._db.commit()
+
+    async def upsert_user_summary(self, user_id: int | str, summary: str, source_count: int) -> None:
+        if not isinstance(summary, str) or not summary.strip():
+            raise ValueError("summary must be a non-empty string")
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO user_summaries (user_id, summary, source_count, updated)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                summary=excluded.summary,
+                source_count=excluded.source_count,
+                updated=CURRENT_TIMESTAMP
+            """,
+            (str(user_id), summary.strip(), int(source_count)),
+        )
+        await self._db.commit()
+
+    async def get_user_summary(self, user_id: int | str) -> tuple[str, int, str] | None:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            "SELECT summary, source_count, updated FROM user_summaries WHERE user_id=?",
+            (str(user_id),),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return None
+        return str(row[0]), int(row[1] or 0), str(row[2])
+
+    async def list_users_with_long_history(self, min_memories: int = 25) -> list[tuple[str, int]]:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            """
+            SELECT user_id, COUNT(*) as memory_count
+            FROM memories
+            GROUP BY user_id
+            HAVING COUNT(*) >= ?
+            ORDER BY COUNT(*) DESC
+            """,
+            (int(min_memories),),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [(str(user_id), int(count)) for user_id, count in rows]
 
     async def get_theories(self, subject_id: int):
         await self.connect()

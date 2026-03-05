@@ -1,0 +1,34 @@
+{
+  "title": "DeepThought Feedback Adaptation",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Feedback signal volume",
+      "targets": [
+        {
+          "expr": "sum by(signal_type,signal) (rate(response_feedback_signals_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Response quality trend",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by(le, source) (rate(response_quality_score_bucket[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Adaptation effect deltas",
+      "targets": [
+        {
+          "expr": "sum by(target) (rate(adaptation_effect_delta_sum[5m]))"
+        }
+      ]
+    }
+  ]
+}

@@ -37,6 +37,8 @@ class SchedulerService:
         summary_interval: float = 60.0,
         daily_summary_interval: float = 24 * 60 * 60.0,
         chat_summary_interval: float = 300.0,
+        user_summary_interval: float = 900.0,
+        min_user_history_for_summary: int = 25,
         summary_db=None,
         now_func: Callable[[], datetime] | None = None,
         sleep_func: Callable[[float], Awaitable[None]] = asyncio.sleep,
@@ -55,6 +57,8 @@ class SchedulerService:
         self._sleep = sleep_func
         self._summary_db = summary_db
         self._chat_summary_interval = chat_summary_interval
+        self._user_summary_interval = user_summary_interval
+        self._min_user_history_for_summary = min_user_history_for_summary
         self._micro_tick_range = micro_tick_range
         self._standup_interval = daily_standup_interval
         self._weekly_planning_interval = weekly_planning_interval
@@ -85,6 +89,7 @@ class SchedulerService:
         self._daily_summary_task: Optional[asyncio.Task] = None
         self._chat_summary_task: Optional[asyncio.Task] = None
         self._goal_task: Optional[asyncio.Task] = None
+        self._user_summary_task: Optional[asyncio.Task] = None
         self._micro_tick_task: Optional[asyncio.Task] = None
         self._standup_task: Optional[asyncio.Task] = None
         self._planning_task: Optional[asyncio.Task] = None
@@ -101,6 +106,7 @@ class SchedulerService:
         self._reminder_task = asyncio.create_task(self._reminder_loop())
         self._chat_summary_task = asyncio.create_task(self._chat_summary_loop())
         self._goal_task = asyncio.create_task(self._goal_loop())
+        self._user_summary_task = asyncio.create_task(self._user_summary_loop())
         if self._micro_tick_range is not None:
             self._micro_tick_task = asyncio.create_task(self._micro_tick_loop())
         if self._standup_interval is not None:
@@ -119,6 +125,7 @@ class SchedulerService:
                 self._reminder_task,
                 self._chat_summary_task,
                 self._goal_task,
+                self._user_summary_task,
                 self._micro_tick_task,
                 self._standup_task,
                 self._planning_task,
@@ -209,6 +216,36 @@ class SchedulerService:
             }
             await self._summary_db.add_summary_goal(0, goal, summary)
 
+
+    async def _generate_user_history_summaries(self) -> None:
+        if self._summary_db is None:
+            return
+        users = await self._summary_db.list_users_with_long_history(
+            self._min_user_history_for_summary
+        )
+        for user_id, memory_count in users:
+            memories = await self._summary_db.recall_user(user_id, limit=50)
+            snippets = [str(memory) for _topic, memory in memories if memory]
+            if not snippets:
+                continue
+            summary = summarise_message(" ".join(snippets), max_words=40)
+            await self._summary_db.upsert_user_summary(
+                user_id=user_id,
+                summary=summary,
+                source_count=memory_count,
+            )
+            await self._publisher.publish(
+                EventSubjects.USER_SUMMARY_REFRESH,
+                {
+                    "user_id": str(user_id),
+                    "summary": summary,
+                    "source_count": memory_count,
+                    "timestamp": self._now().isoformat(),
+                },
+                use_jetstream=True,
+                timeout=10.0,
+            )
+
     async def _reminder_loop(self) -> None:
         while self._running:
             await self._sleep(1.0)
@@ -232,6 +269,12 @@ class SchedulerService:
         while self._running:
             await self._sleep(self._chat_summary_interval)
             await self._generate_chat_summary()
+
+
+    async def _user_summary_loop(self) -> None:
+        while self._running:
+            await self._sleep(self._user_summary_interval)
+            await self._generate_user_history_summaries()
 
     async def _micro_tick_loop(self) -> None:
         while self._running:
