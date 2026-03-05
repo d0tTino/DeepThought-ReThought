@@ -42,6 +42,22 @@ sequenceDiagram
 
 The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events and receives the final reply on `RESPONSE_RANKED` after the responder publishes `RESPONSE_CANDIDATES` and the selector picks the winner.
 
+
+### Candidate schema expectations (`RESPONSE_CANDIDATES`)
+
+`ResponseCandidatesPayload` should carry one or more `ResponseCandidate` entries. Responders are expected to emit multiple candidates when the backend supports sampling or hybrid tool/rule generation.
+
+Each candidate should include:
+
+- `text`: Generated candidate response text.
+- `confidence`: Calibrated `0..1` confidence used by selector ranking.
+- `source`: Candidate origin label (for example `remote_llm:sampling`, `tool`, or `rule`) used by source-specific selector weighting.
+- `safety_passed`: Boolean safety gate result for selector filtering.
+- `confidence_components`: Optional token/model/heuristic component breakdown for diagnostics and calibration audits.
+- `safety_metadata`: Optional policy details (matched terms, policy version, severity) for telemetry and incident triage.
+
+Selectors may down-weight or reject candidates using `source`, `confidence`, and safety fields; producers should keep this metadata stable across versions.
+
 ## Unified CognitiveCoreService
 
 `CognitiveCoreService` combines the vector store, knowledge graph and
