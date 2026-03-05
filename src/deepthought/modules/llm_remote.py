@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from typing import Optional
 
@@ -89,23 +90,95 @@ class RemoteLLM:
         use_dspy = os.getenv("USE_DSPY", "")
         self._use_dspy = use_dspy.lower() in {"1", "true", "yes", "on"}
         self._qa_pipeline = build_qa_pipeline() if self._use_dspy else None
+        self._num_candidates = max(1, int(os.getenv("LLM_NUM_CANDIDATES", "3")))
+        self._source_name = os.getenv("LLM_SOURCE_NAME", "remote_llm")
 
         logger.info("RemoteLLM initialized with endpoint %s", self._endpoint)
 
-    async def _generate(self, prompt: str) -> str:
+    def _calibrate_confidence(self, candidate: dict[str, object], text: str) -> tuple[float, dict[str, float]]:
+        token_score = 0.0
+        raw_logprob = candidate.get("avg_logprob")
+        if isinstance(raw_logprob, (float, int)):
+            token_score = 1.0 / (1.0 + math.exp(-float(raw_logprob)))
+
+        model_score = 0.0
+        raw_model_score = candidate.get("score")
+        if isinstance(raw_model_score, (float, int)):
+            model_score = max(0.0, min(1.0, float(raw_model_score)))
+
+        length = len(text.split())
+        length_score = min(1.0, max(0.0, length / 32.0))
+        confidence = (0.5 * token_score) + (0.35 * model_score) + (0.15 * length_score)
+        components = {
+            "token_score": round(token_score, 4),
+            "model_score": round(model_score, 4),
+            "length_score": round(length_score, 4),
+        }
+        return round(max(0.0, min(1.0, confidence)), 4), components
+
+    def _evaluate_safety(self, text: str) -> tuple[bool, dict[str, object]]:
+        lowered = text.lower()
+        blocked_terms = ["kill", "bomb", "dox", "self-harm"]
+        matched = [term for term in blocked_terms if term in lowered]
+        return (not matched), {"rule": "keyword_v1", "matched_terms": matched, "severity": "high" if matched else "none"}
+
+    async def _generate_candidates(self, prompt: str) -> list[ResponseCandidate]:
         if self._use_dspy and self._qa_pipeline is not None:
             result = self._qa_pipeline(prompt)
             if not isinstance(result, str):
                 raise ValueError("Invalid DSPy response")
-            return result
+            safe, safety_metadata = self._evaluate_safety(result)
+            confidence, components = self._calibrate_confidence({}, result)
+            return [
+                ResponseCandidate(
+                    text=result,
+                    confidence=confidence,
+                    source=f"{self._source_name}:dspy",
+                    safety_passed=safe,
+                    confidence_components=components,
+                    safety_metadata=safety_metadata,
+                )
+            ]
 
-        async with self._session.post(self._endpoint, json={"text": prompt}) as resp:
+        async with self._session.post(self._endpoint, json={"text": prompt, "n": self._num_candidates}) as resp:
             resp.raise_for_status()
             data = await resp.json()
-            text = data.get("text")
-            if not isinstance(text, str):
-                raise ValueError("Invalid generate response")
-            return text
+            raw_candidates = data.get("candidates") if isinstance(data, dict) else None
+            materialized: list[dict[str, object]]
+            if isinstance(raw_candidates, list) and raw_candidates:
+                materialized = [item for item in raw_candidates if isinstance(item, dict)]
+            else:
+                text = data.get("text") if isinstance(data, dict) else None
+                if not isinstance(text, str):
+                    raise ValueError("Invalid generate response")
+                materialized = [{"text": text}]
+
+            candidates: list[ResponseCandidate] = []
+            for item in materialized[: self._num_candidates]:
+                text = item.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    continue
+                confidence, components = self._calibrate_confidence(item, text)
+                safe, safety_metadata = self._evaluate_safety(text)
+                source = item.get("source") if isinstance(item.get("source"), str) else f"{self._source_name}:sampling"
+                candidates.append(
+                    ResponseCandidate(
+                        text=text,
+                        confidence=confidence,
+                        source=source,
+                        safety_passed=safe,
+                        confidence_components=components,
+                        safety_metadata=safety_metadata,
+                    )
+                )
+
+            if not candidates:
+                raise ValueError("Generate response did not include valid candidates")
+            return candidates
+
+    async def _generate(self, prompt: str) -> str:
+        candidates = await self._generate_candidates(prompt)
+        return candidates[0].text
 
     async def _handle_context_event(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -147,16 +220,9 @@ class RemoteLLM:
                 recent_turn_summary=recent_turn_summary,
             )
             logger.info("RemoteLLM generating for %s", input_id)
-            response = await self._generate(prompt)
+            candidates = await self._generate_candidates(prompt)
             payload = ResponseCandidatesPayload(
-                candidates=[
-                    ResponseCandidate(
-                        text=response,
-                        confidence=0.9,
-                        source="RemoteLLM",
-                        safety_passed=True,
-                    )
-                ],
+                candidates=candidates,
                 input_id=input_id,
                 user_id=author_id or user_id,
                 author_id=author_id,

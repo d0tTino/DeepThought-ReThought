@@ -96,10 +96,10 @@ async def test_generate_posts(monkeypatch):
     session = DummySession(resp)
     llm = create_llm(monkeypatch, session)
 
-    result = await llm._generate("hello")
+    result = await llm._generate_candidates("hello")
 
-    assert result == "generated"
-    assert session.calls == [("http://api", {"text": "hello"})]
+    assert result[0].text == "generated"
+    assert session.calls == [("http://api", {"text": "hello", "n": 3})]
     assert resp.raise_called
 
 
@@ -121,10 +121,10 @@ class DummyMsg:
 async def test_handle_context_event_publishes(monkeypatch):
     llm = create_llm(monkeypatch)
 
-    async def fake_generate(self, prompt):
-        return "answer"
+    async def fake_generate_candidates(self, prompt):
+        return [llm_remote.ResponseCandidate(text="answer", confidence=0.8, source="stub", safety_passed=True)]
 
-    monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
+    monkeypatch.setattr(llm, "_generate_candidates", fake_generate_candidates.__get__(llm, type(llm)))
 
     payload = ContextAssembledPayload(input_id="42", user_input="hello", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
@@ -155,7 +155,7 @@ async def test_generate_timeout(monkeypatch):
     llm = create_llm(monkeypatch, TimeoutSession())
 
     with pytest.raises(asyncio.TimeoutError):
-        await llm._generate("hello")
+        await llm._generate_candidates("hello")
 
 
 @pytest.mark.asyncio
@@ -169,17 +169,17 @@ async def test_generate_malformed_json(monkeypatch):
     llm = create_llm(monkeypatch, session)
 
     with pytest.raises(ValueError):
-        await llm._generate("hello")
+        await llm._generate_candidates("hello")
 
 
 @pytest.mark.asyncio
 async def test_handle_context_event_timeout(monkeypatch):
     llm = create_llm(monkeypatch)
 
-    async def fake_generate(self, prompt):
+    async def fake_generate_candidates(self, prompt):
         raise asyncio.TimeoutError
 
-    monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
+    monkeypatch.setattr(llm, "_generate_candidates", fake_generate_candidates.__get__(llm, type(llm)))
 
     payload = ContextAssembledPayload(input_id="99", user_input="hello", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
@@ -194,10 +194,10 @@ async def test_handle_context_event_timeout(monkeypatch):
 async def test_handle_context_event_bad_json(monkeypatch):
     llm = create_llm(monkeypatch)
 
-    async def fake_generate(self, prompt):
+    async def fake_generate_candidates(self, prompt):
         raise ValueError("bad json")
 
-    monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
+    monkeypatch.setattr(llm, "_generate_candidates", fake_generate_candidates.__get__(llm, type(llm)))
 
     payload = ContextAssembledPayload(input_id="88", user_input="hello", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
@@ -229,14 +229,14 @@ async def test_generate_http_error(monkeypatch):
     llm = create_llm(monkeypatch, session)
 
     with pytest.raises(aiohttp.ClientResponseError):
-        await llm._generate("hello")
+        await llm._generate_candidates("hello")
 
 
 @pytest.mark.asyncio
 async def test_handle_context_event_http_error(monkeypatch):
     llm = create_llm(monkeypatch)
 
-    async def fake_generate(self, prompt):
+    async def fake_generate_candidates(self, prompt):
         raise aiohttp.ClientResponseError(
             request_info=MagicMock(real_url="http://api"),
             history=(),
@@ -244,7 +244,7 @@ async def test_handle_context_event_http_error(monkeypatch):
             message="bad",
         )
 
-    monkeypatch.setattr(llm, "_generate", fake_generate.__get__(llm, type(llm)))
+    monkeypatch.setattr(llm, "_generate_candidates", fake_generate_candidates.__get__(llm, type(llm)))
 
     payload = ContextAssembledPayload(input_id="77", user_input="hello", retrieved_facts=["f1"])
     msg = DummyMsg(payload.to_json())
@@ -325,3 +325,26 @@ async def test_handle_context_event_missing_user_input_naks(monkeypatch):
     assert msg.nacked
     assert not msg.acked
     assert not llm._publisher.published
+
+
+@pytest.mark.asyncio
+async def test_generate_candidates_uses_scores_and_safety(monkeypatch):
+    resp = DummyResponse(
+        {
+            "candidates": [
+                {"text": "safe response", "avg_logprob": 0.2, "score": 0.7, "source": "sampler"},
+                {"text": "unsafe kill plan", "avg_logprob": 0.1, "score": 0.6},
+            ]
+        }
+    )
+    session = DummySession(resp)
+    llm = create_llm(monkeypatch, session)
+
+    result = await llm._generate_candidates("hello")
+
+    assert len(result) == 2
+    assert result[0].source == "sampler"
+    assert result[0].confidence_components["model_score"] == 0.7
+    assert result[0].safety_passed is True
+    assert result[1].safety_passed is False
+    assert "kill" in result[1].safety_metadata["matched_terms"]

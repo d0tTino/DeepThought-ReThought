@@ -43,10 +43,10 @@ def test_event_envelope_roundtrip_validation():
             {"user_input": "hi", "attachments": [{"url": "https://a", "size": 2}]},
         ),
         (MemoryRetrievedPayload, {"retrieved_knowledge": {"k": "v"}}),
-        (ResponseCandidatesPayload, {"candidates": [{"text": "a", "confidence": 0.2}]}),
+        (ResponseCandidatesPayload, {"candidates": [{"text": "a", "confidence": 0.2, "source": "remote", "confidence_components": {"token_score": 0.4}, "safety_metadata": {"policy": "keyword_v1"}}]}),
         (
             ResponseRankedPayload,
-            {"final_response": "a", "candidates": [{"text": "a", "confidence": 0.2}]},
+            {"final_response": "a", "candidates": [{"text": "a", "confidence": 0.2, "source": "remote", "safety_metadata": {"policy": "keyword_v1"}}]},
         ),
         (
             PerceptionEmbeddingsPayload,
