@@ -31,6 +31,30 @@ class ContextAssemblerService:
     """Assemble contextual data from memory/social/perception providers."""
 
     _PROVIDER_ORDER = ("memory", "social", "perception")
+    _MULTIMODAL_SCHEMA_VERSION = "multimodal.semantic-notes.v1"
+
+    @classmethod
+    def _normalize_multimodal(cls, raw: Any) -> dict[str, Any]:
+        if not isinstance(raw, dict):
+            return {
+                "schema_version": cls._MULTIMODAL_SCHEMA_VERSION,
+                "summary": "no multimodal signals",
+                "notes": [],
+                "by_modality": {},
+                "attachments": None,
+                "confidence": {"aggregate": 0.0, "low_confidence": True, "threshold": 0.45},
+                "fallback": {"ask_clarifying_question": True, "reason": "missing multimodal interpretations"},
+            }
+
+        normalized = dict(raw)
+        normalized.setdefault("schema_version", cls._MULTIMODAL_SCHEMA_VERSION)
+        normalized.setdefault("summary", "no multimodal signals")
+        normalized.setdefault("notes", [])
+        normalized.setdefault("by_modality", {})
+        normalized.setdefault("attachments", None)
+        normalized.setdefault("confidence", {"aggregate": 0.0, "low_confidence": True, "threshold": 0.45})
+        normalized.setdefault("fallback", {"ask_clarifying_question": False, "reason": ""})
+        return normalized
 
     def __init__(
         self,
@@ -116,9 +140,7 @@ class ContextAssemblerService:
             social_signals = {}
 
         perception_payload = pending.provider_payloads.get("perception", {})
-        multimodal = perception_payload.get("multimodal_interpretations", perception_payload)
-        if not isinstance(multimodal, dict):
-            multimodal = {}
+        multimodal = self._normalize_multimodal(perception_payload.get("multimodal_interpretations", perception_payload))
 
         conversation_window = request.get("conversation_window")
         if not isinstance(conversation_window, list):

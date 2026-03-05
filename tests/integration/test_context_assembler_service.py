@@ -97,7 +97,8 @@ async def test_race_safe_assembly_collects_all_providers(monkeypatch):
     assert payload.input_id == "i-race"
     assert payload.retrieved_facts == ["f2", "f1"]
     assert payload.social_signals == {"tone": "neutral"}
-    assert payload.multimodal_interpretations == {"image": "none"}
+    assert payload.multimodal_interpretations["schema_version"] == "multimodal.semantic-notes.v1"
+    assert payload.multimodal_interpretations["summary"] == "no multimodal signals"
     assert payload.confidence["partial"] is False
     assert payload.confidence["completed_providers"] == ["memory", "social", "perception"]
 
@@ -131,7 +132,8 @@ async def test_partial_result_when_provider_missing_is_deterministic(monkeypatch
     assert payload.input_id == "i-partial"
     assert payload.retrieved_facts == ["f1"]
     assert payload.social_signals == {"sentiment": 0.7}
-    assert payload.multimodal_interpretations == {}
+    assert payload.multimodal_interpretations["schema_version"] == "multimodal.semantic-notes.v1"
+    assert payload.multimodal_interpretations["notes"] == []
     assert payload.confidence["partial"] is True
     assert payload.confidence["missing_providers"] == ["perception"]
     assert payload.confidence["completed_providers"] == ["memory", "social"]
@@ -222,7 +224,8 @@ async def test_context_assembler_merges_perception_interpretations_within_wait_w
     assert len(assembled) == 1
     payload = assembled[0][1]
     assert payload.input_id == "i-embed"
-    assert payload.multimodal_interpretations["by_modality"]["image"].startswith("image: 1 vectors")
+    assert payload.multimodal_interpretations["schema_version"] == "multimodal.semantic-notes.v1"
+    assert payload.multimodal_interpretations["by_modality"]["image"]["what"].startswith("1 embedding vectors")
     assert "attachments[image:1]" in payload.multimodal_interpretations["summary"]
     assert payload.confidence["partial"] is False
 
