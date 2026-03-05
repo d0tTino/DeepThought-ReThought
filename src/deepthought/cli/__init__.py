@@ -243,6 +243,16 @@ def _cmd_perception_delete_user(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_run_discord_gateway(args: argparse.Namespace) -> int:
+    if not args.token:
+        raise SystemExit("DISCORD_TOKEN is required (use --token or set DISCORD_TOKEN)")
+
+    from ..runtime.discord_gateway_app import run_discord_gateway
+
+    asyncio.run(run_discord_gateway(token=args.token, nats_url=args.nats_url))
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     from ..services.perception.config import PerceptionConfig
 
@@ -372,6 +382,14 @@ def _build_parser() -> argparse.ArgumentParser:
     perception_delete.add_argument("--user-id", required=True)
     perception_delete.add_argument("--nats-url", default=PerceptionConfig().nats_url)
     perception_delete.set_defaults(func=_cmd_perception_delete_user)
+
+    run_p = sub.add_parser("run", description="Run runtime applications")
+    run_sub = run_p.add_subparsers(dest="run_cmd")
+
+    run_discord_gateway = run_sub.add_parser("discord-gateway", description="Run the Discord gateway runtime")
+    run_discord_gateway.add_argument("--token", default=os.getenv("DISCORD_TOKEN", ""))
+    run_discord_gateway.add_argument("--nats-url", default=os.getenv("NATS_URL", "nats://localhost:4222"))
+    run_discord_gateway.set_defaults(func=_cmd_run_discord_gateway)
 
     init_p = sub.add_parser("init")
     init_sub = init_p.add_subparsers(dest="target")

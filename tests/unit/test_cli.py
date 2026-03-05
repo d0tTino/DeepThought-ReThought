@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from deepthought.cli import _build_parser
+
 
 def _run_dtrt(
     tmp_path: Path, *args: str, env: dict[str, str] | None = None
@@ -189,8 +191,6 @@ def test_init_service_demo_start_stop(tmp_path: Path) -> None:
     asyncio.run(main())
 
 
-from deepthought.cli import _build_parser
-
 
 def test_parse_finetune_args():
     parser = _build_parser()
@@ -313,3 +313,20 @@ def test_finetune_estimate_vram(tmp_path: Path, monkeypatch) -> None:
         "--estimate-vram",
     )
     assert "Estimated VRAM requirement" in result.stdout
+
+
+def test_parse_run_discord_gateway():
+    parser = _build_parser()
+    args = parser.parse_args(["run", "discord-gateway", "--token", "abc", "--nats-url", "nats://x:4222"])
+    assert args.command == "run"
+    assert args.run_cmd == "discord-gateway"
+    assert args.token == "abc"
+    assert args.nats_url == "nats://x:4222"
+    assert args.func.__name__ == "_cmd_run_discord_gateway"
+
+
+def test_run_discord_gateway_requires_token():
+    parser = _build_parser()
+    args = parser.parse_args(["run", "discord-gateway", "--token", ""])
+    with pytest.raises(SystemExit, match="DISCORD_TOKEN is required"):
+        args.func(args)

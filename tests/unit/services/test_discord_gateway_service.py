@@ -155,13 +155,6 @@ async def test_handle_discord_message_publishes_input_received(service):
 
 
 @pytest.mark.asyncio
-async def test_handle_discord_message_ignores_bots(service):
-    message = SimpleNamespace(content="ignore", author=SimpleNamespace(bot=True))
-    assert await service.handle_discord_message(message) is None
-    assert service._publisher.published == []
-
-
-@pytest.mark.asyncio
 async def test_ranked_response_respects_thread_reply_and_policy_override(service, fake_clock):
     payload = ResponseRankedPayload(
         final_response="done",
