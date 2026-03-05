@@ -86,7 +86,7 @@ class CypherGraphMemoryStore(GraphMemoryStore):
             "OPTIONAL MATCH (f)-[:ABOUT]->(o:Entity) "
             "RETURN f.id AS evidence_id, f.predicate AS predicate, f.object_value AS object_value, "
             "o.id AS object_id, f.confidence AS confidence, f.provenance AS provenance, "
-            "f.attributes AS attributes, f.valid_from AS valid_from "
+            "f.attributes AS attributes, f.valid_from AS valid_from, f.fact_type AS fact_type, u.id AS subject_id "
             "ORDER BY f.confidence DESC, f.valid_from DESC LIMIT $limit",
             {"user_id": user_id, "limit": limit},
         )
@@ -94,12 +94,12 @@ class CypherGraphMemoryStore(GraphMemoryStore):
 
     def retrieve_topic_evidence(self, topic: str, *, limit: int = 10) -> Sequence[GraphEvidence]:
         rows = self._connector.execute(
-            "MATCH (f:Fact) "
+            "MATCH (s:Entity)-[:HAS_FACT]->(f:Fact) "
             "WHERE toLower(f.predicate) CONTAINS toLower($topic) "
             "OR toLower(coalesce(f.object_value, '')) CONTAINS toLower($topic) "
             "RETURN f.id AS evidence_id, f.predicate AS predicate, f.object_value AS object_value, "
             "NULL AS object_id, f.confidence AS confidence, f.provenance AS provenance, "
-            "f.attributes AS attributes, f.valid_from AS valid_from "
+            "f.attributes AS attributes, f.valid_from AS valid_from, f.fact_type AS fact_type, s.id AS subject_id "
             "ORDER BY f.confidence DESC, f.valid_from DESC LIMIT $limit",
             {"topic": topic, "limit": limit},
         )
@@ -156,6 +156,10 @@ def _rows_to_evidence(rows: Sequence[Any]) -> list[GraphEvidence]:
         confidence = float(_row_get(row, "confidence", 0.5) or 0.5)
         provenance = _row_get(row, "provenance", {}) or {}
         attrs = _row_get(row, "attributes", {}) or {}
+        attrs = dict(attrs)
+        attrs.setdefault("fact_type", _row_get(row, "fact_type", "observation"))
+        attrs.setdefault("subject_id", _row_get(row, "subject_id"))
+        attrs.setdefault("user_scoped", bool(attrs.get("subject_id")))
         summary = f"{predicate}: {object_value}".strip()
         evidences.append(
             GraphEvidence(
@@ -192,6 +196,10 @@ def _row_get(row: Any, key: str, default: Any = None) -> Any:
 
 def _fact_to_evidence(fact: GraphFact) -> GraphEvidence:
     summary = fact.object_value or fact.object_id or ""
+    attrs = dict(fact.attributes)
+    attrs.setdefault("fact_type", fact.fact_type)
+    attrs.setdefault("subject_id", fact.subject_id)
+    attrs.setdefault("user_scoped", True)
     return GraphEvidence(
         evidence_id=fact.fact_id,
         summary=f"{fact.predicate}: {summary}",
@@ -200,7 +208,7 @@ def _fact_to_evidence(fact: GraphFact) -> GraphEvidence:
         score=_score(fact.confidence, fact.attributes),
         confidence=fact.confidence,
         provenance=fact.provenance,
-        attributes=fact.attributes,
+        attributes=attrs,
     )
 
 

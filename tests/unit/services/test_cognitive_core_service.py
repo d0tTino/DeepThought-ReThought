@@ -307,6 +307,27 @@ async def test_handle_input_uses_header_user_id_then_anonymous():
     assert db.affinity_user_ids == []
 
 
+@pytest.mark.asyncio
+async def test_handle_input_reuses_earlier_user_preferences_in_later_context():
+    memory = DummyMemory()
+    db = DummyDB()
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
+    service._top_k = 8
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    first = DummyMsg(json.dumps({"user_input": "My favorite drink is tea", "input_id": "turn-1", "user_id": "u-pref"}))
+    second = DummyMsg(json.dumps({"user_input": "What should I have this evening?", "input_id": "turn-2", "user_id": "u-pref"}))
+
+    await service._handle_input(first)
+    await service._handle_input(second)
+
+    assert first.acked and second.acked
+    _, payload = service._publisher.published[-1]
+    facts = payload.retrieved_knowledge["facts"]
+    assert any("favorite: tea" in fact for fact in facts)
+
+
 class DummyStore:
     def __init__(self) -> None:
         self.upserts: list = []
