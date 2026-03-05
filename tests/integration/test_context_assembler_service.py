@@ -225,3 +225,19 @@ async def test_context_assembler_merges_perception_interpretations_within_wait_w
     assert payload.multimodal_interpretations["by_modality"]["image"].startswith("image: 1 vectors")
     assert "attachments[image:1]" in payload.multimodal_interpretations["summary"]
     assert payload.confidence["partial"] is False
+
+
+@pytest.mark.asyncio
+async def test_context_assembler_uses_social_signals_retrieved_as_social_provider(monkeypatch):
+    import deepthought.services.context_assembler_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = ContextAssemblerService(DummyNATS(), DummyJS(), wait_window_seconds=0.05)
+    started = await svc.start(durable_name="ctx-social-contract")
+
+    assert started is True
+    subjects = [call["subject"] for call in svc._subscriber.calls]
+    assert EventSubjects.SOCIAL_SIGNALS_RETRIEVED in subjects
+    assert EventSubjects.SOCIAL_UPDATED not in subjects
