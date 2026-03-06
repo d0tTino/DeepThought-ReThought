@@ -185,9 +185,18 @@ class CognitiveCoreService(BaseService):
                 break
         return merged
 
-    async def _db_context(self) -> List[str]:
-        rows = await self._db.recall_user("user", limit=self._top_k)
-        return [m[1] for m in rows]
+    async def _db_context(
+        self,
+        resolved_user_id: str | int,
+        channel_id: str | int | None = None,
+    ) -> List[str]:
+        if self._db is None or resolved_user_id is None:
+            return []
+        rows = await self._db.recall_user(resolved_user_id, limit=self._top_k)
+        snippets = [m[1] for m in rows if len(m) > 1 and m[1]]
+        if channel_id is None:
+            return snippets
+        return snippets
 
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
@@ -233,17 +242,42 @@ class CognitiveCoreService(BaseService):
                     source_id=input_id,
                 )
 
-            mem_facts = self.retrieve_context(user_input)
-            db_facts = await self._db_context()
+            memory_facts = self._memory.retrieve_context(user_input) if self._memory else []
+            vector_facts: List[str] = []
+            if self._search:
+                try:
+                    vector_facts = self._search.search(user_input, limit=self._top_k)
+                except Exception:  # pragma: no cover - defensive
+                    logger.error("Offline search failed", exc_info=True)
+
+            db_facts = await self._db_context(resolved_user_id=resolved_user_id, channel_id=channel_id)
             graph_user_evidence = retrieve_user_context(self._graph_memory, str(resolved_user_id), limit=self._top_k)
             graph_topic_evidence = retrieve_topic_context(self._graph_memory, user_input, limit=self._top_k)
             graph_facts = [ev.summary for ev in [*graph_user_evidence, *graph_topic_evidence]]
+
             facts: List[str] = []
-            seen = set()
-            for item in mem_facts + db_facts + graph_facts:
-                if item not in seen:
-                    seen.add(item)
-                    facts.append(item)
+            merged_facts: dict[str, dict[str, List[str] | str]] = {}
+            for source, entries in (
+                ("memory", memory_facts),
+                ("vector", vector_facts),
+                ("graph", graph_facts),
+                ("db", db_facts),
+            ):
+                for item in entries:
+                    if not item or not str(item).strip():
+                        continue
+                    normalized = " ".join(str(item).split()).strip().lower()
+                    if not normalized:
+                        continue
+                    if normalized not in merged_facts:
+                        merged_facts[normalized] = {"text": str(item).strip(), "sources": [source]}
+                        continue
+                    if source not in merged_facts[normalized]["sources"]:
+                        merged_facts[normalized]["sources"].append(source)
+
+            for data in merged_facts.values():
+                source_tag = ",".join(data["sources"])
+                facts.append(f"[{source_tag}] {data['text']}")
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "cognitive_core"},
                 user_input=user_input,
