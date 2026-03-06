@@ -13,6 +13,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import ContextAssembledPayload, EventSubjects
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -84,10 +85,10 @@ class ContextAssemblerService:
         self._pending: dict[str, _PendingAssembly] = {}
         self._lock = asyncio.Lock()
 
-    async def _publish_fanout_requests(self, payload: dict[str, Any]) -> None:
+    async def _publish_fanout_requests(self, payload: dict[str, Any], *, trace_id: str | None, causation_id: str | None) -> None:
         fanout_payload = {
             "input_id": payload.get("input_id"),
-            "trace_id": payload.get("trace_id"),
+            "trace_id": trace_id,
             "user_input": payload.get("user_input"),
             "user_id": payload.get("user_id"),
             "author_id": payload.get("author_id"),
@@ -96,15 +97,26 @@ class ContextAssemblerService:
             "timestamp": payload.get("timestamp"),
             "attachments": payload.get("attachments"),
         }
-        await self._publisher.publish(EventSubjects.MEMORY_RETRIEVAL_REQUESTED, fanout_payload, use_jetstream=True)
-        await self._publisher.publish(EventSubjects.SOCIAL_SIGNALS_REQUESTED, fanout_payload, use_jetstream=True)
-        await self._publisher.publish(EventSubjects.PERCEPTION_INTERPRET_REQUESTED, fanout_payload, use_jetstream=True)
+        for subject in (
+            EventSubjects.MEMORY_RETRIEVAL_REQUESTED,
+            EventSubjects.SOCIAL_SIGNALS_REQUESTED,
+            EventSubjects.PERCEPTION_INTERPRET_REQUESTED,
+        ):
+            envelope = EventEnvelope.build(
+                subject=subject,
+                payload=fanout_payload,
+                producer=self.__class__.__name__,
+                trace_id=trace_id,
+                causation_id=causation_id,
+            )
+            await self._publisher.publish(subject, envelope.__dict__, use_jetstream=True)
 
     async def _handle_input_received(self, msg: Msg) -> None:
         try:
-            payload = json.loads(msg.data.decode())
-            if not isinstance(payload, dict):
+            data = json.loads(msg.data.decode())
+            if not isinstance(data, dict):
                 raise ValueError("Input payload must be an object")
+            payload, envelope_meta = decode_payload_or_envelope(EventSubjects.INPUT_RECEIVED, data)
             input_id = payload.get("input_id")
             user_input = payload.get("user_input")
             if not isinstance(input_id, str) or not isinstance(user_input, str):
@@ -116,7 +128,7 @@ class ContextAssemblerService:
             }
             pending = _PendingAssembly(
                 request=payload,
-                trace_id=payload.get("trace_id") if isinstance(payload.get("trace_id"), str) else None,
+                trace_id=envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None,
                 required_providers=set(self._PROVIDER_ORDER),
                 provider_deadlines=provider_deadlines,
                 started_at=loop_time,
@@ -124,7 +136,8 @@ class ContextAssemblerService:
             async with self._lock:
                 self._pending[input_id] = pending
 
-            await self._publish_fanout_requests(payload)
+            causation_id = envelope_meta.get("event_id") if isinstance(envelope_meta.get("event_id"), str) else input_id
+            await self._publish_fanout_requests(payload, trace_id=pending.trace_id, causation_id=causation_id)
             asyncio.create_task(self._await_and_publish(input_id))
             await msg.ack()
         except Exception:
@@ -134,13 +147,19 @@ class ContextAssemblerService:
 
     async def _handle_provider_response(self, msg: Msg, provider_name: str) -> None:
         try:
-            payload = json.loads(msg.data.decode())
-            if not isinstance(payload, dict):
+            data = json.loads(msg.data.decode())
+            if not isinstance(data, dict):
                 raise ValueError("Provider payload must be an object")
+            provider_subject = {
+                "memory": EventSubjects.MEMORY_RETRIEVED,
+                "social": EventSubjects.SOCIAL_SIGNALS_RETRIEVED,
+                "perception": EventSubjects.PERCEPTION_INTERPRET_RETRIEVED,
+            }.get(provider_name, EventSubjects.CONTEXT_ASSEMBLED)
+            payload, envelope_meta = decode_payload_or_envelope(provider_subject, data)
             input_id = payload.get("input_id")
             if not isinstance(input_id, str):
                 raise ValueError("Provider payload missing input_id")
-            response_trace_id = payload.get("trace_id")
+            response_trace_id = envelope_meta.get("trace_id") or payload.get("trace_id")
             if response_trace_id is not None and not isinstance(response_trace_id, str):
                 raise ValueError("Provider payload trace_id must be a string when provided")
 
@@ -260,7 +279,14 @@ class ContextAssemblerService:
             payload = self._build_context_payload(input_id, pending, elapsed)
             del self._pending[input_id]
 
-        await self._publisher.publish(EventSubjects.CONTEXT_ASSEMBLED, payload, use_jetstream=True)
+        envelope = EventEnvelope.build(
+            subject=EventSubjects.CONTEXT_ASSEMBLED,
+            payload=json.loads(payload.to_json()),
+            producer=self.__class__.__name__,
+            trace_id=pending.trace_id,
+            causation_id=input_id,
+        )
+        await self._publisher.publish(EventSubjects.CONTEXT_ASSEMBLED, envelope.__dict__, use_jetstream=True)
 
     async def start(self, durable_name: str = "context_assembler") -> bool:
         try:

@@ -12,6 +12,7 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 from ..config import Settings, get_settings
+from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import (
     BDIIntentionPayload,
     EventSubjects,
@@ -202,7 +203,11 @@ class CognitiveCoreService(BaseService):
         input_id = "unknown"
         start = time.perf_counter()
         try:
-            enriched = self._input_enrichment.parse_input_received(msg)
+            raw_data = json.loads(msg.data.decode())
+            if not isinstance(raw_data, dict):
+                raise ValueError("InputReceived payload must be a dict")
+            decoded_payload, envelope_meta = decode_payload_or_envelope(EventSubjects.MEMORY_RETRIEVAL_REQUESTED, raw_data)
+            enriched = self._input_enrichment.parse_input_received_data(decoded_payload, headers=getattr(msg, "headers", None))
             input_id = enriched.input_id
             user_input = enriched.user_input
             user_id = enriched.user_id
@@ -278,6 +283,8 @@ class CognitiveCoreService(BaseService):
             for data in merged_facts.values():
                 source_tag = ",".join(data["sources"])
                 facts.append(f"[{source_tag}] {data['text']}")
+            trace_id = envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None
+            causation_id = envelope_meta.get("event_id") if isinstance(envelope_meta.get("event_id"), str) else input_id
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "cognitive_core"},
                 user_input=user_input,
@@ -288,9 +295,16 @@ class CognitiveCoreService(BaseService):
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
 
+            envelope = EventEnvelope.build(
+                subject=EventSubjects.MEMORY_RETRIEVED,
+                payload=json.loads(payload.to_json()),
+                producer=self.__class__.__name__,
+                trace_id=trace_id,
+                causation_id=causation_id,
+            )
             await self._publisher.publish(
                 EventSubjects.MEMORY_RETRIEVED,
-                payload,
+                envelope.__dict__,
                 use_jetstream=True,
                 timeout=10.0,
             )

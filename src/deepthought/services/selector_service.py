@@ -12,6 +12,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import (
     EventSubjects,
     ResponseCandidate,
@@ -131,7 +132,7 @@ class SelectorService:
         ranked = [candidate for _, candidate in sorted(scored, key=lambda item: item[0], reverse=True)]
         return ranked, sorted(diagnostics, key=lambda item: item["score"], reverse=True)
 
-    async def _publish_selection(self, state: _AggregationState) -> None:
+    async def _publish_selection(self, state: _AggregationState, trace_id: str | None = None, causation_id: str | None = None) -> None:
         ranked_candidates, diagnostics = self._rank_candidates(state.candidates)
         fallback_reason = None
         if ranked_candidates:
@@ -156,9 +157,16 @@ class SelectorService:
             interaction_policy=state.interaction_policy,
             candidates=ranked_candidates,
         )
+        envelope = EventEnvelope.build(
+            subject=EventSubjects.RESPONSE_RANKED,
+            payload=json.loads(ranked_payload.to_json()),
+            producer=self.__class__.__name__,
+            trace_id=trace_id,
+            causation_id=causation_id or state.input_id,
+        )
         await self._publisher.publish(
             EventSubjects.RESPONSE_RANKED,
-            ranked_payload,
+            envelope.__dict__,
             use_jetstream=True,
             timeout=10.0,
         )
@@ -179,23 +187,26 @@ class SelectorService:
             timeout=10.0,
         )
 
-    async def _flush_input_id(self, input_id: str) -> None:
+    async def _flush_input_id(self, input_id: str, trace_id: str | None = None, causation_id: str | None = None) -> None:
         async with self._aggregation_lock:
             state = self._pending_by_input.pop(input_id, None)
         if state is None:
             return
-        await self._publish_selection(state)
+        await self._publish_selection(state, trace_id=trace_id, causation_id=causation_id)
 
-    async def _schedule_flush(self, input_id: str) -> None:
+    async def _schedule_flush(self, input_id: str, trace_id: str | None = None, causation_id: str | None = None) -> None:
         await asyncio.sleep(self._window_seconds)
-        await self._flush_input_id(input_id)
+        await self._flush_input_id(input_id, trace_id=trace_id, causation_id=causation_id)
 
     async def _handle_candidates_event(self, msg: Msg) -> None:
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
                 raise ValueError("ResponseCandidates payload must be a dict")
-            payload = ResponseCandidatesPayload.from_dict(data)
+            decoded_payload, envelope_meta = decode_payload_or_envelope(EventSubjects.RESPONSE_CANDIDATES, data)
+            payload = ResponseCandidatesPayload.from_dict(decoded_payload)
+            trace_id = envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None
+            causation_id = envelope_meta.get("event_id") if isinstance(envelope_meta.get("event_id"), str) else None
             input_id = payload.input_id or "global"
 
             async with self._aggregation_lock:
@@ -225,11 +236,11 @@ class SelectorService:
                 else:
                     flush_now = False
                     if state.flush_task is None or state.flush_task.done():
-                        state.flush_task = asyncio.create_task(self._schedule_flush(input_id))
+                        state.flush_task = asyncio.create_task(self._schedule_flush(input_id, trace_id=trace_id, causation_id=causation_id))
 
             await msg.ack()
             if flush_now:
-                await self._flush_input_id(input_id)
+                await self._flush_input_id(input_id, trace_id=trace_id, causation_id=causation_id)
         except (json.JSONDecodeError, ValueError):
             logger.error("Invalid response candidates payload", exc_info=True)
             if hasattr(msg, "nak") and callable(msg.nak):

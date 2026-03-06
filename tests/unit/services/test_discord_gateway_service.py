@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from deepthought.eda.contracts import EventEnvelope
 from deepthought.eda.events import EventSubjects, ResponseRankedPayload
 from deepthought.services.discord_gateway_service import DiscordGatewayService
 
@@ -146,12 +147,12 @@ async def test_handle_discord_message_publishes_input_received(service):
     subject, payload, use_js, _timeout = service._publisher.published[0]
     assert subject == EventSubjects.INPUT_RECEIVED
     assert use_js is True
-    assert payload.user_input == "hello"
-    assert payload.channel_id == "123"
-    assert payload.reference_message_id == "66"
-    assert payload.thread_id == "999"
-    assert payload.attachments is not None
-    assert payload.attachments[0].url == "https://cdn.discordapp.com/file.png"
+    assert payload["payload"]["user_input"] == "hello"
+    assert payload["payload"]["channel_id"] == "123"
+    assert payload["payload"]["reference_message_id"] == "66"
+    assert payload["payload"]["thread_id"] == "999"
+    assert payload["payload"]["attachments"] is not None
+    assert payload["payload"]["attachments"][0]["url"] == "https://cdn.discordapp.com/file.png"
 
 
 @pytest.mark.asyncio
@@ -296,3 +297,19 @@ async def test_ranked_response_missing_channel_mapping_acks_once(service):
     assert msg.nacked is False
     assert msg.ack_calls == 1
     assert msg.nak_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_ranked_response_accepts_enveloped_payload(service):
+    payload = ResponseRankedPayload(final_response="wrapped", channel_id="123", input_id="in-wrap")
+    envelope = EventEnvelope.build(
+        subject=EventSubjects.RESPONSE_RANKED,
+        payload=json.loads(payload.to_json()),
+        producer="selector",
+    )
+    msg = DummyMsg(json.dumps(envelope.__dict__))
+
+    await service._handle_ranked_response(msg)
+
+    assert msg.acked
+    assert service._discord_client.channel.messages[-1][0] == "wrapped"

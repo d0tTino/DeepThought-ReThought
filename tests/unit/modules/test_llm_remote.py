@@ -1,4 +1,5 @@
 import asyncio
+import json
 import importlib.util
 import sys
 from unittest.mock import AsyncMock, MagicMock
@@ -15,6 +16,7 @@ sys.modules[spec.name] = llm_remote
 assert spec.loader is not None
 spec.loader.exec_module(llm_remote)
 
+from deepthought.eda.contracts import EventEnvelope  # noqa: E402
 from deepthought.eda.events import ContextAssembledPayload, EventSubjects  # noqa: E402
 
 
@@ -136,8 +138,8 @@ async def test_handle_context_event_publishes(monkeypatch):
     assert pub.published
     subject, sent_payload = pub.published[0]
     assert subject == EventSubjects.RESPONSE_CANDIDATES
-    assert sent_payload.candidates[0].text == "answer"
-    assert sent_payload.input_id == "42"
+    assert sent_payload["payload"]["candidates"][0]["text"] == "answer"
+    assert sent_payload["payload"]["input_id"] == "42"
 
 
 @pytest.mark.asyncio
@@ -423,3 +425,28 @@ def test_build_generation_prompt_includes_image_and_audio_interpretations():
 
     assert "[image] what=1 embedding vectors across 1 spans" in prompt
     assert "[audio] what=3 embedding vectors across 2 spans" in prompt
+
+
+@pytest.mark.asyncio
+async def test_handle_context_event_accepts_enveloped_payload(monkeypatch):
+    llm = create_llm(monkeypatch)
+
+    async def fake_generate_candidates(self, prompt):
+        return [llm_remote.ResponseCandidate(text="answer", confidence=0.8, source="stub", safety_passed=True)]
+
+    monkeypatch.setattr(llm, "_generate_candidates", fake_generate_candidates.__get__(llm, type(llm)))
+
+    payload = ContextAssembledPayload(input_id="42-env", user_input="hello", retrieved_facts=["f1"])
+    envelope = EventEnvelope.build(
+        subject=EventSubjects.CONTEXT_ASSEMBLED,
+        payload=json.loads(payload.to_json()),
+        producer="context_assembler",
+    )
+    msg = DummyMsg(json.dumps(envelope.__dict__))
+
+    await llm._handle_context_event(msg)
+
+    assert msg.acked
+    subject, sent_payload = llm._publisher.published[0]
+    assert subject == EventSubjects.RESPONSE_CANDIDATES
+    assert sent_payload["payload"]["input_id"] == "42-env"

@@ -236,3 +236,35 @@ def decode_payload(subject: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     if validator is None:
         return normalized
     return validator(normalized)
+
+
+def decode_payload_or_envelope(subject: str, data: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    """Decode legacy raw payloads and canonical envelopes during migration.
+
+    Returns ``(payload, metadata)`` where metadata may contain envelope fields:
+    ``event_id``, ``trace_id``, ``causation_id``, ``producer``, and ``created_at``.
+    """
+
+    if "payload" in data and "schema_version" in data:
+        envelope = validate_envelope(data)
+        payload = decode_payload(subject, envelope.payload)
+        return payload, {
+            "event_id": envelope.event_id,
+            "trace_id": envelope.trace_id,
+            "causation_id": envelope.causation_id,
+            "producer": envelope.producer,
+            "created_at": envelope.created_at,
+            "subject": envelope.subject,
+        }
+
+    payload = decode_payload(subject, data)
+    trace_id = payload.get("trace_id") if isinstance(payload.get("trace_id"), str) else None
+    causation_id = payload.get("causation_id") if isinstance(payload.get("causation_id"), str) else None
+    return payload, {
+        "event_id": None,
+        "trace_id": trace_id,
+        "causation_id": causation_id,
+        "producer": None,
+        "created_at": None,
+        "subject": to_canonical_subject(subject),
+    }
