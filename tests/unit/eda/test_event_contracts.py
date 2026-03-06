@@ -4,6 +4,7 @@ from deepthought.eda.contracts import (
     CanonicalSubjects,
     EventEnvelope,
     decode_payload,
+    decode_payload_or_envelope,
     to_canonical_subject,
     validate_envelope,
 )
@@ -126,3 +127,21 @@ def test_invalid_envelope_fails_safe():
                 "payload": {},
             }
         )
+
+
+def test_decode_payload_or_envelope_accepts_legacy_payload():
+    payload, meta = decode_payload_or_envelope(CanonicalSubjects.INPUT_RECEIVED, {"text": "hello"})
+    assert payload["user_input"] == "hello"
+    assert meta["trace_id"] is None
+
+
+def test_decode_payload_or_envelope_accepts_enveloped_payload():
+    envelope = EventEnvelope.build(
+        subject=CanonicalSubjects.INPUT_RECEIVED,
+        payload={"user_input": "hello"},
+        producer="discord_gateway",
+    )
+    payload, meta = decode_payload_or_envelope(CanonicalSubjects.INPUT_RECEIVED, envelope.__dict__)
+    assert payload["user_input"] == "hello"
+    assert meta["trace_id"] == envelope.trace_id
+    assert meta["producer"] == "discord_gateway"

@@ -23,17 +23,7 @@ class EnrichedInputPayload:
 
 
 class InputEnrichmentService:
-    """Parse and normalize INPUT_RECEIVED payloads from NATS messages."""
-
-    @staticmethod
-    def _normalized_identifier(value: object) -> str | None:
-        if not isinstance(value, str):
-            return None
-        normalized = value.strip()
-        return normalized or None
-
-    def parse_input_received(self, msg: Msg) -> EnrichedInputPayload:
-        data = json.loads(msg.data.decode())
+    def parse_input_received_data(self, data: object, *, headers: Mapping | None = None) -> EnrichedInputPayload:
         if not isinstance(data, dict):
             raise ValueError("InputReceived payload must be a dict")
 
@@ -42,7 +32,6 @@ class InputEnrichmentService:
         if not isinstance(input_id, str) or not isinstance(user_input, str):
             raise ValueError("Invalid input payload fields")
 
-        headers = getattr(msg, "headers", None)
         if headers is not None and not isinstance(headers, Mapping):
             headers = None
 
@@ -71,4 +60,17 @@ class InputEnrichmentService:
             author_id=author_id,
             channel_id=channel_id,
         )
+
+    """Parse and normalize INPUT_RECEIVED payloads from NATS messages."""
+
+    @staticmethod
+    def _normalized_identifier(value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    def parse_input_received(self, msg: Msg) -> EnrichedInputPayload:
+        data = json.loads(msg.data.decode())
+        return self.parse_input_received_data(data, headers=getattr(msg, "headers", None))
 

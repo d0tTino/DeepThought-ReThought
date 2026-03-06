@@ -14,6 +14,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import EventSubjects, InputReceivedPayload, ResponseRankedPayload
 from .base import BaseService
 from .human_interaction_policy import HumanInteractionPolicy
@@ -164,9 +165,16 @@ class DiscordGatewayService(BaseService):
                 author_id=payload.author_id,
             )
 
+        envelope = EventEnvelope.build(
+            subject=EventSubjects.INPUT_RECEIVED,
+            payload=json.loads(payload.to_json()),
+            producer=self.__class__.__name__,
+            trace_id=str(uuid.uuid4()),
+            causation_id=payload.input_id,
+        )
         await self._publisher.publish(
             EventSubjects.INPUT_RECEIVED,
-            payload,
+            envelope.__dict__,
             use_jetstream=True,
             timeout=10.0,
         )
@@ -252,7 +260,8 @@ class DiscordGatewayService(BaseService):
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
                 raise ValueError("ResponseRanked payload must be a dict")
-            payload = ResponseRankedPayload.from_dict(data)
+            decoded_payload, _meta = decode_payload_or_envelope(EventSubjects.RESPONSE_RANKED, data)
+            payload = ResponseRankedPayload.from_dict(decoded_payload)
             if not payload.final_response:
                 raise ValueError("final_response is required")
 

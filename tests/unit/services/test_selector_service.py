@@ -72,7 +72,7 @@ async def test_rank_by_confidence(service):
     assert not msg.nacked
     subject, ranked = service._publisher.published[0]
     assert subject == EventSubjects.RESPONSE_RANKED
-    assert ranked.final_response == "high"
+    assert ranked["payload"]["final_response"] == "high"
     telemetry_subject, telemetry_payload = service._publisher.published[1]
     assert telemetry_subject == "dtr.telemetry.selector_ranking.v1"
     assert telemetry_payload["chosen_source"] is None
@@ -87,7 +87,7 @@ async def test_empty_candidates_ack_without_publish(service):
 
     assert msg.acked
     assert len(service._publisher.published) == 2
-    assert service._publisher.published[0][1].source == "selector_fallback"
+    assert service._publisher.published[0][1]["payload"]["source"] == "selector_fallback"
 
 
 @pytest.mark.asyncio
@@ -122,7 +122,7 @@ async def test_window_aggregates_candidates_before_flush(monkeypatch):
     assert svc._publisher.published == []
 
     await asyncio.sleep(0.05)
-    assert svc._publisher.published[0][1].final_response == "two"
+    assert svc._publisher.published[0][1]["payload"]["final_response"] == "two"
 
 
 @pytest.mark.asyncio
@@ -149,8 +149,8 @@ async def test_unsafe_only_candidates_use_clarifying_fallback(monkeypatch):
     await asyncio.sleep(0.02)
 
     ranked_payload = svc._publisher.published[0][1]
-    assert ranked_payload.source == "selector_fallback"
-    assert "clarify" in ranked_payload.final_response.lower()
+    assert ranked_payload["payload"]["source"] == "selector_fallback"
+    assert "clarify" in ranked_payload["payload"]["final_response"].lower()
 
 
 @pytest.mark.asyncio
@@ -177,7 +177,7 @@ async def test_source_calibration_changes_ranking(monkeypatch):
     )
     await svc._handle_candidates_event(msg)
 
-    assert svc._publisher.published[0][1].final_response == "weighted"
+    assert svc._publisher.published[0][1]["payload"]["final_response"] == "weighted"
     diagnostics = svc._publisher.published[1][1]["diagnostics"]
     assert diagnostics[0]["source"] == "trusted"
 
@@ -211,7 +211,7 @@ async def test_mixed_source_and_confidence_filters_and_weights(monkeypatch):
 
     ranked = svc._publisher.published[0][1]
     telemetry = svc._publisher.published[1][1]
-    assert ranked.final_response == "safe tool"
+    assert ranked["payload"]["final_response"] == "safe tool"
     rejected = [item for item in telemetry["diagnostics"] if item["rejection_reasons"]]
     assert rejected and rejected[0]["text"] == "unsafe rule"
 
