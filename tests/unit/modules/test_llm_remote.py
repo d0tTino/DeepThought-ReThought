@@ -279,7 +279,7 @@ async def test_handle_context_event_with_mock_session(monkeypatch):
     assert llm._publisher.published
     subject, sent_payload = llm._publisher.published[0]
     assert subject == EventSubjects.RESPONSE_CANDIDATES
-    assert sent_payload.candidates[0].text == "resp"
+    assert sent_payload["payload"]["candidates"][0]["text"] == "resp"
 
 
 @pytest.mark.asyncio
@@ -360,7 +360,7 @@ async def test_generate_candidates_uses_scores_and_safety(monkeypatch):
     result = await llm._generate_candidates("hello")
 
     assert len(result) == 2
-    assert result[0].source == "sampler"
+    assert result[0].source.endswith(":sampler")
     assert result[0].confidence_components["model_score"] == 0.7
     assert result[0].safety_passed is True
     assert result[1].safety_passed is False
@@ -395,7 +395,7 @@ async def test_handle_context_event_falls_back_to_clarifying_question_on_low_con
     assert msg.acked
     assert called["generate"] is False
     _, sent_payload = llm._publisher.published[0]
-    assert "Could you clarify" in sent_payload.candidates[0].text
+    assert "Could you clarify" in sent_payload["payload"]["candidates"][0]["text"]
 
 
 def test_build_generation_prompt_includes_image_and_audio_interpretations():
@@ -450,3 +450,39 @@ async def test_handle_context_event_accepts_enveloped_payload(monkeypatch):
     subject, sent_payload = llm._publisher.published[0]
     assert subject == EventSubjects.RESPONSE_CANDIDATES
     assert sent_payload["payload"]["input_id"] == "42-env"
+
+
+@pytest.mark.asyncio
+async def test_generate_candidates_local_quantized_backend(monkeypatch):
+    class DummySettings:
+        llm_backend = "local_quantized"
+        llm_model_path = "dummy/model"
+        model_path = "fallback/model"
+        llm_quantization_bits = 4
+        llm_local_max_new_tokens = 128
+        llm_remote_endpoint = "http://unused"
+
+    monkeypatch.setattr(llm_remote, "Publisher", DummyPublisher)
+    monkeypatch.setattr(llm_remote, "Subscriber", DummySubscriber)
+    monkeypatch.setattr(llm_remote, "get_settings", lambda: DummySettings())
+
+    def fake_build_pipeline(self):
+        def _gen(prompt, num_return_sequences, max_new_tokens, do_sample, return_full_text):
+            assert num_return_sequences == 3
+            assert max_new_tokens == 128
+            assert do_sample is True
+            assert return_full_text is False
+            return [{"generated_text": "local answer"}]
+
+        return _gen
+
+    monkeypatch.setattr(llm_remote.LocalQuantizedResponderBackend, "_build_pipeline", fake_build_pipeline)
+    llm = llm_remote.RemoteLLM(DummyNATS(), DummyJS())
+
+    result = await llm._generate_candidates("hello")
+
+    assert result[0].text == "local answer"
+    assert ":local_quantized:" in result[0].source
+    assert isinstance(result[0].confidence, float)
+    assert result[0].safety_metadata["rule"] == "keyword_v1"
+    await llm.stop_listening()
