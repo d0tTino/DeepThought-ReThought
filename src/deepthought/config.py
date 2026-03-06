@@ -114,9 +114,14 @@ def _build_env_overrides() -> dict[str, object]:
     _set(("model_path",), os.getenv("DT_MODEL_PATH"))
     _set(("llm_model_path",), os.getenv("DT_LLM_MODEL_PATH"))
     _set(("llm_adapter_path",), os.getenv("DT_LLM_ADAPTER_PATH"))
+    _set(("llm_backend",), os.getenv("DT_LLM_BACKEND"))
+    _set(("llm_remote_endpoint",), os.getenv("DT_LLM_REMOTE_ENDPOINT"))
     llm_quant_bits = _coerce_int(os.getenv("DT_LLM_QUANTIZATION_BITS"))
     if llm_quant_bits is not None:
         _set(("llm_quantization_bits",), llm_quant_bits)
+    local_max_new_tokens = _coerce_int(os.getenv("DT_LLM_LOCAL_MAX_NEW_TOKENS"))
+    if local_max_new_tokens is not None:
+        _set(("llm_local_max_new_tokens",), local_max_new_tokens)
     _set(("memory_file",), os.getenv("DT_MEMORY_FILE"))
     _set(("vector_backend",), os.getenv("DT_VECTOR_BACKEND"))
     vector_gpu = _coerce_bool(os.getenv("DT_VECTOR_USE_GPU"))
@@ -210,7 +215,10 @@ class Settings(BaseSettings):
     model_path: str = "distilgpt2"
     llm_model_path: str | None = Field(None, env="DT_LLM_MODEL_PATH")
     llm_adapter_path: str | None = Field(None, env="DT_LLM_ADAPTER_PATH")
+    llm_backend: str = Field("remote_http", env="DT_LLM_BACKEND")
+    llm_remote_endpoint: str = Field("http://localhost:8000/generate", env="DT_LLM_REMOTE_ENDPOINT")
     llm_quantization_bits: int | None = Field(None, env="DT_LLM_QUANTIZATION_BITS")
+    llm_local_max_new_tokens: int = Field(192, env="DT_LLM_LOCAL_MAX_NEW_TOKENS")
     social_perception_model: str = Field(str(DEFAULT_SOCIAL_MODEL), env="SOCIAL_PERCEPTION_MODEL")
     memory_file: str = "memory.json"
     search_db: str | None = None

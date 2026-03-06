@@ -193,3 +193,17 @@ def test_load_bot_env_invalid_channel(monkeypatch):
 
     with pytest.raises(SystemExit):
         load_bot_env()
+
+
+def test_llm_backend_env_overrides(monkeypatch):
+    monkeypatch.setenv("DT_LLM_BACKEND", "local_quantized")
+    monkeypatch.setenv("DT_LLM_MODEL_PATH", "local/model")
+    monkeypatch.setenv("DT_LLM_QUANTIZATION_BITS", "4")
+    monkeypatch.setenv("DT_LLM_LOCAL_MAX_NEW_TOKENS", "256")
+
+    settings = load_settings()
+
+    assert settings.llm_backend == "local_quantized"
+    assert settings.llm_model_path == "local/model"
+    assert settings.llm_quantization_bits == 4
+    assert settings.llm_local_max_new_tokens == 256

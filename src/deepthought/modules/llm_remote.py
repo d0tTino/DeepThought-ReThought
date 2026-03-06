@@ -1,4 +1,4 @@
-"""HTTP-based LLM module for the demo."""
+"""LLM responder module with pluggable backends."""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ import json
 import logging
 import math
 import os
-from typing import Optional
+from dataclasses import dataclass
+from typing import Protocol
 
 import aiohttp
 import nats
@@ -14,6 +15,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from ..config import get_settings
 from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import ContextAssembledPayload, EventSubjects, ResponseCandidate, ResponseCandidatesPayload
 from ..eda.publisher import Publisher
@@ -21,6 +23,95 @@ from ..eda.subscriber import Subscriber
 from ..pipeline.dspy_pipeline import build_qa_pipeline
 
 logger = logging.getLogger(__name__)
+
+
+class ResponderBackend(Protocol):
+    """Backend interface for generating response candidates."""
+
+    async def generate_candidates(self, prompt: str, num_candidates: int) -> list[dict[str, object]]:
+        """Return backend candidates as generic dictionaries."""
+
+    async def close(self) -> None:
+        """Release backend resources."""
+
+
+@dataclass
+class HTTPResponderBackend:
+    endpoint: str
+    session: aiohttp.ClientSession
+
+    async def generate_candidates(self, prompt: str, num_candidates: int) -> list[dict[str, object]]:
+        async with self.session.post(self.endpoint, json={"text": prompt, "n": num_candidates}) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+            raw_candidates = data.get("candidates") if isinstance(data, dict) else None
+            if isinstance(raw_candidates, list) and raw_candidates:
+                return [item for item in raw_candidates if isinstance(item, dict)]
+
+            text = data.get("text") if isinstance(data, dict) else None
+            if not isinstance(text, str):
+                raise ValueError("Invalid generate response")
+            return [{"text": text, "source": "remote_http"}]
+
+    async def close(self) -> None:
+        return None
+
+
+class LocalQuantizedResponderBackend:
+    """Local HuggingFace backend with optional quantization."""
+
+    def __init__(self, model_path: str, quantization_bits: int | None = None, max_new_tokens: int = 192) -> None:
+        self._model_path = model_path
+        self._quantization_bits = quantization_bits
+        self._max_new_tokens = max_new_tokens
+        self._generator = None
+
+    def _build_pipeline(self):
+        if self._generator is not None:
+            return self._generator
+
+        try:
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, pipeline
+        except Exception as exc:  # pragma: no cover - dependency optional in many environments
+            raise RuntimeError("transformers package is required for local_quantized backend") from exc
+
+        model_kwargs: dict[str, object] = {"device_map": "auto"}
+        if self._quantization_bits in {4, 8}:
+            model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=self._quantization_bits == 4,
+                load_in_8bit=self._quantization_bits == 8,
+            )
+
+        tokenizer = AutoTokenizer.from_pretrained(self._model_path)
+        model = AutoModelForCausalLM.from_pretrained(self._model_path, **model_kwargs)
+        self._generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
+        return self._generator
+
+    async def generate_candidates(self, prompt: str, num_candidates: int) -> list[dict[str, object]]:
+        generator = self._build_pipeline()
+        outputs = generator(
+            prompt,
+            num_return_sequences=num_candidates,
+            max_new_tokens=self._max_new_tokens,
+            do_sample=True,
+            return_full_text=False,
+        )
+        if not isinstance(outputs, list) or not outputs:
+            raise ValueError("Local backend did not produce outputs")
+
+        candidates: list[dict[str, object]] = []
+        for item in outputs:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("generated_text")
+            if isinstance(text, str) and text.strip():
+                candidates.append({"text": text, "source": "local_quantized"})
+        if not candidates:
+            raise ValueError("Local backend produced no valid text candidates")
+        return candidates
+
+    async def close(self) -> None:
+        self._generator = None
 
 
 def _normalized_optional_text(value: object) -> str | None:
@@ -126,23 +217,43 @@ def _build_clarifying_question(multimodal_interpretations: dict[str, object] | N
 
 
 class RemoteLLM:
-    """LLM module that calls a remote HTTP endpoint."""
+    """LLM module that generates response candidates via configured backend."""
 
-    def __init__(self, nats_client: NATS, js_context: JetStreamContext, endpoint: Optional[str] = None) -> None:
+    def __init__(self, nats_client: NATS, js_context: JetStreamContext, endpoint: str | None = None) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
-        self._endpoint = endpoint or os.getenv("LLM_ENDPOINT", "http://localhost:8000/generate")
-        if not self._endpoint:
-            raise ValueError("LLM_ENDPOINT environment variable must be set or passed to RemoteLLM")
         self._session = aiohttp.ClientSession()
+
+        settings = get_settings()
+        self._num_candidates = max(1, int(os.getenv("LLM_NUM_CANDIDATES", "3")))
+        self._source_name = os.getenv("LLM_SOURCE_NAME", "remote_llm")
 
         use_dspy = os.getenv("USE_DSPY", "")
         self._use_dspy = use_dspy.lower() in {"1", "true", "yes", "on"}
         self._qa_pipeline = build_qa_pipeline() if self._use_dspy else None
-        self._num_candidates = max(1, int(os.getenv("LLM_NUM_CANDIDATES", "3")))
-        self._source_name = os.getenv("LLM_SOURCE_NAME", "remote_llm")
 
-        logger.info("RemoteLLM initialized with endpoint %s", self._endpoint)
+        env_backend = os.getenv("LLM_BACKEND") or os.getenv("DT_LLM_BACKEND")
+        requested_backend = (env_backend or settings.llm_backend or "remote_http").strip().lower()
+
+        endpoint_value = endpoint if endpoint is not None else os.getenv("LLM_ENDPOINT", settings.llm_remote_endpoint)
+        if requested_backend == "remote_http":
+            if not endpoint_value:
+                raise ValueError("LLM endpoint must be set for remote_http backend")
+            self._backend: ResponderBackend = HTTPResponderBackend(endpoint_value, self._session)
+        elif requested_backend == "local_quantized":
+            model_path = settings.llm_model_path or settings.model_path
+            if not model_path:
+                raise ValueError("A model path is required for local_quantized backend")
+            self._backend = LocalQuantizedResponderBackend(
+                model_path=model_path,
+                quantization_bits=settings.llm_quantization_bits,
+                max_new_tokens=settings.llm_local_max_new_tokens,
+            )
+        else:
+            raise ValueError(f"Unsupported LLM backend: {requested_backend}")
+
+        self._backend_name = requested_backend
+        logger.info("RemoteLLM initialized with backend=%s", self._backend_name)
 
     def _calibrate_confidence(self, candidate: dict[str, object], text: str) -> tuple[float, dict[str, float]]:
         token_score = 0.0
@@ -189,41 +300,30 @@ class RemoteLLM:
                 )
             ]
 
-        async with self._session.post(self._endpoint, json={"text": prompt, "n": self._num_candidates}) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
-            raw_candidates = data.get("candidates") if isinstance(data, dict) else None
-            materialized: list[dict[str, object]]
-            if isinstance(raw_candidates, list) and raw_candidates:
-                materialized = [item for item in raw_candidates if isinstance(item, dict)]
-            else:
-                text = data.get("text") if isinstance(data, dict) else None
-                if not isinstance(text, str):
-                    raise ValueError("Invalid generate response")
-                materialized = [{"text": text}]
-
-            candidates: list[ResponseCandidate] = []
-            for item in materialized[: self._num_candidates]:
-                text = item.get("text")
-                if not isinstance(text, str) or not text.strip():
-                    continue
-                confidence, components = self._calibrate_confidence(item, text)
-                safe, safety_metadata = self._evaluate_safety(text)
-                source = item.get("source") if isinstance(item.get("source"), str) else f"{self._source_name}:sampling"
-                candidates.append(
-                    ResponseCandidate(
-                        text=text,
-                        confidence=confidence,
-                        source=source,
-                        safety_passed=safe,
-                        confidence_components=components,
-                        safety_metadata=safety_metadata,
-                    )
+        materialized = await self._backend.generate_candidates(prompt, self._num_candidates)
+        candidates: list[ResponseCandidate] = []
+        for item in materialized[: self._num_candidates]:
+            text = item.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            confidence, components = self._calibrate_confidence(item, text)
+            safe, safety_metadata = self._evaluate_safety(text)
+            item_source = item.get("source") if isinstance(item.get("source"), str) else "sampling"
+            source = f"{self._source_name}:{self._backend_name}:{item_source}"
+            candidates.append(
+                ResponseCandidate(
+                    text=text,
+                    confidence=confidence,
+                    source=source,
+                    safety_passed=safe,
+                    confidence_components=components,
+                    safety_metadata=safety_metadata,
                 )
+            )
 
-            if not candidates:
-                raise ValueError("Generate response did not include valid candidates")
-            return candidates
+        if not candidates:
+            raise ValueError("Generate response did not include valid candidates")
+        return candidates
 
     async def _generate(self, prompt: str) -> str:
         candidates = await self._generate_candidates(prompt)
@@ -357,6 +457,7 @@ class RemoteLLM:
     async def stop_listening(self) -> None:
         if self._subscriber:
             await self._subscriber.unsubscribe_all()
+        await self._backend.close()
         if not self._session.closed:
             await self._session.close()
         logger.info("RemoteLLM stopped listening.")
