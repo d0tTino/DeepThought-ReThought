@@ -194,7 +194,7 @@ class DummyMemory:
 
 class DummyDB:
     def __init__(self):
-        self.memories = []
+        self.memories_by_user = {}
         self.memory_user_ids = []
         self.interactions = 0
         self.interaction_user_ids = []
@@ -207,7 +207,7 @@ class DummyDB:
         if topic == "social_perception":
             self.perceptions.append(json.loads(memory))
         else:
-            self.memories.append(memory)
+            self.memories_by_user.setdefault(str(user_id), []).append(memory)
 
     async def log_interaction(self, user_id, target_id=None, sentiment_score=None):
         self.interaction_user_ids.append(user_id)
@@ -218,7 +218,10 @@ class DummyDB:
         self.affinity += delta
 
     async def recall_user(self, user_id, limit=None):
-        return [("", m) for m in self.memories]
+        memories = list(reversed(self.memories_by_user.get(str(user_id), [])))
+        if limit is not None:
+            memories = memories[: int(limit)]
+        return [("", m) for m in memories]
 
     async def close(self):
         pass
@@ -255,13 +258,13 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
 
     assert msg.acked
     assert memory.interactions == ["hello"]
-    assert db.memories == ["hello"]
+    assert db.memories_by_user == {"anonymous": ["hello"]}
     assert db.perceptions == []
     assert db.affinity == pytest.approx(0.0)
     subject, sent_payload = service._publisher.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload.input_id == "x"
-    assert "hello" in sent_payload.retrieved_knowledge["facts"]
+    assert "[memory,db] hello" in sent_payload.retrieved_knowledge["facts"]
     assert service._graph_memory.retrieve_user_evidence("anonymous", limit=5)
 
 
@@ -326,6 +329,27 @@ async def test_handle_input_reuses_earlier_user_preferences_in_later_context():
     _, payload = service._publisher.published[-1]
     facts = payload.retrieved_knowledge["facts"]
     assert any("favorite: tea" in fact for fact in facts)
+
+
+@pytest.mark.asyncio
+async def test_handle_input_does_not_cross_contaminate_users():
+    memory = DummyMemory()
+    db = DummyDB()
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
+    service._top_k = 8
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    user_a = DummyMsg(json.dumps({"user_input": "My favorite drink is tea", "input_id": "turn-a1", "user_id": "user-a"}))
+    user_b = DummyMsg(json.dumps({"user_input": "What should I have this evening?", "input_id": "turn-b1", "user_id": "user-b"}))
+
+    await service._handle_input(user_a)
+    await service._handle_input(user_b)
+
+    assert user_a.acked and user_b.acked
+    _, user_b_payload = service._publisher.published[-1]
+    facts = user_b_payload.retrieved_knowledge["facts"]
+    assert not any("favorite: tea" in fact for fact in facts)
 
 
 class DummyStore:
