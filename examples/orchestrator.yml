@@ -13,6 +13,7 @@ services:
   - context_assembler
   - llm_remote
   - selector
+  - feedback
   - reasoning
 
 service_bindings:
@@ -104,6 +105,34 @@ service_bindings:
     publish:
       - subject: dtr.response.ranked.v1  # legacy alias: dtr.response.ranked
         event_subject: EventSubjects.RESPONSE_RANKED
+        jetstream: true
+
+  feedback:
+    description: Adapt memory/social confidence from ranked responses and explicit user feedback signals.
+    env:
+      - NATS_URL
+      - DT_MEMORY_DB
+      - DT_SOCIAL_GRAPH_DB
+      - DT_FEEDBACK_DURABLE_PREFIX
+    subscribe:
+      - subject: dtr.response.ranked.v1  # legacy aliases: dtr.response.ranked, dtr.llm.response_generated
+        event_subject: EventSubjects.RESPONSE_RANKED
+        jetstream: true
+        durable: feedback_service_ranked
+        required_reliability: true
+      - subject: dtr.feedback.outcome_signal.v1  # legacy alias: dtr.feedback.outcome_signal
+        event_subject: EventSubjects.OUTCOME_SIGNAL
+        jetstream: true
+        durable: feedback_service_outcome
+        required_reliability: true
+      - subject: dtr.feedback.correction_signal.v1  # legacy alias: dtr.feedback.correction_signal
+        event_subject: EventSubjects.CORRECTION_SIGNAL
+        jetstream: true
+        durable: feedback_service_correction
+        required_reliability: true
+    publish:
+      - subject: dtr.telemetry.response_feedback.v1
+        event_subject: response_feedback_telemetry
         jetstream: true
 
   reasoning:
@@ -229,3 +258,5 @@ environment:
   DT_SOCIAL_GRAPH_DB: ${DT_SOCIAL_GRAPH_DB:-./data/social_graph.db}
   DT_SEARCH_DB: ${DT_SEARCH_DB:-./examples/data/sample_docs.json}
   PERCEPTION_MODEL_PATH: ${PERCEPTION_MODEL_PATH:-}
+
+  DT_FEEDBACK_DURABLE_PREFIX: ${DT_FEEDBACK_DURABLE_PREFIX:-feedback_service}

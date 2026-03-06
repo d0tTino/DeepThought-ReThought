@@ -23,6 +23,7 @@ cognitive_core = "deepthought.services.cognitive_core_service:CognitiveCoreServi
 context_assembler = "deepthought.services.context_assembler_service:ContextAssemblerService"
 llm_remote = "deepthought.services.llm_remote_service:LLMRemoteService"
 selector = "deepthought.services.selector_service:SelectorService"
+feedback = "deepthought.services.feedback_service:FeedbackService"
 social_graph = "deepthought.services.social_graph_service:SocialGraphService"
 perception = "deepthought.services.perception.service:PerceptionService"
 perception_interpret = "deepthought.services.perception_interpret_service:PerceptionInterpretService"
@@ -30,8 +31,6 @@ reward_manager = "deepthought.motivate.reward_manager:RewardManager"
 planning = "deepthought.services.planning_service:PlanningService"
 reasoning = "deepthought.services.reasoning_service:ReasoningService"
 discord_gateway = "deepthought.services.discord_gateway_service:DiscordGatewayService"
-perception_interpret = "deepthought.services.perception_interpret_service:PerceptionInterpretService"
-context_assembler = "deepthought.services.context_assembler_service:ContextAssemblerService"
 
 
 

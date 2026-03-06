@@ -17,6 +17,8 @@ For the default orchestrator profile, the following event chain is **required**.
 3. Social context must come from either `SOCIAL_UPDATED` (from `social_graph`) **or** `SOCIAL_SIGNALS_RETRIEVED` (from alternative social providers) and be consumed by `context_assembler`.
 4. `PERCEPTION_INTERPRET_RETRIEVED` is published by `perception_interpret` and consumed by `context_assembler`.
 5. `CONTEXT_ASSEMBLED` is published by `context_assembler` and consumed by `llm_remote` (or another LLM responder).
+6. `RESPONSE_RANKED` is published by `selector`, consumed by `discord_gateway` for delivery, and consumed by `feedback` for adaptation context capture.
+7. `OUTCOME_SIGNAL` and `CORRECTION_SIGNAL` are consumed by `feedback` via durable JetStream consumers to adapt affinity and confidence state.
 
 Operators should treat this as a deployment invariant and verify that each required subject has at least one publisher and one subscriber before startup.
 
@@ -36,11 +38,14 @@ sequenceDiagram
     LLM->>NATS: RESPONSE_CANDIDATES
     NATS->>Selector: RESPONSE_CANDIDATES
     Selector->>NATS: RESPONSE_RANKED
+    NATS->>Feedback: RESPONSE_RANKED
     NATS->>Bot: RESPONSE_RANKED
     Bot-->>User: Reply
 ```
 
 The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events and receives the final reply on `RESPONSE_RANKED` after the responder publishes `RESPONSE_CANDIDATES` and the selector picks the winner.
+
+Feedback adaptation is part of the default production DAG and should be deployed with durable subscriptions for `RESPONSE_RANKED`, `OUTCOME_SIGNAL`, and `CORRECTION_SIGNAL` as documented in [`examples/orchestrator.yml`](../examples/orchestrator.yml).
 
 
 ### Candidate schema expectations (`RESPONSE_CANDIDATES`)
