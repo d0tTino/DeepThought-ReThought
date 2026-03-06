@@ -263,8 +263,8 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     assert db.affinity == pytest.approx(0.0)
     subject, sent_payload = service._publisher.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
-    assert sent_payload.input_id == "x"
-    assert "[memory,db] hello" in sent_payload.retrieved_knowledge["facts"]
+    assert sent_payload["payload"]["input_id"] == "x"
+    assert "[memory,db] hello" in sent_payload["payload"]["retrieved_knowledge"]["facts"]
     assert service._graph_memory.retrieve_user_evidence("anonymous", limit=5)
 
 
@@ -327,7 +327,7 @@ async def test_handle_input_reuses_earlier_user_preferences_in_later_context():
 
     assert first.acked and second.acked
     _, payload = service._publisher.published[-1]
-    facts = payload.retrieved_knowledge["facts"]
+    facts = payload["payload"]["retrieved_knowledge"]["facts"]
     assert any("favorite: tea" in fact for fact in facts)
 
 
@@ -348,7 +348,7 @@ async def test_handle_input_does_not_cross_contaminate_users():
 
     assert user_a.acked and user_b.acked
     _, user_b_payload = service._publisher.published[-1]
-    facts = user_b_payload.retrieved_knowledge["facts"]
+    facts = user_b_payload["payload"]["retrieved_knowledge"]["facts"]
     assert not any("favorite: tea" in fact for fact in facts)
 
 

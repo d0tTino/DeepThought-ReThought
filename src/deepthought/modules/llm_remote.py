@@ -14,6 +14,7 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import ContextAssembledPayload, EventSubjects, ResponseCandidate, ResponseCandidatesPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
@@ -234,6 +235,10 @@ class RemoteLLM:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
                 raise ValueError("ContextAssembled payload must be a dict")
+            decoded_payload, envelope_meta = decode_payload_or_envelope(EventSubjects.CONTEXT_ASSEMBLED, data)
+            data = decoded_payload
+            trace_id = envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None
+            causation_id = envelope_meta.get("event_id") if isinstance(envelope_meta.get("event_id"), str) else None
             if "retrieved_facts" in data:
                 payload = ContextAssembledPayload.from_dict(data)
                 input_id = payload.input_id
@@ -307,9 +312,16 @@ class RemoteLLM:
                 channel_id=channel_id,
                 timestamp=None,
             )
+            envelope = EventEnvelope.build(
+                subject=EventSubjects.RESPONSE_CANDIDATES,
+                payload=json.loads(payload.to_json()),
+                producer=self.__class__.__name__,
+                trace_id=trace_id,
+                causation_id=causation_id or input_id,
+            )
             await self._publisher.publish(
                 EventSubjects.RESPONSE_CANDIDATES,
-                payload,
+                envelope.__dict__,
                 use_jetstream=True,
                 timeout=10.0,
             )

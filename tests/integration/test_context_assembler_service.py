@@ -93,18 +93,18 @@ async def test_race_safe_assembly_collects_all_providers(monkeypatch):
 
     assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
     assert len(assembled) == 1
-    payload = assembled[0][1]
-    assert payload.input_id == "i-race"
-    assert payload.retrieved_facts == ["f2", "f1"]
-    assert payload.social_signals == {"tone": "neutral"}
-    assert payload.multimodal_interpretations["schema_version"] == "multimodal.semantic-notes.v1"
-    assert payload.multimodal_interpretations["summary"] == "no multimodal signals"
-    assert payload.confidence["partial"] is False
-    assert payload.confidence["completed_providers"] == ["memory", "social", "perception"]
-    assert payload.confidence["publish_reason"] == "all_providers_received"
-    assert payload.confidence["assembly_state"] == "COMPLETE"
-    assert payload.confidence["correlation"] == {"input_id": "i-race", "trace_id": None}
-    assert payload.confidence["provider_timings"]["memory"]["timed_out"] is False
+    payload = assembled[0][1]["payload"]
+    assert payload["input_id"] == "i-race"
+    assert payload["retrieved_facts"] == ["f2", "f1"]
+    assert payload["social_signals"] == {"tone": "neutral"}
+    assert payload["multimodal_interpretations"]["schema_version"] == "multimodal.semantic-notes.v1"
+    assert payload["multimodal_interpretations"]["summary"] == "no multimodal signals"
+    assert payload["confidence"]["partial"] is False
+    assert payload["confidence"]["completed_providers"] == ["memory", "social", "perception"]
+    assert payload["confidence"]["publish_reason"] == "all_providers_received"
+    assert payload["confidence"]["assembly_state"] == "COMPLETE"
+    assert payload["confidence"]["correlation"] == {"input_id": "i-race", "trace_id": None}
+    assert payload["confidence"]["provider_timings"]["memory"]["timed_out"] is False
 
 
 @pytest.mark.asyncio
@@ -132,18 +132,18 @@ async def test_partial_result_when_provider_missing_is_deterministic(monkeypatch
 
     assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
     assert len(assembled) == 1
-    payload = assembled[0][1]
-    assert payload.input_id == "i-partial"
-    assert payload.retrieved_facts == ["f1"]
-    assert payload.social_signals == {"sentiment": 0.7}
-    assert payload.multimodal_interpretations["schema_version"] == "multimodal.semantic-notes.v1"
-    assert payload.multimodal_interpretations["notes"] == []
-    assert payload.confidence["partial"] is True
-    assert payload.confidence["missing_providers"] == ["perception"]
-    assert payload.confidence["completed_providers"] == ["memory", "social"]
-    assert payload.confidence["publish_reason"] == "timeout_partial"
-    assert payload.confidence["assembly_state"] == "TIMEOUT_PUBLISHED"
-    assert payload.confidence["provider_timings"]["perception"]["timed_out"] is True
+    payload = assembled[0][1]["payload"]
+    assert payload["input_id"] == "i-partial"
+    assert payload["retrieved_facts"] == ["f1"]
+    assert payload["social_signals"] == {"sentiment": 0.7}
+    assert payload["multimodal_interpretations"]["schema_version"] == "multimodal.semantic-notes.v1"
+    assert payload["multimodal_interpretations"]["notes"] == []
+    assert payload["confidence"]["partial"] is True
+    assert payload["confidence"]["missing_providers"] == ["perception"]
+    assert payload["confidence"]["completed_providers"] == ["memory", "social"]
+    assert payload["confidence"]["publish_reason"] == "timeout_partial"
+    assert payload["confidence"]["assembly_state"] == "TIMEOUT_PUBLISHED"
+    assert payload["confidence"]["provider_timings"]["perception"]["timed_out"] is True
 
 
 
@@ -172,11 +172,11 @@ async def test_context_assembler_correlates_by_input_and_trace_id(monkeypatch):
 
     assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
     assert len(assembled) == 1
-    payload = assembled[0][1]
-    assert payload.retrieved_facts == []
-    assert payload.social_signals == {"sentiment": 0.9}
-    assert payload.confidence["correlation"] == {"input_id": "i-trace", "trace_id": "trace-A"}
-    assert payload.confidence["provider_timings"]["memory"]["timed_out"] is True
+    payload = assembled[0][1]["payload"]
+    assert payload["retrieved_facts"] == []
+    assert payload["social_signals"] == {"sentiment": 0.9}
+    assert payload["confidence"]["correlation"] == {"input_id": "i-trace", "trace_id": "trace-A"}
+    assert payload["confidence"]["provider_timings"]["memory"]["timed_out"] is True
 
 @pytest.mark.asyncio
 async def test_context_assembler_merges_perception_interpretations_within_wait_window(monkeypatch):
@@ -261,12 +261,12 @@ async def test_context_assembler_merges_perception_interpretations_within_wait_w
 
     assembled = [item for item in bus.published if item[0] == EventSubjects.CONTEXT_ASSEMBLED]
     assert len(assembled) == 1
-    payload = assembled[0][1]
-    assert payload.input_id == "i-embed"
-    assert payload.multimodal_interpretations["schema_version"] == "multimodal.semantic-notes.v1"
-    assert payload.multimodal_interpretations["by_modality"]["image"]["what"].startswith("1 embedding vectors")
-    assert "attachments[image:1]" in payload.multimodal_interpretations["summary"]
-    assert payload.confidence["partial"] is False
+    payload = assembled[0][1]["payload"]
+    assert payload["input_id"] == "i-embed"
+    assert payload["multimodal_interpretations"]["schema_version"] == "multimodal.semantic-notes.v1"
+    assert payload["multimodal_interpretations"]["by_modality"]["image"]["what"].startswith("1 embedding vectors")
+    assert "attachments[image:1]" in payload["multimodal_interpretations"]["summary"]
+    assert payload["confidence"]["partial"] is False
 
 
 @pytest.mark.asyncio
