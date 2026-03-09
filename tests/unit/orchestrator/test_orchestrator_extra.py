@@ -29,7 +29,6 @@ sys.modules.setdefault("l2p.utils", fake_l2p_utils)
 
 
 import asyncio
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -89,7 +88,51 @@ async def test_run_starts_and_stops_service(monkeypatch, tmp_path):
     monkeypatch.setattr(asyncio.Event, "wait", lambda self: asyncio.sleep(0))
 
     cfg = tmp_path / "cfg.yaml"
-    cfg.write_text("services:\n  - dummy\n", encoding="utf-8")
+    cfg.write_text(
+        """
+services:
+  - dummy
+service_bindings:
+  discord_gateway:
+    publish:
+      - event_subject: EventSubjects.INPUT_RECEIVED
+    subscribe:
+      - event_subject: EventSubjects.RESPONSE_RANKED
+  cognitive_core:
+    publish:
+      - event_subject: EventSubjects.MEMORY_RETRIEVED
+  social_graph:
+    publish:
+      - event_subject: EventSubjects.SOCIAL_UPDATED
+  perception_interpret:
+    publish:
+      - event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
+  context_assembler:
+    subscribe:
+      - event_subject: EventSubjects.INPUT_RECEIVED
+      - event_subject: EventSubjects.MEMORY_RETRIEVED
+      - event_subject: EventSubjects.SOCIAL_UPDATED
+      - event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
+    publish:
+      - event_subject: EventSubjects.CONTEXT_ASSEMBLED
+  llm_remote:
+    subscribe:
+      - event_subject: EventSubjects.CONTEXT_ASSEMBLED
+  selector:
+    publish:
+      - event_subject: EventSubjects.RESPONSE_RANKED
+  feedback:
+    subscribe:
+      - event_subject: EventSubjects.RESPONSE_RANKED
+      - event_subject: EventSubjects.OUTCOME_SIGNAL
+      - event_subject: EventSubjects.CORRECTION_SIGNAL
+  adaptation:
+    publish:
+      - event_subject: EventSubjects.OUTCOME_SIGNAL
+      - event_subject: EventSubjects.CORRECTION_SIGNAL
+""",
+        encoding="utf-8",
+    )
 
     await orch.run(str(cfg))
 
@@ -97,3 +140,33 @@ async def test_run_starts_and_stops_service(monkeypatch, tmp_path):
     assert service is not None
     assert service.started is True
     assert service.stopped is True
+
+
+@pytest.mark.asyncio
+async def test_run_warns_when_bindings_absent(monkeypatch, caplog, tmp_path):
+    orch = _load_orchestrator_module()
+    monkeypatch.setattr(orch, "discover_services", lambda names: [])
+
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text("services: []\n", encoding="utf-8")
+
+    with caplog.at_level("WARNING"):
+        await orch.run(str(cfg))
+
+    assert "No service_bindings found" in caplog.text
+
+
+def test_validate_required_bindings_actionable_error():
+    orch = _load_orchestrator_module()
+
+    with pytest.raises(ValueError) as excinfo:
+        orch._validate_required_bindings(
+            {
+                "discord_gateway": {
+                    "publish": [{"event_subject": "EventSubjects.INPUT_RECEIVED"}]
+                }
+            }
+        )
+
+    assert "Required orchestration edges failed validation" in str(excinfo.value)
+    assert "missing subscriber for INPUT_RECEIVED" in str(excinfo.value)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import ssl
 from contextlib import AsyncExitStack, suppress
 from importlib import metadata
@@ -15,6 +16,131 @@ from .eda.events import EventSubjects, PlanGeneratedPayload, PlanRequestedPayloa
 from .planning import planner, translator
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_event_subject(value: str) -> str:
+    return value.rsplit(".", 1)[-1].strip()
+
+
+def _parse_service_bindings(
+    service_bindings: dict[str, Any],
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    publishers: dict[str, set[str]] = {}
+    subscribers: dict[str, set[str]] = {}
+    for service, spec in service_bindings.items():
+        if not isinstance(spec, dict):
+            continue
+        for binding in spec.get("publish", []) or []:
+            if not isinstance(binding, dict):
+                continue
+            event_subject = binding.get("event_subject")
+            if not isinstance(event_subject, str):
+                continue
+            subject_key = _normalize_event_subject(event_subject)
+            publishers.setdefault(subject_key, set()).add(service)
+        for binding in spec.get("subscribe", []) or []:
+            if not isinstance(binding, dict):
+                continue
+            event_subject = binding.get("event_subject")
+            if not isinstance(event_subject, str):
+                continue
+            subject_key = _normalize_event_subject(event_subject)
+            subscribers.setdefault(subject_key, set()).add(service)
+    return publishers, subscribers
+
+
+def _required_subjects_from_architecture() -> list[dict[str, Any]]:
+    arch = Path(__file__).resolve().parents[2] / "docs" / "architecture.md"
+    text = arch.read_text(encoding="utf-8")
+    required: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not re.match(r"^\d+\.\s+", line):
+            continue
+        names = re.findall(r"`([^`]+)`", line)
+        if not names:
+            continue
+        consumed = re.findall(r"consumed by `([^`]+)`", line)
+        published = re.findall(r"published by `([^`]+)`", line)
+        if "either" in line and len(names) >= 3 and consumed:
+            required.append(
+                {
+                    "subjects": [_normalize_event_subject(names[0]), _normalize_event_subject(names[2])],
+                    "publishers": {_normalize_event_subject(names[1])},
+                    "subscribers": {_normalize_event_subject(consumed[0])},
+                    "kind": "any",
+                }
+            )
+            continue
+        if " are consumed by " in line and consumed:
+            for subject in names[:-1]:
+                required.append(
+                    {
+                        "subjects": [_normalize_event_subject(subject)],
+                        "publishers": set(),
+                        "subscribers": {_normalize_event_subject(consumed[0])},
+                        "kind": "all",
+                    }
+                )
+            continue
+        if len(names) >= 3 and published and consumed:
+            required.append(
+                {
+                    "subjects": [_normalize_event_subject(names[0])],
+                    "publishers": {_normalize_event_subject(names[1])},
+                    "subscribers": {_normalize_event_subject(c) for c in consumed},
+                    "kind": "all",
+                }
+            )
+    return required
+
+
+def _validate_required_bindings(service_bindings: dict[str, Any]) -> None:
+    publishers, subscribers = _parse_service_bindings(service_bindings)
+    problems: list[str] = []
+    for requirement in _required_subjects_from_architecture():
+        subjects = requirement["subjects"]
+        if requirement["kind"] == "any":
+            satisfied = False
+            for subject in subjects:
+                pub_services = publishers.get(subject, set())
+                sub_services = subscribers.get(subject, set())
+                if pub_services and requirement["subscribers"].issubset(sub_services):
+                    satisfied = True
+                    break
+            if not satisfied:
+                problems.append(
+                    "missing alternative edge: expected one of "
+                    f"{subjects} to have publisher(s) and subscriber(s) "
+                    f"{sorted(requirement['subscribers'])}"
+                )
+            continue
+
+        for subject in subjects:
+            pub_services = publishers.get(subject, set())
+            sub_services = subscribers.get(subject, set())
+            if not pub_services:
+                problems.append(
+                    f"missing publisher for {subject}: add a service_bindings.*.publish entry"
+                )
+            missing_pub = requirement["publishers"] - pub_services
+            if missing_pub:
+                problems.append(
+                    f"{subject} must be published by {sorted(missing_pub)}; found {sorted(pub_services) or 'none'}"
+                )
+            if not sub_services:
+                problems.append(
+                    f"missing subscriber for {subject}: add a service_bindings.*.subscribe entry"
+                )
+            missing_sub = requirement["subscribers"] - sub_services
+            if missing_sub:
+                problems.append(
+                    f"{subject} must be consumed by {sorted(missing_sub)}; found {sorted(sub_services) or 'none'}"
+                )
+
+    if problems:
+        msg = "Required orchestration edges failed validation:\n - " + "\n - ".join(problems)
+        raise ValueError(msg)
 
 
 def discover_services(names: Iterable[str] | None = None) -> list[type]:
@@ -85,6 +211,15 @@ async def _connect_nats():
 async def run(config_path: str) -> None:
     """Start services defined in ``config_path``."""
     cfg = _load_config(config_path)
+    service_bindings = cfg.get("service_bindings")
+    if service_bindings is None:
+        logger.warning(
+            "No service_bindings found in config; skipping required orchestration DAG validation"
+        )
+    elif not isinstance(service_bindings, dict):
+        raise ValueError("service_bindings must be a mapping of service name to binding metadata")
+    else:
+        _validate_required_bindings(service_bindings)
     names = cfg.get("services", [])
     service_classes = discover_services(names)
     crew_specs = cfg.get("crews", [])
