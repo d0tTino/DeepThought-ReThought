@@ -6,6 +6,7 @@ import functools
 import json
 import os
 import subprocess
+import warnings
 from importlib import metadata
 from pathlib import Path
 from typing import Optional
@@ -404,7 +405,9 @@ def _alias_choices(*names: str) -> object:
 class BotEnv(BaseSettings):
     """Environment variables required for running the Discord bot."""
 
-    DISCORD_TOKEN: str
+    DISCORD_BOT_TOKEN: str = Field(
+        validation_alias=_alias_choices("DISCORD_BOT_TOKEN", "DISCORD_TOKEN"),
+    )
     MONITOR_CHANNEL: int
     PROJECT_FORUM_CHANNEL_ID: int | None = Field(
         default=None,
@@ -466,10 +469,35 @@ class BotEnv(BaseSettings):
     def PROJECTS_REQUIRE_EVENTS(self) -> bool:  # pragma: no cover - compatibility shim
         return self.PROJECT_REQUIRE_EVENTS
 
+    @property
+    def DISCORD_TOKEN(self) -> str:  # pragma: no cover - compatibility shim
+        return self.DISCORD_BOT_TOKEN
+
+
+def load_discord_bot_token(*, warn_on_legacy: bool = True) -> str:
+    """Load the Discord bot token from canonical env var with legacy fallback."""
+
+    token = (os.getenv("DISCORD_BOT_TOKEN") or "").strip()
+    if token:
+        return token
+
+    legacy_token = (os.getenv("DISCORD_TOKEN") or "").strip()
+    if legacy_token and warn_on_legacy:
+        warnings.warn(
+            "DISCORD_TOKEN is deprecated; please use DISCORD_BOT_TOKEN.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    return legacy_token
+
 
 
 def load_bot_env() -> BotEnv:
     """Return bot environment settings or exit with a clear error."""
+
+    token = load_discord_bot_token()
+    if token and "DISCORD_BOT_TOKEN" not in os.environ:
+        os.environ["DISCORD_BOT_TOKEN"] = token
 
     for legacy, canonical in (
         ("PROJECTS_FORUM_CHANNEL", "PROJECT_FORUM_CHANNEL_ID"),
@@ -490,9 +518,9 @@ def load_bot_env() -> BotEnv:
         missing: list[str] = []
         invalid: list[str] = []
 
-        token = os.getenv("DISCORD_TOKEN")
+        token = load_discord_bot_token(warn_on_legacy=False)
         if not token:
-            missing.append("DISCORD_TOKEN")
+            missing.append("DISCORD_BOT_TOKEN")
 
         monitor_raw = os.getenv("MONITOR_CHANNEL")
         monitor: int | None = None
@@ -538,7 +566,7 @@ def load_bot_env() -> BotEnv:
                 f"Missing or invalid environment variables: {', '.join(problems)}"
             )
 
-        setattr(env, "DISCORD_TOKEN", token)
+        setattr(env, "DISCORD_BOT_TOKEN", token)
         setattr(env, "MONITOR_CHANNEL", monitor)
         setattr(env, "PROJECT_FORUM_CHANNEL_ID", forum_id)
         setattr(env, "PROJECT_INDEX_CHANNEL_ID", index_id)

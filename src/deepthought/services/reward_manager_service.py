@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import os
-
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
+from ..config import load_discord_bot_token
 from ..motivate import Ledger, RewardManager
 from .base import BaseService
 
@@ -21,7 +20,7 @@ class RewardManagerService(BaseService):
     ) -> None:
         super().__init__(nats_client, js_context, connect_retries=connect_retries)
         ledger = Ledger(nats_client, js_context)
-        token = os.getenv("DISCORD_TOKEN", "")
+        token = load_discord_bot_token()
         self._manager = RewardManager(self._subscriber, ledger, self._publisher, token)
 
     async def start(self, durable_name: str = "reward_manager_service") -> bool:

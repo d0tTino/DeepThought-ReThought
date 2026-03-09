@@ -8,7 +8,7 @@ def main() -> None:
     env = load_bot_env()
     asyncio.run(
         run(
-            env.DISCORD_TOKEN,
+            env.DISCORD_BOT_TOKEN,
             env.MONITOR_CHANNEL,
             holiday_locale=env.PROJECT_HOLIDAY_LOCALE,
         )

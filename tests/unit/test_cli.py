@@ -328,5 +328,5 @@ def test_parse_run_discord_gateway():
 def test_run_discord_gateway_requires_token():
     parser = _build_parser()
     args = parser.parse_args(["run", "discord-gateway", "--token", ""])
-    with pytest.raises(SystemExit, match="DISCORD_TOKEN is required"):
+    with pytest.raises(SystemExit, match="DISCORD_BOT_TOKEN is required"):
         args.func(args)

@@ -21,7 +21,7 @@ service_bindings:
     description: Bridge Discord I/O to NATS.
     env:
       - NATS_URL
-      - DISCORD_TOKEN
+      - DISCORD_BOT_TOKEN
     subscribe:
       - subject: dtr.response.ranked.v1  # legacy alias: dtr.response.ranked
         event_subject: EventSubjects.RESPONSE_RANKED
@@ -252,7 +252,7 @@ service_bindings:
 
 environment:
   NATS_URL: ${NATS_URL:-nats://localhost:4222}
-  DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+  DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
   LLM_ENDPOINT: ${LLM_ENDPOINT:-http://localhost:8000/generate}
   DT_MEMORY_DB: ${DT_MEMORY_DB:-./data/memory.db}
   DT_SOCIAL_GRAPH_DB: ${DT_SOCIAL_GRAPH_DB:-./data/social_graph.db}

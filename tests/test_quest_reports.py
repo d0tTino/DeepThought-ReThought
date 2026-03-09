@@ -88,7 +88,7 @@ def test_send_quest_story_posts_to_autopsy(monkeypatch):
         return Resp()
 
     monkeypatch.setenv("AUTOPSY_CHANNEL", "42")
-    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
     monkeypatch.setattr("requests.post", fake_post)
 
     writer = QuestWriter()
@@ -107,7 +107,7 @@ def test_send_quest_story_ignores_incomplete(monkeypatch):
         called["called"] = True
 
     monkeypatch.setenv("AUTOPSY_CHANNEL", "42")
-    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
     monkeypatch.setattr("requests.post", fake_post)
 
     writer = QuestWriter()
@@ -138,7 +138,7 @@ def test_send_living_report_posts(monkeypatch):
         return Resp()
 
     monkeypatch.setenv("LIVING_REPORT_CHANNEL", "99")
-    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
     monkeypatch.setattr("requests.post", fake_post)
 
     writer = QuestWriter()
