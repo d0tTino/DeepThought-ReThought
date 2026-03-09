@@ -241,5 +241,48 @@ async def test_early_exit_flushes_without_waiting(monkeypatch):
 
     assert msg.acked
     assert svc._publisher.published
-    assert svc._publisher.published[0][1].final_response == "fast"
+    assert svc._publisher.published[0][1]["payload"]["final_response"] == "fast"
     assert "early-1" not in svc._pending_by_input
+
+
+@pytest.mark.asyncio
+async def test_context_and_policy_and_affinity_factors_shape_ranking(monkeypatch):
+    import deepthought.services.selector_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
+    svc = SelectorService(
+        DummyNATS(),
+        DummyJS(),
+        early_exit_confidence=0.0,
+        window_seconds=0.0,
+        source_confidence_weights={"default": 1.0, "remote": 1.0},
+    )
+
+    payload = ResponseCandidatesPayload(
+        input_id="ctx-pol-1",
+        interaction_policy={"response_style": "concise", "ask_clarifying_on_no_safe": True},
+        context_confidence={"aggregate": 0.2, "threshold": 0.45, "low_confidence": True},
+        social_intent_hints={"preferred_style": "concise", "clarify_preferred": True, "high_rapport_expected": True},
+        user_history_affinity={"remote": 0.8, "default": -0.2, "intent": 0.4},
+        candidates=[
+            ResponseCandidate(text="generic", confidence=0.72, source="default", safety_metadata={"style": "verbose"}),
+            ResponseCandidate(text="tailored", confidence=0.65, source="remote", safety_metadata={"style": "concise"}),
+        ],
+    )
+
+    msg = DummyMsg(payload.to_json())
+    await svc._handle_candidates_event(msg)
+
+    ranked = svc._publisher.published[0][1]
+    telemetry = svc._publisher.published[1][1]
+    assert ranked["payload"]["final_response"] == "tailored"
+    assert telemetry["weights"]["policy_fit"] == pytest.approx(0.2)
+    assert telemetry["weights"]["history_affinity"] == pytest.approx(0.15)
+    assert telemetry["weights"]["context_degradation"] == pytest.approx(0.25)
+
+    top_diag = telemetry["diagnostics"][0]
+    assert top_diag["text"] == "tailored"
+    assert top_diag["factor_scores"]["policy_fit"] > 0.5
+    assert top_diag["factor_scores"]["history_affinity"] > 0.0
+    assert top_diag["factor_scores"]["context_degradation"] > 0.0

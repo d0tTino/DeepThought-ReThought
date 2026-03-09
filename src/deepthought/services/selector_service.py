@@ -34,6 +34,9 @@ class _AggregationState:
     author_id: Optional[str] = None
     channel_id: Optional[str] = None
     interaction_policy: Optional[dict] = None
+    context_confidence: dict = field(default_factory=dict)
+    social_intent_hints: dict = field(default_factory=dict)
+    user_history_affinity: dict[str, float] = field(default_factory=dict)
     opened_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     flush_task: asyncio.Task[None] | None = None
 
@@ -64,6 +67,9 @@ class SelectorService:
         self._repetition_penalty = repetition_penalty or self._default_repetition_penalty
         self._pending_by_input: dict[str, _AggregationState] = {}
         self._aggregation_lock = asyncio.Lock()
+        self._context_degradation_weight = 0.25
+        self._policy_fit_weight = 0.2
+        self._history_affinity_weight = 0.15
 
     def _default_toxicity_guard(self, candidate: ResponseCandidate) -> bool:
         score, _ = moderation.evaluate_toxicity(candidate.text)
@@ -91,12 +97,87 @@ class SelectorService:
             )
         return ("I want to help, but I need a safer way to answer this request.", "safe_default")
 
-    def _rank_candidates(self, candidates: list[ResponseCandidate]) -> tuple[list[ResponseCandidate], list[dict]]:
+    def _context_degradation_score(self, context_confidence: Optional[dict]) -> float:
+        context = context_confidence or {}
+        aggregate_raw = context.get("aggregate", 1.0)
+        threshold_raw = context.get("threshold", 0.45)
+        low_confidence = bool(context.get("low_confidence"))
+        try:
+            aggregate = max(0.0, min(1.0, float(aggregate_raw)))
+        except (TypeError, ValueError):
+            aggregate = 1.0
+        try:
+            threshold = max(0.0, min(1.0, float(threshold_raw)))
+        except (TypeError, ValueError):
+            threshold = 0.45
+
+        degradation = max(0.0, threshold - aggregate)
+        if low_confidence:
+            degradation += 0.1
+        return max(0.0, min(1.0, degradation))
+
+    def _policy_fit_score(
+        self,
+        candidate: ResponseCandidate,
+        interaction_policy: Optional[dict],
+        social_intent_hints: Optional[dict],
+    ) -> float:
+        policy = interaction_policy or {}
+        hints = social_intent_hints or {}
+        score = 0.0
+
+        if bool(candidate.safety_passed) or candidate.safety_passed is None:
+            score += 0.3
+        if policy.get("ask_clarifying_on_no_safe") and bool(hints.get("clarify_preferred")):
+            score += 0.2
+
+        expected_style = policy.get("response_style") or hints.get("preferred_style")
+        candidate_style = candidate.safety_metadata.get("style") if isinstance(candidate.safety_metadata, dict) else None
+        if isinstance(expected_style, str) and isinstance(candidate_style, str):
+            if expected_style.strip().lower() == candidate_style.strip().lower():
+                score += 0.5
+        elif expected_style is None:
+            score += 0.2
+
+        return max(0.0, min(1.0, score))
+
+    def _user_history_affinity_score(
+        self,
+        candidate: ResponseCandidate,
+        user_history_affinity: Optional[dict[str, float]],
+        social_intent_hints: Optional[dict],
+    ) -> float:
+        affinity = user_history_affinity or {}
+        hints = social_intent_hints or {}
+        source_key = (candidate.source or "default").lower()
+        source_affinity = affinity.get(source_key, affinity.get("default", 0.0))
+        intent_affinity = affinity.get("intent", 0.0)
+        if bool(hints.get("high_rapport_expected")):
+            intent_affinity += 0.1
+        raw_score = 0.7 * source_affinity + 0.3 * intent_affinity
+        return max(-1.0, min(1.0, float(raw_score)))
+
+    def _rank_candidates(
+        self,
+        candidates: list[ResponseCandidate],
+        interaction_policy: Optional[dict] = None,
+        context_confidence: Optional[dict] = None,
+        social_intent_hints: Optional[dict] = None,
+        user_history_affinity: Optional[dict[str, float]] = None,
+    ) -> tuple[list[ResponseCandidate], list[dict]]:
         diagnostics: list[dict] = []
         scored: list[tuple[float, ResponseCandidate]] = []
+        context_degradation = self._context_degradation_score(context_confidence)
+        context_adjustment = -self._context_degradation_weight * context_degradation
+
         for candidate in candidates:
             rejection_reasons: list[str] = []
             normalized = self._normalized_confidence(candidate)
+            policy_fit = self._policy_fit_score(candidate, interaction_policy, social_intent_hints)
+            policy_adjustment = self._policy_fit_weight * policy_fit
+            affinity_score = self._user_history_affinity_score(candidate, user_history_affinity, social_intent_hints)
+            affinity_adjustment = self._history_affinity_weight * affinity_score
+
             if not (self._safety_filter(candidate) if self._safety_filter else candidate.safety_passed is not False):
                 rejection_reasons.append("safety_filter")
             if not self._toxicity_guard(candidate):
@@ -104,7 +185,20 @@ class SelectorService:
             if not self._contradiction_checker(candidate, candidates):
                 rejection_reasons.append("contradiction")
             penalty = self._repetition_penalty(candidate, candidates)
-            final_score = max(0.0, normalized - penalty)
+            final_score = max(
+                0.0,
+                normalized + policy_adjustment + affinity_adjustment + context_adjustment - penalty,
+            )
+            factor_scores = {
+                "base_confidence": normalized,
+                "context_degradation": context_degradation,
+                "context_adjustment": context_adjustment,
+                "policy_fit": policy_fit,
+                "policy_adjustment": policy_adjustment,
+                "history_affinity": affinity_score,
+                "history_adjustment": affinity_adjustment,
+                "repetition_penalty": penalty,
+            }
             if rejection_reasons:
                 diagnostics.append(
                     {
@@ -113,6 +207,7 @@ class SelectorService:
                         "confidence": candidate.confidence,
                         "normalized_confidence": normalized,
                         "score": final_score,
+                        "factor_scores": factor_scores,
                         "rejection_reasons": rejection_reasons,
                     }
                 )
@@ -125,6 +220,7 @@ class SelectorService:
                     "confidence": candidate.confidence,
                     "normalized_confidence": normalized,
                     "score": final_score,
+                    "factor_scores": factor_scores,
                     "rejection_reasons": [],
                 }
             )
@@ -133,12 +229,26 @@ class SelectorService:
         return ranked, sorted(diagnostics, key=lambda item: item["score"], reverse=True)
 
     async def _publish_selection(self, state: _AggregationState, trace_id: str | None = None, causation_id: str | None = None) -> None:
-        ranked_candidates, diagnostics = self._rank_candidates(state.candidates)
+        ranked_candidates, diagnostics = self._rank_candidates(
+            state.candidates,
+            interaction_policy=state.interaction_policy,
+            context_confidence=state.context_confidence,
+            social_intent_hints=state.social_intent_hints,
+            user_history_affinity=state.user_history_affinity,
+        )
         fallback_reason = None
         if ranked_candidates:
             selected = ranked_candidates[0]
             final_response = selected.text
-            final_confidence = self._normalized_confidence(selected)
+            selected_diag = next(
+                (
+                    item
+                    for item in diagnostics
+                    if item.get("text") == selected.text and item.get("source") == selected.source
+                ),
+                None,
+            )
+            final_confidence = float(selected_diag.get("score", self._normalized_confidence(selected))) if selected_diag else self._normalized_confidence(selected)
             final_source = selected.source
         else:
             final_response, fallback_reason = self._choose_fallback(state.interaction_policy)
@@ -178,6 +288,14 @@ class SelectorService:
             "fallback_reason": fallback_reason,
             "window_seconds": self._window_seconds,
             "candidate_count": len(state.candidates),
+            "context_confidence": state.context_confidence,
+            "social_intent_hints": state.social_intent_hints,
+            "user_history_affinity": state.user_history_affinity,
+            "weights": {
+                "context_degradation": self._context_degradation_weight,
+                "policy_fit": self._policy_fit_weight,
+                "history_affinity": self._history_affinity_weight,
+            },
             "diagnostics": diagnostics,
         }
         await self._publisher.publish(
@@ -218,6 +336,9 @@ class SelectorService:
                         author_id=payload.author_id,
                         channel_id=payload.channel_id,
                         interaction_policy=payload.interaction_policy,
+                        context_confidence=payload.context_confidence or {},
+                        social_intent_hints=payload.social_intent_hints or {},
+                        user_history_affinity=payload.user_history_affinity or {},
                     )
                     self._pending_by_input[input_id] = state
 
@@ -226,9 +347,19 @@ class SelectorService:
                 state.author_id = state.author_id or payload.author_id
                 state.channel_id = state.channel_id or payload.channel_id
                 state.interaction_policy = state.interaction_policy or payload.interaction_policy
+                state.context_confidence = state.context_confidence or (payload.context_confidence or {})
+                state.social_intent_hints = state.social_intent_hints or (payload.social_intent_hints or {})
+                state.user_history_affinity = state.user_history_affinity or (payload.user_history_affinity or {})
 
-                ranked_candidates, _ = self._rank_candidates(state.candidates)
-                early_exit = bool(ranked_candidates) and self._normalized_confidence(ranked_candidates[0]) >= self._early_exit_confidence
+                ranked_candidates, diagnostics = self._rank_candidates(
+                    state.candidates,
+                    interaction_policy=state.interaction_policy,
+                    context_confidence=state.context_confidence,
+                    social_intent_hints=state.social_intent_hints,
+                    user_history_affinity=state.user_history_affinity,
+                )
+                top_score = diagnostics[0]["score"] if diagnostics else 0.0
+                early_exit = bool(ranked_candidates) and top_score >= self._early_exit_confidence
                 if early_exit:
                     if state.flush_task and not state.flush_task.done():
                         state.flush_task.cancel()

@@ -266,6 +266,9 @@ class ResponseCandidatesPayload(EventPayload):
     author_id: Optional[str] = None
     timestamp: Optional[str] = None
     interaction_policy: Optional[Dict[str, Any]] = None
+    context_confidence: Optional[Dict[str, Any]] = None
+    social_intent_hints: Optional[Dict[str, Any]] = None
+    user_history_affinity: Optional[Dict[str, float]] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ResponseCandidatesPayload":
@@ -286,6 +289,15 @@ class ResponseCandidatesPayload(EventPayload):
             author_id=data.get("author_id"),
             timestamp=data.get("timestamp"),
             interaction_policy=data.get("interaction_policy"),
+            context_confidence=data.get("context_confidence"),
+            social_intent_hints=data.get("social_intent_hints"),
+            user_history_affinity={
+                str(name): float(value)
+                for name, value in (data.get("user_history_affinity") or {}).items()
+                if isinstance(value, (int, float))
+            }
+            if isinstance(data.get("user_history_affinity"), dict)
+            else None,
         )
 
 

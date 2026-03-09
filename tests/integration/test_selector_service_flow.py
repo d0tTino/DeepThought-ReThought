@@ -84,5 +84,5 @@ async def test_candidates_publish_and_ack(monkeypatch):
     subject, ranked_payload, use_jetstream = svc._publisher.calls[0]
     assert subject == EventSubjects.RESPONSE_RANKED
     assert use_jetstream is True
-    assert ranked_payload.final_response == "high"
+    assert ranked_payload["payload"]["final_response"] == "high"
     assert svc._publisher.calls[1][0] == "dtr.telemetry.selector_ranking.v1"

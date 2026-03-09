@@ -44,7 +44,15 @@ def test_event_envelope_roundtrip_validation():
             {"user_input": "hi", "attachments": [{"url": "https://a", "size": 2}]},
         ),
         (MemoryRetrievedPayload, {"retrieved_knowledge": {"k": "v"}}),
-        (ResponseCandidatesPayload, {"candidates": [{"text": "a", "confidence": 0.2, "source": "remote", "confidence_components": {"token_score": 0.4}, "safety_metadata": {"policy": "keyword_v1"}}]}),
+        (
+            ResponseCandidatesPayload,
+            {
+                "candidates": [{"text": "a", "confidence": 0.2, "source": "remote", "confidence_components": {"token_score": 0.4}, "safety_metadata": {"policy": "keyword_v1"}}],
+                "context_confidence": {"aggregate": 0.41, "low_confidence": True, "threshold": 0.45},
+                "social_intent_hints": {"clarify_preferred": True, "preferred_style": "concise"},
+                "user_history_affinity": {"remote": 0.5, "intent": 0.2},
+            },
+        ),
         (
             ResponseRankedPayload,
             {"final_response": "a", "candidates": [{"text": "a", "confidence": 0.2, "source": "remote", "safety_metadata": {"policy": "keyword_v1"}}]},
