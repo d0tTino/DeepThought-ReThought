@@ -185,6 +185,19 @@ def validate_response_candidates_payload(data: Dict[str, Any]) -> Dict[str, Any]
         confidence = candidate.get("confidence", 0.0)
         if not isinstance(confidence, (float, int)):
             raise ValueError(f"Candidate at index {idx} has invalid confidence")
+
+    for optional_object_field in ("interaction_policy", "context_confidence", "social_intent_hints"):
+        value = data.get(optional_object_field)
+        if value is not None and not isinstance(value, dict):
+            raise ValueError(f"Field '{optional_object_field}' must be an object")
+
+    affinity = data.get("user_history_affinity")
+    if affinity is not None:
+        if not isinstance(affinity, dict):
+            raise ValueError("Field 'user_history_affinity' must be an object")
+        for key, value in affinity.items():
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"Field 'user_history_affinity.{key}' must be numeric")
     return data
 
 
