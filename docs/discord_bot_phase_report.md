@@ -48,7 +48,8 @@ After installing TextBlob, download its corpora:
 ```bash
 python -m textblob.download_corpora
 
-export DISCORD_TOKEN=your_token
+export DISCORD_BOT_TOKEN=your_token
+# DISCORD_TOKEN remains a deprecated legacy alias.
 export MONITOR_CHANNEL=1234567890
 export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
 export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional

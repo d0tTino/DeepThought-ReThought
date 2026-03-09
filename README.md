@@ -374,7 +374,8 @@ export DT_SCHEDULER_INTERVAL=120
 
 ### Required environment variables
 
-* `DISCORD_TOKEN` - Discord bot token
+* `DISCORD_BOT_TOKEN` - Discord bot token
+* `DISCORD_TOKEN` - deprecated legacy alias for `DISCORD_BOT_TOKEN`
 * `MONITOR_CHANNEL` - Channel ID the bot should monitor
 * `NATS_URL` - Address of the NATS server
 
@@ -480,7 +481,7 @@ python -m textblob.download_corpora
 Set the environment variables used by the bot:
 
 ```bash
-export DISCORD_TOKEN=your_token
+export DISCORD_BOT_TOKEN=your_token
 export MONITOR_CHANNEL=1234567890
 export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
 export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
@@ -490,7 +491,7 @@ export PLAYFUL_REPLY_TIMEOUT_MINUTES=5          # bot-to-bot reply cooldown
 export MAX_BOT_SPEAKERS=2                       # ignore chatter when too many bots talk
 ```
 
-`DISCORD_TOKEN` and `MONITOR_CHANNEL` are required. `NATS_URL` must also be set
+`DISCORD_BOT_TOKEN` and `MONITOR_CHANNEL` are required. `NATS_URL` must also be set
 to a valid NATS server address if the default `nats://localhost:4222` is not
 appropriate. All other variables are optional. `USER_REPLY_RATE_SECONDS`
 controls how quickly the bot may respond to the same user, while

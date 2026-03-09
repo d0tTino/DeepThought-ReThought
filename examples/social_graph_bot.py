@@ -1945,7 +1945,7 @@ if __name__ == "__main__":
         env = load_bot_env()
         asyncio.run(
             run(
-                env.DISCORD_TOKEN,
+                env.DISCORD_BOT_TOKEN,
                 env.MONITOR_CHANNEL,
                 forum_channel_id=env.PROJECT_FORUM_CHANNEL_ID,
                 index_channel_id=env.PROJECT_INDEX_CHANNEL_ID,

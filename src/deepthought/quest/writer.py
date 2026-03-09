@@ -9,6 +9,8 @@ from typing import Any, Optional
 
 import requests
 
+from ..config import load_discord_bot_token
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +28,7 @@ class QuestWriter:
     - ``AUTOPSY_CHANNEL``: channel for quest autopsies.
     - ``PARAMETERS_CHANNEL``: channel for parameter dumps.
     - ``LIVING_REPORT_CHANNEL``: channel for weekly living reports.
-    - ``DISCORD_TOKEN``: bot token for authentication.
+    - ``DISCORD_BOT_TOKEN``: bot token for authentication (``DISCORD_TOKEN`` is a deprecated alias).
     """
 
     def __init__(
@@ -52,7 +54,7 @@ class QuestWriter:
         self._autopsy_channel = autopsy_channel or os.getenv("AUTOPSY_CHANNEL")
         self._parameters_channel = parameters_channel or os.getenv("PARAMETERS_CHANNEL")
         self._living_channel = living_channel or os.getenv("LIVING_REPORT_CHANNEL")
-        self._token = token or os.getenv("DISCORD_TOKEN")
+        self._token = token or load_discord_bot_token()
 
     # ------------------------------------------------------------------
     def _post(self, channel_id: Optional[str], content: str) -> None:

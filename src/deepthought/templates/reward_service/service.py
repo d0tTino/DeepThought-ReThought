@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import os
-
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
+from deepthought.config import load_discord_bot_token
 from deepthought.eda import Publisher, Subscriber
 from deepthought.motivate import Ledger, RewardManager
 
@@ -16,7 +15,7 @@ class TemplateService:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._ledger = Ledger(nats_client, js_context)
-        token = os.getenv("DISCORD_TOKEN", "")
+        token = load_discord_bot_token()
         self._manager = RewardManager(
             self._subscriber, self._ledger, self._publisher, token
         )

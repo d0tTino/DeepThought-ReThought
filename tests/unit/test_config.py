@@ -159,7 +159,7 @@ def test_get_settings_env(monkeypatch):
 
 
 def test_load_bot_env_success(monkeypatch):
-    monkeypatch.setenv("DISCORD_TOKEN", "abc")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "abc")
     monkeypatch.setenv("MONITOR_CHANNEL", "42")
 
     env = load_bot_env()
@@ -170,7 +170,7 @@ def test_load_bot_env_success(monkeypatch):
 
 
 def test_load_bot_env_custom_locale(monkeypatch):
-    monkeypatch.setenv("DISCORD_TOKEN", "abc")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "abc")
     monkeypatch.setenv("MONITOR_CHANNEL", "42")
     monkeypatch.setenv("PROJECT_HOLIDAY_LOCALE", "gb")
 
@@ -179,8 +179,22 @@ def test_load_bot_env_custom_locale(monkeypatch):
     assert env.PROJECT_HOLIDAY_LOCALE == "GB"
 
 
+
+
+def test_load_bot_env_legacy_token_warns(monkeypatch):
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.setenv("DISCORD_TOKEN", "abc")
+    monkeypatch.setenv("MONITOR_CHANNEL", "42")
+
+    with pytest.deprecated_call(match="DISCORD_TOKEN is deprecated"):
+        env = load_bot_env()
+
+    assert env.DISCORD_BOT_TOKEN == "abc"
+
+
 def test_load_bot_env_missing(monkeypatch):
     monkeypatch.delenv("DISCORD_TOKEN", raising=False)
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
     monkeypatch.delenv("MONITOR_CHANNEL", raising=False)
 
     with pytest.raises(SystemExit):
@@ -188,7 +202,7 @@ def test_load_bot_env_missing(monkeypatch):
 
 
 def test_load_bot_env_invalid_channel(monkeypatch):
-    monkeypatch.setenv("DISCORD_TOKEN", "abc")
+    monkeypatch.setenv("DISCORD_BOT_TOKEN", "abc")
     monkeypatch.setenv("MONITOR_CHANNEL", "x")
 
     with pytest.raises(SystemExit):
