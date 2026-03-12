@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -19,7 +21,7 @@ from ..eda.events import (
     MemoryRetrievedPayload,
     PerceptionEmbeddingsPayload,
 )
-from ..memory import create_memory_backend
+from ..memory import MemoryLifecyclePolicy, MemoryTier, create_memory_backend
 from ..memory.fact_extractor import extract_typed_fact_triples_from_turn
 from ..memory.graph import (
     CypherGraphMemoryStore,
@@ -29,6 +31,7 @@ from ..memory.graph import (
     retrieve_user_context,
 )
 from ..memory.graph.pipeline import ingest_fact_triples
+from ..memory.graph.store import utc_now_iso
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
 from ..search import OfflineSearch
@@ -74,7 +77,9 @@ class CognitiveCoreService(BaseService):
                     try:
                         search = OfflineSearch.create_index(db_path, [])
                     except ValueError:
-                        logger.warning("No documents available for search index; disabling offline search")
+                        logger.warning(
+                            "No documents available for search index; disabling offline search"
+                        )
                         search = None
                 else:
                     search = OfflineSearch(db_path)
@@ -82,6 +87,17 @@ class CognitiveCoreService(BaseService):
         self._top_k = self._settings.memory_top_k
         self._input_enrichment = InputEnrichmentService()
         self._graph_memory = self._build_graph_memory_store()
+        self._lifecycle_policy = MemoryLifecyclePolicy()
+        self._tiered_turns: dict[
+            str, list[dict[str, str | float | tuple[str, ...]]]
+        ] = {
+            MemoryTier.EPHEMERAL: [],
+            MemoryTier.WORKING: [],
+            MemoryTier.LONG_TERM: [],
+        }
+        self._salience_summaries: list[dict[str, str | float]] = []
+        self._consolidation_task: asyncio.Task | None = None
+        self._consolidation_interval_s = 60.0
 
     def _build_graph_memory_store(self):
         backend = (self._settings.graph_backend or "").lower()
@@ -90,7 +106,9 @@ class CognitiveCoreService(BaseService):
                 graph_backend = getattr(self._memory, "graph_backend", None)
                 connector = None
                 if hasattr(graph_backend, "_dal"):
-                    connector = getattr(getattr(graph_backend, "_dal", None), "_connector", None)
+                    connector = getattr(
+                        getattr(graph_backend, "_dal", None), "_connector", None
+                    )
                 elif graph_backend is not None and hasattr(graph_backend, "_connector"):
                     connector = getattr(graph_backend, "_connector", None)
                 if connector is not None:
@@ -199,6 +217,84 @@ class CognitiveCoreService(BaseService):
             return snippets
         return snippets
 
+    def _ingest_with_lifecycle(
+        self, *, user_id: str, text: str, input_id: str, timestamp: str
+    ) -> None:
+        scored = self._lifecycle_policy.score_event(text)
+        bucket = self._tiered_turns[scored.tier]
+        bucket.append(
+            {
+                "user_id": str(user_id),
+                "text": text,
+                "input_id": input_id,
+                "timestamp": timestamp,
+                "salience": scored.salience,
+                "reasons": scored.reason_tags,
+            }
+        )
+        if scored.tier is MemoryTier.WORKING and len(bucket) > max(self._top_k * 3, 16):
+            del bucket[: -max(self._top_k * 3, 16)]
+
+    def run_consolidation_cycle(self) -> int:
+        archived = 0
+        stale_ephemeral = self._tiered_turns[MemoryTier.EPHEMERAL]
+        while stale_ephemeral and len(stale_ephemeral) > max(self._top_k, 8):
+            entry = stale_ephemeral.pop(0)
+            note = str(entry.get("text", ""))
+            self._salience_summaries.append(
+                {
+                    "summary": note[:220],
+                    "salience": float(entry.get("salience", 0.1)),
+                    "timestamp": str(entry.get("timestamp") or utc_now_iso()),
+                    "source_tier": MemoryTier.EPHEMERAL,
+                    "user_id": str(entry.get("user_id") or "anonymous"),
+                }
+            )
+            archived += 1
+        if len(self._salience_summaries) > 200:
+            self._salience_summaries = self._salience_summaries[-200:]
+        return archived
+
+    async def _consolidation_loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self._consolidation_interval_s)
+                archived = self.run_consolidation_cycle()
+                if archived:
+                    logger.debug("Consolidated %s low-salience turns", archived)
+        except asyncio.CancelledError:
+            return
+
+    def _prioritized_graph_facts(self, user_id: str, topic: str) -> list[str]:
+        summary_evidence = [
+            item
+            for item in self._salience_summaries
+            if (
+                item.get("user_id") == str(user_id)
+                and topic.lower() in str(item.get("summary", "")).lower()
+            )
+            or item.get("user_id") == str(user_id)
+        ]
+        summary_evidence = sorted(
+            summary_evidence,
+            key=lambda e: (float(e.get("salience", 0.0)), str(e.get("timestamp", ""))),
+            reverse=True,
+        )
+        summary_facts = [
+            f"summary: {item['summary']}" for item in summary_evidence[: self._top_k]
+        ]
+
+        graph_user_evidence = retrieve_user_context(
+            self._graph_memory, str(user_id), limit=self._top_k
+        )
+        graph_topic_evidence = retrieve_topic_context(
+            self._graph_memory, topic, limit=self._top_k
+        )
+        graph_facts = [
+            ev.summary for ev in [*graph_user_evidence, *graph_topic_evidence]
+        ]
+        return summary_facts + graph_facts
+
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
         start = time.perf_counter()
@@ -206,8 +302,12 @@ class CognitiveCoreService(BaseService):
             raw_data = json.loads(msg.data.decode())
             if not isinstance(raw_data, dict):
                 raise ValueError("InputReceived payload must be a dict")
-            decoded_payload, envelope_meta = decode_payload_or_envelope(EventSubjects.MEMORY_RETRIEVAL_REQUESTED, raw_data)
-            enriched = self._input_enrichment.parse_input_received_data(decoded_payload, headers=getattr(msg, "headers", None))
+            decoded_payload, envelope_meta = decode_payload_or_envelope(
+                EventSubjects.MEMORY_RETRIEVAL_REQUESTED, raw_data
+            )
+            enriched = self._input_enrichment.parse_input_received_data(
+                decoded_payload, headers=getattr(msg, "headers", None)
+            )
             input_id = enriched.input_id
             user_input = enriched.user_input
             user_id = enriched.user_id
@@ -216,10 +316,18 @@ class CognitiveCoreService(BaseService):
             logger.info("CognitiveCoreService received input %s", input_id)
 
             resolved_user_id = enriched.resolved_user_id
-            self._memory.store_interaction(user_input)
-            await self._db.store_memory(resolved_user_id, user_input)
-
             turn_timestamp = datetime.now(timezone.utc).isoformat()
+            self._memory.store_interaction(user_input)
+            self._ingest_with_lifecycle(
+                user_id=str(resolved_user_id),
+                text=user_input,
+                input_id=input_id,
+                timestamp=turn_timestamp,
+            )
+            scored = self._lifecycle_policy.score_event(user_input)
+            db_topic = f"tier:{scored.tier}"
+            await self._db.store_memory(resolved_user_id, user_input, topic=db_topic)
+
             ingest_conversation_turns(
                 [
                     {
@@ -240,14 +348,24 @@ class CognitiveCoreService(BaseService):
                 source_id=input_id,
             )
             if extracted_triples:
+                enriched_triples = []
+                for triple in extracted_triples:
+                    attrs = dict(triple.get("attributes", {}))
+                    attrs.setdefault("memory_tier", str(scored.tier))
+                    attrs.setdefault("salience", scored.salience)
+                    if scored.reason_tags:
+                        attrs.setdefault("salience_reasons", list(scored.reason_tags))
+                    enriched_triples.append({**triple, "attributes": attrs})
                 ingest_fact_triples(
-                    extracted_triples,
+                    enriched_triples,
                     self._graph_memory,
                     timestamp=turn_timestamp,
                     source_id=input_id,
                 )
 
-            memory_facts = self._memory.retrieve_context(user_input) if self._memory else []
+            memory_facts = (
+                self._memory.retrieve_context(user_input) if self._memory else []
+            )
             vector_facts: List[str] = []
             if self._search:
                 try:
@@ -255,10 +373,13 @@ class CognitiveCoreService(BaseService):
                 except Exception:  # pragma: no cover - defensive
                     logger.error("Offline search failed", exc_info=True)
 
-            db_facts = await self._db_context(resolved_user_id=resolved_user_id, channel_id=channel_id)
-            graph_user_evidence = retrieve_user_context(self._graph_memory, str(resolved_user_id), limit=self._top_k)
-            graph_topic_evidence = retrieve_topic_context(self._graph_memory, user_input, limit=self._top_k)
-            graph_facts = [ev.summary for ev in [*graph_user_evidence, *graph_topic_evidence]]
+            self.run_consolidation_cycle()
+            db_facts = await self._db_context(
+                resolved_user_id=resolved_user_id, channel_id=channel_id
+            )
+            graph_facts = self._prioritized_graph_facts(
+                str(resolved_user_id), user_input
+            )
 
             facts: List[str] = []
             merged_facts: dict[str, dict[str, List[str] | str]] = {}
@@ -275,7 +396,10 @@ class CognitiveCoreService(BaseService):
                     if not normalized:
                         continue
                     if normalized not in merged_facts:
-                        merged_facts[normalized] = {"text": str(item).strip(), "sources": [source]}
+                        merged_facts[normalized] = {
+                            "text": str(item).strip(),
+                            "sources": [source],
+                        }
                         continue
                     if source not in merged_facts[normalized]["sources"]:
                         merged_facts[normalized]["sources"].append(source)
@@ -283,8 +407,16 @@ class CognitiveCoreService(BaseService):
             for data in merged_facts.values():
                 source_tag = ",".join(data["sources"])
                 facts.append(f"[{source_tag}] {data['text']}")
-            trace_id = envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None
-            causation_id = envelope_meta.get("event_id") if isinstance(envelope_meta.get("event_id"), str) else input_id
+            trace_id = (
+                envelope_meta.get("trace_id")
+                if isinstance(envelope_meta.get("trace_id"), str)
+                else None
+            )
+            causation_id = (
+                envelope_meta.get("event_id")
+                if isinstance(envelope_meta.get("event_id"), str)
+                else input_id
+            )
             payload = MemoryRetrievedPayload(
                 retrieved_knowledge={"facts": facts, "source": "cognitive_core"},
                 user_input=user_input,
@@ -341,7 +473,9 @@ class CognitiveCoreService(BaseService):
         finally:
             duration = time.perf_counter() - start
             INPUTS_TOTAL.labels(service="cognitive_core_service").inc()
-            INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(duration)
+            INPUT_LATENCY_SECONDS.labels(service="cognitive_core_service").observe(
+                duration
+            )
 
     async def _handle_embeddings(self, msg: Msg) -> None:
         """Store perception embeddings in the vector store and knowledge graph."""
@@ -362,7 +496,9 @@ class CognitiveCoreService(BaseService):
                     ids = [f"{message_id}:{idx}" for idx in range(len(vectors))]
                     missing = getattr(store, "missing_ids", lambda x: list(x))(ids)
                     if missing:
-                        new_vectors = [v for v, _id in zip(vectors, ids) if _id in missing]
+                        new_vectors = [
+                            v for v, _id in zip(vectors, ids) if _id in missing
+                        ]
                         store.upsert_vectors(new_vectors, missing)
 
             # Insert nodes/edges in the KG with modality and timestamp metadata
@@ -421,7 +557,9 @@ class CognitiveCoreService(BaseService):
         """React to BDI_INTENTION events by logging the goal."""
         try:
             payload = BDIIntentionPayload.from_json(msg.data.decode())
-            logger.info("CognitiveCoreService received intention goal: %s", payload.goal)
+            logger.info(
+                "CognitiveCoreService received intention goal: %s", payload.goal
+            )
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except Exception:
@@ -465,10 +603,21 @@ class CognitiveCoreService(BaseService):
         )
         started = await super().start()
         if started:
-            logger.info("CognitiveCoreService subscribed to %s", EventSubjects.MEMORY_RETRIEVAL_REQUESTED)
+            logger.info(
+                "CognitiveCoreService subscribed to %s",
+                EventSubjects.MEMORY_RETRIEVAL_REQUESTED,
+            )
+            if self._consolidation_task is None or self._consolidation_task.done():
+                self._consolidation_task = asyncio.create_task(
+                    self._consolidation_loop()
+                )
         return started
 
     async def stop(self) -> None:
+        if self._consolidation_task and not self._consolidation_task.done():
+            self._consolidation_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._consolidation_task
         try:
             backend = getattr(self._memory, "graph_backend", None)
             connector = None

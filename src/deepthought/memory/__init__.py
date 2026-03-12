@@ -13,6 +13,7 @@ from .vector_store import (
     VectorStore,
     create_vector_store,
 )
+from .memory_lifecycle_policy import MemoryLifecyclePolicy, MemoryTier, ScoredMemoryEvent
 from .fact_extractor import (
     extract_typed_fact_triples_from_turn,
     build_user_fact_context,
@@ -32,6 +33,9 @@ __all__ = [
     "SimpleEmbeddingFunction",
     "TieredMemory",
     "create_memory_backend",
+    "MemoryLifecyclePolicy",
+    "MemoryTier",
+    "ScoredMemoryEvent",
     "build_user_fact_context",
     "extract_typed_fact_triples_from_turn",
     "extract_and_store_user_facts",
