@@ -16,6 +16,7 @@ TABLES = [
     "affinity",
     "trust",
     "memories",
+    "fact_records",
     "theories",
     "queued_tasks",
     "sentiment_trends",

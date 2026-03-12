@@ -10,6 +10,7 @@ from typing import Any, Mapping
 import aiosqlite
 
 from ..config import get_settings
+from ..fact_schema import make_canonical_fact
 
 SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
 try:  # Optional dependency
@@ -145,6 +146,21 @@ class DBManager:
             memory TEXT,
             sentiment_score REAL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS fact_records (
+            id TEXT PRIMARY KEY,
+            dedup_key TEXT UNIQUE,
+            subject TEXT NOT NULL,
+            predicate TEXT NOT NULL,
+            object_value TEXT,
+            object_id TEXT,
+            provenance TEXT,
+            confidence REAL DEFAULT 1.0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            attributes TEXT
         )
         """,
         """
@@ -352,6 +368,7 @@ class DBManager:
                 for query in self.CREATE_TABLE_QUERIES:
                     await self._db.execute(query)
                 await self._ensure_relationship_columns()
+                await self._ensure_fact_records_migration()
                 await self._db.execute("INSERT OR IGNORE INTO trust_config (id) VALUES (1)")
                 await self._db.execute("INSERT OR IGNORE INTO interaction_decay (id) VALUES (1)")
                 await self._db.commit()
@@ -361,6 +378,60 @@ class DBManager:
         if self._db is not None:
             await self._db.close()
             self._db = None
+
+    async def _ensure_fact_records_migration(self) -> None:
+        """Backfill canonical fact rows from legacy memories table."""
+        assert self._db is not None
+        async with self._db.execute("SELECT COUNT(*) FROM fact_records") as cur:
+            row = await cur.fetchone()
+        if row and int(row[0] or 0) > 0:
+            return
+
+        async with self._db.execute(
+            "SELECT user_id, topic, memory, sentiment_score, timestamp FROM memories ORDER BY timestamp ASC"
+        ) as cur:
+            rows = await cur.fetchall()
+
+        for row in rows:
+            topic = str(row["topic"] or "")
+            memory = str(row["memory"] or "")
+            timestamp = str(row["timestamp"] or datetime.utcnow().isoformat())
+            fact = make_canonical_fact(
+                subject=str(row["user_id"] or "anonymous"),
+                predicate="memory_note",
+                object_value=memory,
+                provenance={"source": "sqlite_memories", "observed_at": timestamp},
+                confidence=0.6,
+                created_at=timestamp,
+                updated_at=timestamp,
+                attributes={"topic": topic, "sentiment_score": row["sentiment_score"]},
+            )
+            await self._db.execute(
+                """
+                INSERT INTO fact_records (
+                    id, dedup_key, subject, predicate, object_value, object_id,
+                    provenance, confidence, created_at, updated_at, attributes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(dedup_key) DO UPDATE SET
+                    confidence=MAX(confidence, excluded.confidence),
+                    updated_at=excluded.updated_at,
+                    provenance=excluded.provenance,
+                    attributes=excluded.attributes
+                """,
+                (
+                    fact.id,
+                    fact.dedup_key,
+                    fact.subject,
+                    fact.predicate,
+                    fact.object_value,
+                    fact.object_id,
+                    json.dumps(fact.provenance),
+                    fact.confidence,
+                    fact.created_at,
+                    fact.updated_at,
+                    json.dumps(fact.attributes),
+                ),
+            )
 
     async def _ensure_relationship_columns(self) -> None:
         """Add new columns to the relationships table if they don't exist."""
@@ -572,14 +643,18 @@ class DBManager:
             return []
 
         assert self._db
-        query = "SELECT topic, memory FROM memories WHERE user_id=? ORDER BY timestamp DESC"
+        query = (
+            "SELECT json_extract(attributes, '$.topic') as topic, object_value as memory "
+            "FROM fact_records WHERE subject=? ORDER BY updated_at DESC"
+        )
         params: list[str | int] = [str(user_id)]
         if limit is not None:
             query += " LIMIT ?"
             params.append(int(limit))
 
         async with self._db.execute(query, params) as cur:
-            return await cur.fetchall()
+            rows = await cur.fetchall()
+        return [(str(r[0] or ""), str(r[1] or "")) for r in rows]
 
     async def store_memory(
         self,
@@ -605,6 +680,43 @@ class DBManager:
         await self._db.execute(
             "INSERT INTO memories (user_id, topic, memory, sentiment_score) VALUES (?, ?, ?, ?)",
             (str(user_id), topic, memory, sentiment_score),
+        )
+        timestamp = datetime.utcnow().replace(microsecond=0).isoformat()
+        fact = make_canonical_fact(
+            subject=str(user_id),
+            predicate="memory_note",
+            object_value=memory.strip(),
+            provenance={"source": "db_manager.store_memory", "observed_at": timestamp},
+            confidence=0.7,
+            created_at=timestamp,
+            updated_at=timestamp,
+            attributes={"topic": topic, "sentiment_score": sentiment_score},
+        )
+        await self._db.execute(
+            """
+            INSERT INTO fact_records (
+                id, dedup_key, subject, predicate, object_value, object_id,
+                provenance, confidence, created_at, updated_at, attributes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(dedup_key) DO UPDATE SET
+                confidence=MAX(fact_records.confidence, excluded.confidence),
+                updated_at=excluded.updated_at,
+                provenance=excluded.provenance,
+                attributes=excluded.attributes
+            """,
+            (
+                fact.id,
+                fact.dedup_key,
+                fact.subject,
+                fact.predicate,
+                fact.object_value,
+                fact.object_id,
+                json.dumps(fact.provenance),
+                fact.confidence,
+                fact.created_at,
+                fact.updated_at,
+                json.dumps(fact.attributes),
+            ),
         )
         if topic:
             await self._db.execute(

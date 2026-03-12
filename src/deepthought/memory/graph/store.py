@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol, Sequence
 
+from ...fact_schema import CanonicalFact
+
 
 @dataclass(frozen=True)
 class Provenance:
@@ -41,17 +43,8 @@ class GraphRelation:
 
 
 @dataclass(frozen=True)
-class GraphFact:
-    fact_id: str
-    subject_id: str
-    predicate: str
-    object_id: str | None = None
-    object_value: str | None = None
-    fact_type: str = "observation"
-    attributes: dict[str, Any] = field(default_factory=dict)
-    provenance: Provenance = field(default_factory=lambda: Provenance(source="unknown"))
-    confidence: float = 1.0
-    temporal: TemporalValidity = field(default_factory=TemporalValidity)
+class GraphFact(CanonicalFact):
+    """Backward-compatible alias for canonical fact records."""
 
 
 @dataclass(frozen=True)

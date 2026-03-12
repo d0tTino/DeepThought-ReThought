@@ -271,3 +271,27 @@ async def test_assign_themes(tmp_path, monkeypatch):
 
     theme = await sg.get_theme("u1", "c1")
     assert theme == "positive"
+
+
+@pytest.mark.asyncio
+async def test_store_memory_writes_canonical_fact_and_dedups(tmp_path):
+    db_file = tmp_path / "db.sqlite"
+    sg.db_manager = DBManager(str(db_file))
+    await sg.db_manager.connect()
+    await sg.db_manager.init_db()
+
+    await sg.store_memory("u1", "I like chess", topic="hobby")
+    await sg.store_memory("u1", "I like   chess", topic="hobby")
+
+    async with aiosqlite.connect(str(db_file)) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM fact_records WHERE subject=? AND predicate='memory_note'",
+            ("u1",),
+        ) as cur:
+            row = await cur.fetchone()
+    assert row[0] == 1
+
+    recalled = await sg.db_manager.recall_user("u1", limit=5)
+    assert recalled
+    assert recalled[0][1]
+    await sg.db_manager.close()

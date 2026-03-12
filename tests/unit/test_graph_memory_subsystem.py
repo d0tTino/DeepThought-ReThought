@@ -8,6 +8,7 @@ from deepthought.memory.graph import (
     retrieve_topic_context,
     retrieve_user_context,
 )
+from deepthought.memory.graph.pipeline import ingest_fact_triples
 
 
 def test_extract_typed_fact_triples_from_turn():
@@ -104,3 +105,44 @@ def test_migrate_sqlite_memories_to_graph(tmp_path):
     assert stats["rows_read"] == 1
     assert stats["graph_upserts"] >= 1
     assert retrieve_user_context(store, "u1", limit=5)
+
+
+def test_canonical_dedup_merges_semantically_identical_facts():
+    store = InMemoryGraphMemoryStore()
+    triples = [
+        {
+            "subject_id": "u1",
+            "predicate": "likes_hobby",
+            "object_value": " Chess ",
+            "fact_type": "preference",
+            "confidence": 0.8,
+        },
+        {
+            "subject_id": "u1",
+            "predicate": "likes_hobby",
+            "object_value": "chess",
+            "fact_type": "preference",
+            "confidence": 0.7,
+        },
+    ]
+    ingest_fact_triples(triples, store, timestamp="2024-01-01T00:00:00+00:00", source_id="dup")
+
+    assert len(store.facts) == 1
+    only = next(iter(store.facts.values()))
+    assert only.dedup_key
+
+
+def test_retrieval_interoperability_uses_canonical_fact_shape():
+    store = InMemoryGraphMemoryStore()
+    ingest_conversation_turns(
+        [
+            {"user_id": "u9", "text": "My favorite snack is popcorn", "timestamp": "2024-01-01T00:00:00+00:00", "input_id": "turn1"},
+        ],
+        store,
+    )
+
+    context = retrieve_user_context(store, "u9", limit=5)
+    assert context
+    ev = context[0]
+    assert "subject" in ev.attributes
+    assert "updated_at" in ev.attributes

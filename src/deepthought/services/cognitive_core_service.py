@@ -31,6 +31,7 @@ from ..memory.graph import (
     retrieve_user_context,
 )
 from ..memory.graph.pipeline import ingest_fact_triples
+from ..fact_schema import format_fact_snippet, make_canonical_fact
 from ..memory.graph.store import utc_now_iso
 from ..memory.tiered import TieredMemory
 from ..metrics.prometheus import INPUT_LATENCY_SECONDS, INPUTS_TOTAL
@@ -190,8 +191,15 @@ class CognitiveCoreService(BaseService):
             for topic, memory in rows:
                 if not memory or not str(memory).strip():
                     continue
-                entry = f"[{topic}] {memory}" if topic else str(memory)
-                db_snippets.append(entry.strip())
+                fact = make_canonical_fact(
+                    subject=str(user_id),
+                    predicate="memory_note",
+                    object_value=str(memory),
+                    provenance={"source": "db_context"},
+                    confidence=0.6,
+                    attributes={"topic": topic},
+                )
+                db_snippets.append(format_fact_snippet(fact))
 
         merged: List[str] = []
         seen = set()
@@ -212,7 +220,19 @@ class CognitiveCoreService(BaseService):
         if self._db is None or resolved_user_id is None:
             return []
         rows = await self._db.recall_user(resolved_user_id, limit=self._top_k)
-        snippets = [m[1] for m in rows if len(m) > 1 and m[1]]
+        snippets = []
+        for m in rows:
+            if len(m) <= 1 or not m[1]:
+                continue
+            fact = make_canonical_fact(
+                subject=str(resolved_user_id),
+                predicate="memory_note",
+                object_value=str(m[1]),
+                provenance={"source": "db_context"},
+                confidence=0.6,
+                attributes={"topic": m[0]},
+            )
+            snippets.append(format_fact_snippet(fact))
         if channel_id is None:
             return snippets
         return snippets
@@ -290,9 +310,20 @@ class CognitiveCoreService(BaseService):
         graph_topic_evidence = retrieve_topic_context(
             self._graph_memory, topic, limit=self._top_k
         )
-        graph_facts = [
-            ev.summary for ev in [*graph_user_evidence, *graph_topic_evidence]
-        ]
+        graph_facts = []
+        for ev in [*graph_user_evidence, *graph_topic_evidence]:
+            fact = make_canonical_fact(
+                subject=str(ev.attributes.get("subject") or user_id),
+                predicate=str(ev.relation_type or "fact"),
+                object_value=str(ev.summary.split(":", 1)[-1].strip() if ":" in ev.summary else ev.summary),
+                object_id=ev.entity_id,
+                provenance={"source": ev.provenance.source, "source_id": ev.provenance.source_id, "observed_at": ev.provenance.observed_at},
+                confidence=ev.confidence,
+                created_at=str(ev.attributes.get("created_at") or ev.attributes.get("timestamp") or utc_now_iso()),
+                updated_at=str(ev.attributes.get("updated_at") or ev.attributes.get("timestamp") or utc_now_iso()),
+                attributes=dict(ev.attributes),
+            )
+            graph_facts.append(format_fact_snippet(fact))
         return summary_facts + graph_facts
 
     async def _handle_input(self, msg: Msg) -> None:
