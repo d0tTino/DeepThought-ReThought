@@ -4,6 +4,7 @@ import hashlib
 from typing import Any, Iterable, Sequence
 
 from ..fact_extractor import extract_typed_fact_triples_from_turn
+from ...fact_schema import make_canonical_fact
 from .store import GraphEntity, GraphFact, GraphMemoryStore, GraphRelation, Provenance, TemporalValidity, utc_now_iso
 
 
@@ -74,21 +75,27 @@ def ingest_fact_triples(
                     temporal=TemporalValidity(valid_from=timestamp),
                 )
             )
-        fact_id = _stable_id(triple["subject_id"], triple["predicate"], str(obj_id or triple.get("object_value")))
-        store.upsert_fact(
-            GraphFact(
-                fact_id=fact_id,
-                subject_id=triple["subject_id"],
-                predicate=triple["predicate"],
-                object_id=obj_id,
-                object_value=triple.get("object_value"),
-                fact_type=triple.get("fact_type", "profile"),
-                attributes={**triple.get("attributes", {}), "timestamp": timestamp},
-                provenance=subject.provenance,
-                confidence=float(triple.get("confidence", 0.7)),
-                temporal=TemporalValidity(valid_from=timestamp),
-            )
+
+        canonical = make_canonical_fact(
+            subject=triple["subject_id"],
+            predicate=triple["predicate"],
+            object_id=obj_id,
+            object_value=triple.get("object_value"),
+            provenance={
+                "source": "conversation_turn",
+                "source_id": source_id,
+                "observed_at": timestamp,
+            },
+            confidence=float(triple.get("confidence", 0.7)),
+            created_at=timestamp,
+            updated_at=timestamp,
+            attributes={
+                **triple.get("attributes", {}),
+                "timestamp": timestamp,
+                "fact_type": triple.get("fact_type", "profile"),
+            },
         )
+        store.upsert_fact(GraphFact(**canonical.__dict__))
         upserts += 1
     return upserts
 

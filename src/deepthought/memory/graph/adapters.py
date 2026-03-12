@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from ...graph.connector import GraphConnector, Neo4jConnector
+from ...fact_schema import format_fact_snippet
 from .store import (
     GraphEntity,
     GraphEvidence,
@@ -59,31 +60,33 @@ class CypherGraphMemoryStore(GraphMemoryStore):
 
     def upsert_fact(self, fact: GraphFact) -> None:
         self._connector.execute(
-            "MERGE (s:Entity {id: $subject_id}) "
-            "MERGE (f:Fact {id: $fact_id}) "
-            "SET f.predicate = $predicate, f.fact_type = $fact_type, f.attributes = $attributes, "
-            "f.confidence = $confidence, f.valid_from = $valid_from, f.valid_to = $valid_to, "
-            "f.provenance = $provenance, f.object_value = $object_value "
+            "MERGE (s:Entity {id: $subject}) "
+            "MERGE (f:Fact {dedup_key: $dedup_key}) "
+            "ON CREATE SET f.id = $id, f.created_at = $created_at "
+            "SET f.subject = $subject, f.predicate = $predicate, f.attributes = $attributes, "
+            "f.confidence = $confidence, f.updated_at = $updated_at, f.provenance = $provenance, "
+            "f.object_value = $object_value, f.object_id = $object_id, f.dedup_key = $dedup_key "
             "MERGE (s)-[:HAS_FACT]->(f)",
             {
-                "subject_id": fact.subject_id,
-                "fact_id": fact.fact_id,
+                "id": fact.id,
+                "subject": fact.subject,
                 "predicate": fact.predicate,
-                "fact_type": fact.fact_type,
+                "object_id": fact.object_id,
+                "object_value": fact.object_value,
                 "attributes": fact.attributes,
                 "confidence": fact.confidence,
-                "valid_from": fact.temporal.valid_from,
-                "valid_to": fact.temporal.valid_to,
-                "provenance": asdict(fact.provenance),
-                "object_value": fact.object_value,
+                "created_at": fact.created_at,
+                "updated_at": fact.updated_at,
+                "provenance": fact.provenance,
+                "dedup_key": fact.dedup_key,
             },
         )
         if fact.object_id:
             self._connector.execute(
                 "MERGE (o:Entity {id: $object_id}) "
-                "MERGE (f:Fact {id: $fact_id}) "
+                "MERGE (f:Fact {dedup_key: $dedup_key}) "
                 "MERGE (f)-[:ABOUT]->(o)",
-                {"object_id": fact.object_id, "fact_id": fact.fact_id},
+                {"object_id": fact.object_id, "dedup_key": fact.dedup_key},
             )
 
     def retrieve_user_evidence(
@@ -92,10 +95,11 @@ class CypherGraphMemoryStore(GraphMemoryStore):
         rows = self._connector.execute(
             "MATCH (u:Entity {id: $user_id})-[:HAS_FACT]->(f:Fact) "
             "OPTIONAL MATCH (f)-[:ABOUT]->(o:Entity) "
-            "RETURN f.id AS evidence_id, f.predicate AS predicate, f.object_value AS object_value, "
+            "RETURN coalesce(f.id, f.dedup_key) AS evidence_id, f.subject AS subject, "
+            "f.predicate AS predicate, f.object_value AS object_value, "
             "o.id AS object_id, f.confidence AS confidence, f.provenance AS provenance, "
-            "f.attributes AS attributes, f.valid_from AS valid_from, f.fact_type AS fact_type, u.id AS subject_id "
-            "ORDER BY f.confidence DESC, f.valid_from DESC LIMIT $limit",
+            "f.attributes AS attributes, f.created_at AS created_at, f.updated_at AS updated_at "
+            "ORDER BY f.confidence DESC, f.updated_at DESC LIMIT $limit",
             {"user_id": user_id, "limit": limit},
         )
         return _rows_to_evidence(rows)
@@ -107,10 +111,11 @@ class CypherGraphMemoryStore(GraphMemoryStore):
             "MATCH (s:Entity)-[:HAS_FACT]->(f:Fact) "
             "WHERE toLower(f.predicate) CONTAINS toLower($topic) "
             "OR toLower(coalesce(f.object_value, '')) CONTAINS toLower($topic) "
-            "RETURN f.id AS evidence_id, f.predicate AS predicate, f.object_value AS object_value, "
-            "NULL AS object_id, f.confidence AS confidence, f.provenance AS provenance, "
-            "f.attributes AS attributes, f.valid_from AS valid_from, f.fact_type AS fact_type, s.id AS subject_id "
-            "ORDER BY f.confidence DESC, f.valid_from DESC LIMIT $limit",
+            "RETURN coalesce(f.id, f.dedup_key) AS evidence_id, f.subject AS subject, "
+            "f.predicate AS predicate, f.object_value AS object_value, "
+            "f.object_id AS object_id, f.confidence AS confidence, f.provenance AS provenance, "
+            "f.attributes AS attributes, f.created_at AS created_at, f.updated_at AS updated_at "
+            "ORDER BY f.confidence DESC, f.updated_at DESC LIMIT $limit",
             {"topic": topic, "limit": limit},
         )
         return _rows_to_evidence(rows)
@@ -133,7 +138,9 @@ class InMemoryGraphMemoryStore(GraphMemoryStore):
         ] = relation
 
     def upsert_fact(self, fact: GraphFact) -> None:
-        self.facts[fact.fact_id] = fact
+        prev = self.facts.get(fact.dedup_key)
+        if prev is None or fact.updated_at >= prev.updated_at:
+            self.facts[fact.dedup_key] = fact
 
     def retrieve_user_evidence(
         self, user_id: str, *, limit: int = 10
@@ -141,7 +148,7 @@ class InMemoryGraphMemoryStore(GraphMemoryStore):
         out = [
             _fact_to_evidence(f)
             for f in self.facts.values()
-            if f.subject_id == user_id or f.object_id == user_id
+            if f.subject == user_id or f.object_id == user_id
         ]
         return _rank_and_dedup(out, limit)
 
@@ -167,15 +174,17 @@ def _rows_to_evidence(rows: Sequence[Any]) -> list[GraphEvidence]:
     evidences = []
     for row in rows:
         evidence_id = _row_get(row, "evidence_id", "")
+        subject = _row_get(row, "subject", "")
         predicate = _row_get(row, "predicate", "fact")
         object_value = _row_get(row, "object_value", "")
         confidence = float(_row_get(row, "confidence", 0.5) or 0.5)
         provenance = _row_get(row, "provenance", {}) or {}
         attrs = _row_get(row, "attributes", {}) or {}
         attrs = dict(attrs)
-        attrs.setdefault("fact_type", _row_get(row, "fact_type", "observation"))
-        attrs.setdefault("subject_id", _row_get(row, "subject_id"))
-        attrs.setdefault("user_scoped", bool(attrs.get("subject_id")))
+        attrs.setdefault("subject", subject)
+        attrs.setdefault("user_scoped", bool(subject))
+        attrs.setdefault("created_at", _row_get(row, "created_at"))
+        attrs.setdefault("updated_at", _row_get(row, "updated_at"))
         summary = f"{predicate}: {object_value}".strip()
         evidences.append(
             GraphEvidence(
@@ -211,26 +220,26 @@ def _row_get(row: Any, key: str, default: Any = None) -> Any:
 
 
 def _fact_to_evidence(fact: GraphFact) -> GraphEvidence:
-    summary = fact.object_value or fact.object_id or ""
     attrs = dict(fact.attributes)
-    attrs.setdefault("fact_type", fact.fact_type)
-    attrs.setdefault("subject_id", fact.subject_id)
+    attrs.setdefault("subject", fact.subject)
     attrs.setdefault("user_scoped", True)
+    attrs.setdefault("created_at", fact.created_at)
+    attrs.setdefault("updated_at", fact.updated_at)
     return GraphEvidence(
-        evidence_id=fact.fact_id,
-        summary=f"{fact.predicate}: {summary}",
+        evidence_id=fact.id,
+        summary=format_fact_snippet(fact),
         entity_id=fact.object_id,
         relation_type=fact.predicate,
         score=_score(fact.confidence, fact.attributes),
         confidence=fact.confidence,
-        provenance=fact.provenance,
+        provenance=_prov_from_any(fact.provenance),
         attributes=attrs,
     )
 
 
 def _score(confidence: float, attrs: dict[str, Any]) -> float:
     recency_boost = 0.0
-    observed = attrs.get("observed_at") or attrs.get("timestamp")
+    observed = attrs.get("observed_at") or attrs.get("updated_at") or attrs.get("timestamp")
     if observed:
         try:
             delta = datetime.now(timezone.utc) - datetime.fromisoformat(
@@ -240,10 +249,7 @@ def _score(confidence: float, attrs: dict[str, Any]) -> float:
         except Exception:
             recency_boost = 0.0
     salience = float(attrs.get("salience", 0.0) or 0.0) * 0.3
-    summary_boost = (
-        0.2 if attrs.get("is_summary") or attrs.get("fact_type") == "summary" else 0.0
-    )
-    return round(float(confidence) + recency_boost + salience + summary_boost, 6)
+    return round(float(confidence) + recency_boost + salience, 6)
 
 
 def _rank_and_dedup(
