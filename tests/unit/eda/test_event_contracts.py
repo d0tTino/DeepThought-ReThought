@@ -6,6 +6,7 @@ from deepthought.eda.contracts import (
     decode_payload,
     decode_payload_or_envelope,
     to_canonical_subject,
+    validate_cross_service_envelope,
     validate_envelope,
 )
 from deepthought.eda.events import (
@@ -153,3 +154,20 @@ def test_decode_payload_or_envelope_accepts_enveloped_payload():
     assert payload["user_input"] == "hello"
     assert meta["trace_id"] == envelope.trace_id
     assert meta["producer"] == "discord_gateway"
+
+
+def test_cross_service_envelope_requires_trace_event_and_causation_ids():
+    envelope = EventEnvelope.build(
+        subject=CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED,
+        payload={"input_id": "i-1"},
+        producer="social_graph_service",
+    )
+    validated = validate_cross_service_envelope(CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED, envelope.__dict__)
+    assert validated.trace_id
+    assert validated.event_id
+    assert validated.causation_id
+
+
+def test_cross_service_envelope_rejects_raw_non_enveloped_payloads():
+    with pytest.raises(ValueError, match="Missing required key 'schema_version'"):
+        validate_cross_service_envelope(CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED, {"input_id": "i-1"})

@@ -63,14 +63,18 @@ async def test_handle_input_resolves_identity_from_payload_and_headers(tmp_path,
 
     update_subject, update_payload, _, _ = service._publisher.calls[0]
     assert update_subject == EventSubjects.SOCIAL_UPDATED
-    assert update_payload["input_id"] == "1"
-    assert update_payload["affinity"] == 1
+    assert update_payload["payload"]["input_id"] == "1"
+    assert update_payload["payload"]["affinity"] == 1
+    assert update_payload["trace_id"]
+    assert update_payload["event_id"]
+    assert update_payload["causation_id"]
 
     event_subject, payload, _, _ = service._publisher.calls[1]
     assert event_subject == EventSubjects.SOCIAL_SIGNALS_RETRIEVED
-    assert payload["input_id"] == "1"
-    assert payload["social_signals"]["affinity"] == 1
-    assert payload["social_signals"]["persona"] == "friendly"
+    assert payload["payload"]["input_id"] == "1"
+    assert payload["payload"]["social_signals"]["affinity"] == 1
+    assert payload["payload"]["social_signals"]["persona"] == "friendly"
+    assert payload["trace_id"]
 
     await db.close()
 
@@ -123,8 +127,8 @@ async def test_each_input_updates_social_state_exactly_once(tmp_path, monkeypatc
     assert len(service._publisher.calls) == 2
     assert service._publisher.calls[0][0] == EventSubjects.SOCIAL_UPDATED
     assert service._publisher.calls[1][0] == EventSubjects.SOCIAL_SIGNALS_RETRIEVED
-    assert service._publisher.calls[0][1]["input_id"] == "in-1"
-    assert service._publisher.calls[1][1]["input_id"] == "in-1"
+    assert service._publisher.calls[0][1]["payload"]["input_id"] == "in-1"
+    assert service._publisher.calls[1][1]["payload"]["input_id"] == "in-1"
 
     await db.close()
 
@@ -150,12 +154,12 @@ async def test_social_contract_update_and_retrieval_semantics(tmp_path, monkeypa
 
     updated = service._publisher.calls[0][1]
     retrieved = service._publisher.calls[1][1]
-    assert updated["input_id"] == "in-contract"
-    assert updated["perception"]["flirtation"] == pytest.approx(0.5)
-    assert "social_signals" not in updated
+    assert updated["payload"]["input_id"] == "in-contract"
+    assert updated["payload"]["perception"]["flirtation"] == pytest.approx(0.5)
+    assert "social_signals" not in updated["payload"]
 
-    assert retrieved["input_id"] == "in-contract"
-    assert retrieved["social_signals"]["perception"]["flirtation"] == pytest.approx(0.5)
-    assert retrieved["social_signals"]["affinity"] == updated["affinity"]
+    assert retrieved["payload"]["input_id"] == "in-contract"
+    assert retrieved["payload"]["social_signals"]["perception"]["flirtation"] == pytest.approx(0.5)
+    assert retrieved["payload"]["social_signals"]["affinity"] == updated["payload"]["affinity"]
 
     await db.close()

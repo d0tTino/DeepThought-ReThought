@@ -55,7 +55,7 @@ class EventEnvelope:
     schema_version: str
     event_id: str
     trace_id: str
-    causation_id: str | None
+    causation_id: str
     created_at: str
     producer: str
     subject: str
@@ -72,11 +72,12 @@ class EventEnvelope:
         causation_id: str | None = None,
         schema_version: str = "1.0.0",
     ) -> "EventEnvelope":
+        event_id = str(uuid4())
         return cls(
             schema_version=schema_version,
-            event_id=str(uuid4()),
+            event_id=event_id,
             trace_id=trace_id or str(uuid4()),
-            causation_id=causation_id,
+            causation_id=causation_id or event_id,
             created_at=datetime.now(timezone.utc).isoformat(),
             producer=producer,
             subject=to_canonical_subject(subject),
@@ -106,7 +107,7 @@ def validate_envelope(data: Dict[str, Any]) -> EventEnvelope:
     schema_version = _expect_type(data, "schema_version", str)
     event_id = _expect_type(data, "event_id", str)
     trace_id = _expect_type(data, "trace_id", str)
-    causation_id = _expect_type(data, "causation_id", str, optional=True)
+    causation_id = _expect_type(data, "causation_id", str)
     created_at = _expect_type(data, "created_at", str)
     producer = _expect_type(data, "producer", str)
     subject = _expect_type(data, "subject", str)
@@ -114,8 +115,7 @@ def validate_envelope(data: Dict[str, Any]) -> EventEnvelope:
 
     _expect_uuid(event_id, "event_id")
     _expect_uuid(trace_id, "trace_id")
-    if causation_id is not None:
-        _expect_uuid(causation_id, "causation_id")
+    _expect_uuid(causation_id, "causation_id")
     try:
         datetime.fromisoformat(created_at.replace("Z", "+00:00"))
     except ValueError as exc:
@@ -135,6 +135,18 @@ def validate_envelope(data: Dict[str, Any]) -> EventEnvelope:
 
 def to_canonical_subject(subject: str) -> str:
     return LEGACY_SUBJECT_MAP.get(subject, subject)
+
+
+def validate_cross_service_envelope(subject: str, data: Dict[str, Any]) -> EventEnvelope:
+    """Validate mandatory envelope contract for cross-service events."""
+
+    envelope = validate_envelope(data)
+    canonical_subject = to_canonical_subject(subject)
+    if envelope.subject != canonical_subject:
+        raise ValueError(
+            f"Envelope subject mismatch: expected '{canonical_subject}', got '{envelope.subject}'"
+        )
+    return envelope
 
 
 def normalize_legacy_payload(subject: str, payload: Dict[str, Any]) -> Dict[str, Any]:

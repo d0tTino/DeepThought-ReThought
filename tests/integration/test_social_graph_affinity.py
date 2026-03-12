@@ -94,3 +94,43 @@ async def test_cognitive_core_does_not_mutate_social_state(tmp_path):
     assert topics.count("social_perception") == 0
 
     await db.close()
+
+
+class RecordingPublisher:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
+        self.calls.append((subject, payload, use_jetstream, timeout))
+
+
+@pytest.mark.asyncio
+async def test_social_graph_cross_service_emits_enveloped_payloads(tmp_path, monkeypatch):
+    db = DBManager(str(tmp_path / "sg-envelope.db"))
+    await db.init_db()
+    pm = PersonaManager(db, friendly=1, playful=1)
+
+    svc = SocialGraphService(db_manager=db, persona_manager=pm)
+    svc._publisher = RecordingPublisher()
+    svc._subscriber = SimpleNamespace()
+
+    import deepthought.services.social_graph_service as sgsvc
+
+    monkeypatch.setattr(
+        sgsvc,
+        "analyze_social",
+        lambda _t: {"flirtation": 0.4, "avoidance": 0.1, "manipulation": 0.0},
+    )
+
+    msg = DummyMsg(InputReceivedPayload(user_input="hello", input_id="enveloped-1"))
+    await svc._handle_input(msg)
+
+    assert msg.acked
+    assert len(svc._publisher.calls) == 2
+    for _, payload, _, _ in svc._publisher.calls:
+        assert payload["trace_id"]
+        assert payload["event_id"]
+        assert payload["causation_id"]
+        assert payload["payload"]["input_id"] == "enveloped-1"
+
+    await db.close()

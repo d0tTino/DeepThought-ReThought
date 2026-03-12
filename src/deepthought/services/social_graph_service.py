@@ -10,6 +10,7 @@ from nats.js.client import JetStreamContext
 
 from ..perception.social_perception import analyze as analyze_social
 from ..eda.events import EventSubjects
+from ..eda.publisher import publish_enveloped
 from .base import BaseService
 from .db_manager import DBManager
 from .persona_manager import PersonaManager
@@ -98,8 +99,18 @@ class SocialGraphService(BaseService):
                 "persona": persona,
                 "perception": perception,
             }
-            await self._publisher.publish(EventSubjects.SOCIAL_UPDATED, social_update, use_jetstream=True)
-            await self._publisher.publish(EventSubjects.SOCIAL_SIGNALS_RETRIEVED, social_snapshot, use_jetstream=True)
+            await publish_enveloped(
+                self._publisher,
+                subject=EventSubjects.SOCIAL_UPDATED,
+                payload=social_update,
+                producer="social_graph_service",
+            )
+            await publish_enveloped(
+                self._publisher,
+                subject=EventSubjects.SOCIAL_SIGNALS_RETRIEVED,
+                payload=social_snapshot,
+                producer="social_graph_service",
+            )
             if hasattr(msg, "ack") and callable(msg.ack):
                 await msg.ack()
         except (json.JSONDecodeError, ValueError):
