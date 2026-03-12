@@ -12,7 +12,7 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 from ..eda.events import EventSubjects, PerceptionEmbeddingsEvent
-from ..eda.publisher import Publisher
+from ..eda.publisher import Publisher, publish_enveloped
 from ..eda.subscriber import Subscriber
 from .perception.summarization import build_semantic_notes
 
@@ -134,10 +134,11 @@ class PerceptionInterpretService:
                 "input_id": input_id,
                 "multimodal_interpretations": multimodal_notes,
             }
-            await self._publisher.publish(
-                EventSubjects.PERCEPTION_INTERPRET_RETRIEVED,
-                out_payload,
-                use_jetstream=True,
+            await publish_enveloped(
+                self._publisher,
+                subject=EventSubjects.PERCEPTION_INTERPRET_RETRIEVED,
+                payload=out_payload,
+                producer="perception_interpret_service",
             )
             self._evict(input_id)
             await msg.ack()

@@ -116,6 +116,13 @@ def test_perception_interpret_service_evicts_after_publish(monkeypatch):
 
     assert embeddings_msg.acked is True
     assert request_msg.acked is True
+    published = service._publisher.published[0]
+    assert published[0] == EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
+    envelope = published[1]
+    assert envelope["trace_id"]
+    assert envelope["event_id"]
+    assert envelope["causation_id"]
+    assert envelope["payload"]["input_id"] == "input-1"
     assert service.cache_metrics["cache_size"] == 0
     assert service.cache_metrics["evictions"] == 1
     assert service.cache_metrics["hit_rate"] == 1.0

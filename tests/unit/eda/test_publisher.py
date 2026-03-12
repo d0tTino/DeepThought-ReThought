@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,7 +23,7 @@ sys.modules.setdefault("nats.aio", aio_mod)
 sys.modules.setdefault("nats.aio.client", client_mod)
 sys.modules.setdefault("nats.js.client", js_client_mod)
 
-from deepthought.eda.publisher import Publisher
+from deepthought.eda.publisher import Publisher, publish_enveloped  # noqa: E402
 
 
 class StubNATS:
@@ -37,9 +38,14 @@ class StubJS:
 
     def __init__(self) -> None:
         self.attempts = 0
+        self.last_subject = None
+        self.last_payload = None
 
     async def publish(self, subject, data, timeout=10.0):  # pragma: no cover - signature
         self.attempts += 1
+        self.last_subject = subject
+        if isinstance(data, bytes):
+            self.last_payload = json.loads(data.decode())
         if self.attempts < 2:
             raise RuntimeError("fail")
 
@@ -72,3 +78,24 @@ async def test_publish_raises_after_exhausting_retries():
 
     with pytest.raises(RuntimeError):
         await pub.publish("sub", b"data", retries=2)
+
+
+@pytest.mark.asyncio
+async def test_publish_enveloped_builds_required_envelope_metadata():
+    nc = StubNATS()
+    js = StubJS()
+    pub = Publisher(nc, js)
+
+    await publish_enveloped(
+        pub,
+        subject="dtr.social.signals.retrieved",
+        payload={"input_id": "in-1"},
+        producer="social_graph_service",
+    )
+
+    assert js.attempts == 2
+    assert js.last_subject == "dtr.social.signals.retrieved"
+    assert js.last_payload["trace_id"]
+    assert js.last_payload["event_id"]
+    assert js.last_payload["causation_id"]
+    assert js.last_payload["payload"]["input_id"] == "in-1"

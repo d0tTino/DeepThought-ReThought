@@ -10,7 +10,10 @@ import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
+from .contracts import EventEnvelope, validate_cross_service_envelope
+
 logger = logging.getLogger(__name__)
+NATS_TIMEOUT_ERROR = getattr(nats.errors, "TimeoutError", TimeoutError)
 
 
 class Publisher:
@@ -67,7 +70,7 @@ class Publisher:
                 await self._nc.publish(subject, data)
                 logger.debug("Published basic NATS message to '%s'", subject)
                 return None
-            except nats.errors.TimeoutError as err:
+            except NATS_TIMEOUT_ERROR as err:
                 last_error = err
                 logger.warning("Publish timeout for '%s' with payload %s: %s", subject, payload_summary, err)
             except Exception as err:
@@ -125,3 +128,44 @@ async def connect(
     )
     js = nc.jetstream()
     return Publisher(nc, js)
+
+
+async def publish_enveloped(
+    publisher: "Publisher",
+    *,
+    subject: str,
+    payload: Dict[str, Any],
+    producer: str,
+    trace_id: str | None = None,
+    causation_id: str | None = None,
+    use_jetstream: bool = True,
+    timeout: float = 10.0,
+    retries: int = 3,
+) -> Optional[Dict]:
+    """Build, validate, and publish a canonical EventEnvelope."""
+
+    envelope = EventEnvelope.build(
+        subject=subject,
+        payload=payload,
+        producer=producer,
+        trace_id=trace_id,
+        causation_id=causation_id,
+    )
+    validate_cross_service_envelope(subject, envelope.__dict__)
+    try:
+        return await publisher.publish(
+            subject,
+            envelope.__dict__,
+            use_jetstream=use_jetstream,
+            timeout=timeout,
+            retries=retries,
+        )
+    except TypeError as exc:
+        if "unexpected keyword argument 'retries'" not in str(exc):
+            raise
+        return await publisher.publish(
+            subject,
+            envelope.__dict__,
+            use_jetstream=use_jetstream,
+            timeout=timeout,
+        )

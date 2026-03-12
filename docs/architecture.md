@@ -22,6 +22,16 @@ For the default orchestrator profile, the following event chain is **required**.
 
 Operators should treat this as a deployment invariant and verify that each required subject has at least one publisher and one subscriber before startup.
 
+### Envelope-only cross-service contract invariant
+
+All cross-service messages on DeepThought EDA subjects **must** be emitted as an `EventEnvelope` (see `src/deepthought/eda/contracts`). Raw top-level payload dicts are not valid cross-service traffic. Each envelope is required to include: 
+
+- `trace_id`
+- `event_id`
+- `causation_id`
+
+Services should publish by calling `publish_enveloped(...)` from `src/deepthought/eda/publisher.py` to enforce this contract uniformly.
+
 ```mermaid
 sequenceDiagram
     participant User
