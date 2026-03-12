@@ -5,7 +5,13 @@ from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from ...graph.connector import GraphConnector, Neo4jConnector
-from .store import GraphEntity, GraphEvidence, GraphFact, GraphMemoryStore, GraphRelation
+from .store import (
+    GraphEntity,
+    GraphEvidence,
+    GraphFact,
+    GraphMemoryStore,
+    GraphRelation,
+)
 
 
 class CypherGraphMemoryStore(GraphMemoryStore):
@@ -80,7 +86,9 @@ class CypherGraphMemoryStore(GraphMemoryStore):
                 {"object_id": fact.object_id, "fact_id": fact.fact_id},
             )
 
-    def retrieve_user_evidence(self, user_id: str, *, limit: int = 10) -> Sequence[GraphEvidence]:
+    def retrieve_user_evidence(
+        self, user_id: str, *, limit: int = 10
+    ) -> Sequence[GraphEvidence]:
         rows = self._connector.execute(
             "MATCH (u:Entity {id: $user_id})-[:HAS_FACT]->(f:Fact) "
             "OPTIONAL MATCH (f)-[:ABOUT]->(o:Entity) "
@@ -92,7 +100,9 @@ class CypherGraphMemoryStore(GraphMemoryStore):
         )
         return _rows_to_evidence(rows)
 
-    def retrieve_topic_evidence(self, topic: str, *, limit: int = 10) -> Sequence[GraphEvidence]:
+    def retrieve_topic_evidence(
+        self, topic: str, *, limit: int = 10
+    ) -> Sequence[GraphEvidence]:
         rows = self._connector.execute(
             "MATCH (s:Entity)-[:HAS_FACT]->(f:Fact) "
             "WHERE toLower(f.predicate) CONTAINS toLower($topic) "
@@ -118,12 +128,16 @@ class InMemoryGraphMemoryStore(GraphMemoryStore):
         self.entities[entity.entity_id] = entity
 
     def upsert_relation(self, relation: GraphRelation) -> None:
-        self.relations[(relation.source_id, relation.relation_type, relation.target_id)] = relation
+        self.relations[
+            (relation.source_id, relation.relation_type, relation.target_id)
+        ] = relation
 
     def upsert_fact(self, fact: GraphFact) -> None:
         self.facts[fact.fact_id] = fact
 
-    def retrieve_user_evidence(self, user_id: str, *, limit: int = 10) -> Sequence[GraphEvidence]:
+    def retrieve_user_evidence(
+        self, user_id: str, *, limit: int = 10
+    ) -> Sequence[GraphEvidence]:
         out = [
             _fact_to_evidence(f)
             for f in self.facts.values()
@@ -131,7 +145,9 @@ class InMemoryGraphMemoryStore(GraphMemoryStore):
         ]
         return _rank_and_dedup(out, limit)
 
-    def retrieve_topic_evidence(self, topic: str, *, limit: int = 10) -> Sequence[GraphEvidence]:
+    def retrieve_topic_evidence(
+        self, topic: str, *, limit: int = 10
+    ) -> Sequence[GraphEvidence]:
         topic_l = topic.lower()
         out = []
         for fact in self.facts.values():
@@ -217,14 +233,22 @@ def _score(confidence: float, attrs: dict[str, Any]) -> float:
     observed = attrs.get("observed_at") or attrs.get("timestamp")
     if observed:
         try:
-            delta = datetime.now(timezone.utc) - datetime.fromisoformat(str(observed).replace("Z", "+00:00"))
+            delta = datetime.now(timezone.utc) - datetime.fromisoformat(
+                str(observed).replace("Z", "+00:00")
+            )
             recency_boost = max(0.0, 1.0 - min(delta.days / 365.0, 1.0)) * 0.1
         except Exception:
             recency_boost = 0.0
-    return round(float(confidence) + recency_boost, 6)
+    salience = float(attrs.get("salience", 0.0) or 0.0) * 0.3
+    summary_boost = (
+        0.2 if attrs.get("is_summary") or attrs.get("fact_type") == "summary" else 0.0
+    )
+    return round(float(confidence) + recency_boost + salience + summary_boost, 6)
 
 
-def _rank_and_dedup(evidences: Sequence[GraphEvidence], limit: int) -> list[GraphEvidence]:
+def _rank_and_dedup(
+    evidences: Sequence[GraphEvidence], limit: int
+) -> list[GraphEvidence]:
     dedup: dict[str, GraphEvidence] = {}
     for item in evidences:
         key = item.summary.strip().lower()
