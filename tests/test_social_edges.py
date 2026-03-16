@@ -55,3 +55,27 @@ async def test_faction_discovery(tmp_path):
     assert set(["d", "e"]) in factions
 
     await mem.close()
+
+
+@pytest.mark.asyncio
+async def test_channel_contextual_edge_summary_and_reciprocity(tmp_path):
+    db = DBManager(str(tmp_path / "sg.db"))
+    mem = SocialGraphMemory(db)
+
+    await mem.update_edge("a", "b", "interaction", 3.0, channel_id="chan-1", sentiment_score=0.8)
+    await mem.update_edge("b", "a", "interaction", 1.0, channel_id="chan-1", sentiment_score=0.2)
+
+    summary = await db.get_edge_summary("a", "b", "interaction", channel_id="chan-1")
+    reverse = await db.get_edge_summary("b", "a", "interaction", channel_id="chan-1")
+
+    assert summary["event_count"] >= 1
+    assert summary["sentiment_trend"] in {"up", "stable", "down"}
+    assert 0.0 <= summary["reciprocity"] <= 1.0
+    assert summary["reciprocity"] == pytest.approx(reverse["reciprocity"])
+
+    ctx = await mem.get_social_context_summary("a", "b", channel_id="chan-1")
+    assert ctx["relationship_status"] in {"neutral", "friend", "rival"}
+    assert ctx["familiarity_tier"] in {"low", "medium", "high"}
+    assert "channel_norms" in ctx
+
+    await mem.close()
