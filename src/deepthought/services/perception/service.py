@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import time
@@ -159,6 +160,22 @@ class PerceptionService:
                 wandb_run = None
 
         store_embedding: torch.Tensor | None = None
+        inference_timeout_seconds = float(getattr(settings, "perception_inference_timeout_seconds", 30.0) or 30.0)
+        worker_retries = int(getattr(settings, "perception_worker_retries", 2) or 2)
+
+        async def _execute_with_retry(modality: str, fn, *args, **kwargs):
+            last_exc: Exception | None = None
+            for _ in range(max(1, worker_retries)):
+                try:
+                    return await asyncio.wait_for(
+                        asyncio.to_thread(fn, *args, **kwargs),
+                        timeout=inference_timeout_seconds,
+                    )
+                except Exception as exc:
+                    last_exc = exc
+            assert last_exc is not None
+            raise last_exc
+
         provenance = dict(provenance or {})
         provenance.setdefault("timestamp", time.time())
 
@@ -230,7 +247,7 @@ class PerceptionService:
                         encoder_meta["text"] = encoder_info
                     else:
                         start = time.perf_counter()
-                        feats, times = self.text_worker(text_tokens, str(feats_file))
+                        feats, times = await _execute_with_retry("text", self.text_worker, text_tokens, str(feats_file))
                         MODALITY_INFERENCE_LATENCY_SECONDS.labels(
                             service="perception_service", modality="text"
                         ).observe(time.perf_counter() - start)
@@ -253,7 +270,7 @@ class PerceptionService:
                 else:
                     with NamedTemporaryFile(suffix=".mm", delete=False) as tmp:
                         start = time.perf_counter()
-                        feats, times = self.text_worker(text_tokens, tmp.name)
+                        feats, times = await _execute_with_retry("text", self.text_worker, text_tokens, tmp.name)
                         MODALITY_INFERENCE_LATENCY_SECONDS.labels(
                             service="perception_service", modality="text"
                         ).observe(time.perf_counter() - start)
@@ -273,6 +290,8 @@ class PerceptionService:
                 if audio_opt_in is not True:
                     raise PermissionError("Audio consent not granted")
                 audio_path = Path(audio_path)
+                if audio_path.exists() and audio_path.stat().st_size > 50 * 1024 * 1024:
+                    raise ValueError("Audio artifact exceeds size limit")
                 cache_dir = Path(self.audio_worker.cache_dir or cfg.audio_cache_dir or audio_path.parent)
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 model_value = getattr(self.audio_worker, "model", None) or getattr(cfg, "audio_model", None)
@@ -313,7 +332,7 @@ class PerceptionService:
                     encoder_meta["audio"] = encoder_info
                 else:
                     start = time.perf_counter()
-                    feats, times = self.audio_worker(audio_path, cache_dir=cache_dir)
+                    feats, times = await _execute_with_retry("audio", self.audio_worker, audio_path, cache_dir=cache_dir)
                     MODALITY_INFERENCE_LATENCY_SECONDS.labels(service="perception_service", modality="audio").observe(
                         time.perf_counter() - start
                     )
@@ -342,6 +361,8 @@ class PerceptionService:
                 if video_opt_in is not True:
                     raise PermissionError("Video consent not granted")
                 video_path = Path(video_path)
+                if video_path.exists() and video_path.stat().st_size > 100 * 1024 * 1024:
+                    raise ValueError("Video artifact exceeds size limit")
                 cache_dir = Path(
                     getattr(self.video_worker, "cache_dir", None) or cfg.video_cache_dir or video_path.parent
                 )
@@ -380,7 +401,7 @@ class PerceptionService:
                     encoder_meta["video"] = encoder_info
                 else:
                     start = time.perf_counter()
-                    feats, times_arr = self.video_worker(video_path)
+                    feats, times_arr = await _execute_with_retry("video", self.video_worker, video_path)
                     MODALITY_INFERENCE_LATENCY_SECONDS.labels(service="perception_service", modality="video").observe(
                         time.perf_counter() - start
                     )
@@ -429,6 +450,27 @@ class PerceptionService:
             for name in sorted(missing_modalities):
                 logger.warning("%s modality absent for message %s", name, message_id)
                 MISSING_MODALITY_TOTAL.labels(modality=name).inc()
+                if hasattr(self.publisher, "publish_modality_result"):
+                    await self.publisher.publish_modality_result(
+                    input_id=input_id or message_id,
+                    message_id=message_id,
+                    user_id=user_id,
+                    modality=name,
+                    success=False,
+                    confidence=0.0,
+                    error_reason="missing_modality",
+                )
+            for name in sorted(modality_arrays.keys()):
+                if hasattr(self.publisher, "publish_modality_result"):
+                    await self.publisher.publish_modality_result(
+                    input_id=input_id or message_id,
+                    message_id=message_id,
+                    user_id=user_id,
+                    modality=name,
+                    success=True,
+                    confidence=1.0,
+                    error_reason=None,
+                )
 
             if not modality_arrays:
                 logger.warning("No modalities available for message %s; skipping", message_id)

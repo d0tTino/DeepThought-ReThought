@@ -51,6 +51,8 @@ class EventSubjects:
     PERCEPTION_AUDIO_EMBED = "dtr.perception.audio_embeddings"
     PERCEPTION_VIDEO_EMBED = "dtr.perception.video_embeddings"
     PERCEPTION_EXTRACT = CanonicalSubjects.PERCEPTION_EXTRACT
+    PERCEPTION_EXTRACT_REQUESTED = CanonicalSubjects.PERCEPTION_EXTRACT_REQUESTED
+    PERCEPTION_MODALITY_RESULT = CanonicalSubjects.PERCEPTION_MODALITY_RESULT
 
     # Raw chat message events
     CHAT_RAW = "chat.raw"
@@ -658,6 +660,8 @@ class PerceptionExtractPayload(EventPayload):
     video_opt_in: Optional[bool] = None
     retain_media: Optional[bool] = None
     text_hop_size: Optional[float] = None
+    attachments: Optional[list[Dict[str, Any]]] = None
+    artifacts: Optional[list[Dict[str, Any]]] = None
 
     @staticmethod
     def _parse_tokens(raw_tokens: Any) -> Optional[list[list[Any]]]:
@@ -776,6 +780,8 @@ class PerceptionExtractPayload(EventPayload):
             video_opt_in=video_opt_in,
             retain_media=data.get("retain_media"),
             text_hop_size=data.get("text_hop_size") or data.get("tokens_hop_size"),
+            attachments=[dict(a) for a in data.get("attachments", []) if isinstance(a, dict)] or None,
+            artifacts=[dict(a) for a in data.get("artifacts", []) if isinstance(a, dict)] or None,
         )
 
 
@@ -828,6 +834,8 @@ class PerceptionExtractEvent(EventPayload):
                 "retain_media",
                 "text_hop_size",
                 "tokens_hop_size",
+                "attachments",
+                "artifacts",
             }
             payload_data = {k: data[k] for k in payload_keys if k in data}
         payload = (

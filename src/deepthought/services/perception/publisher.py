@@ -162,3 +162,31 @@ class PerceptionPublisher:
             )
 
         return fused_result
+
+    async def publish_modality_result(
+        self,
+        *,
+        input_id: str,
+        message_id: str,
+        user_id: str,
+        modality: str,
+        success: bool,
+        confidence: float | None = None,
+        error_reason: str | None = None,
+        retries: int = 3,
+    ) -> Dict | None:
+        payload = {
+            "input_id": input_id,
+            "message_id": message_id,
+            "user_id": user_id,
+            "modality": modality,
+            "success": bool(success),
+            "confidence": confidence,
+            "error_reason": error_reason,
+        }
+        return await self._publisher.publish(
+            EventSubjects.PERCEPTION_MODALITY_RESULT,
+            payload,
+            use_jetstream=True,
+            retries=retries,
+        )

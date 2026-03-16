@@ -59,6 +59,7 @@ import deepthought  # type: ignore  # noqa: E402
 
 deepthought.modules = modules_pkg  # type: ignore[attr-defined]
 deepthought.services = services_pkg  # type: ignore[attr-defined]
+import deepthought.services.perception.service as service_mod  # noqa: E402
 from deepthought.services.perception.service import PerceptionService  # noqa: E402
 
 
@@ -93,7 +94,7 @@ async def test_perception_service_publishes_expected_spans_and_masks(monkeypatch
     """The real service should publish aligned spans and modality masks."""
 
     monkeypatch.setattr(
-        "deepthought.services.perception.service.get_settings",
+        service_mod, "get_settings",
         lambda: SimpleNamespace(
             wandb_enabled=False,
             wandb_project=None,
@@ -117,9 +118,7 @@ async def test_perception_service_publishes_expected_spans_and_masks(monkeypatch
         video_hop_size=1.0,
         modality_dims={"text": 2},
     )
-    monkeypatch.setattr(
-        "deepthought.services.perception.service.PerceptionConfig", lambda: fake_cfg
-    )
+    monkeypatch.setattr(service_mod, "PerceptionConfig", lambda: fake_cfg)
 
     publisher = RecordingPublisher()
     worker = StubTextWorker()
