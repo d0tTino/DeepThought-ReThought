@@ -120,14 +120,70 @@ class SocialGraphMemory:
         return await self._db.get_relationship_type(user_a, user_b)
 
     async def update_edge(
-        self, source: str, target: str, edge_type: str, weight: float = 1.0
+        self,
+        source: str,
+        target: str,
+        edge_type: str,
+        weight: float = 1.0,
+        *,
+        channel_id: str | None = None,
+        sentiment_score: float | None = None,
+        event_count_delta: int = 1,
     ) -> None:
         """Add or update a typed edge between ``source`` and ``target``."""
-        await self._db.update_edge(source, target, edge_type, weight)
+        await self._db.update_edge(
+            source,
+            target,
+            edge_type,
+            weight,
+            channel_id=channel_id,
+            sentiment_score=sentiment_score,
+            event_count_delta=event_count_delta,
+        )
 
-    async def get_edge_weight(self, source: str, target: str, edge_type: str) -> float:
+    async def get_edge_weight(
+        self,
+        source: str,
+        target: str,
+        edge_type: str,
+        *,
+        channel_id: str | None = None,
+    ) -> float:
         """Return the current weight of a typed edge."""
-        return await self._db.get_edge_weight(source, target, edge_type)
+        return await self._db.get_edge_weight(source, target, edge_type, channel_id=channel_id)
+
+    async def get_social_context_summary(
+        self,
+        source: str,
+        target: str,
+        *,
+        channel_id: str | None = None,
+    ) -> dict:
+        status = await self._db.get_relationship_type(source, target) or "neutral"
+        rel = await self.get_relationship_stats(source, target)
+        pair_events = int(rel["a_to_b"]["count"]) + int(rel["b_to_a"]["count"])
+        if pair_events >= 12:
+            familiarity = "high"
+        elif pair_events >= 4:
+            familiarity = "medium"
+        else:
+            familiarity = "low"
+        interaction = await self._db.get_edge_summary(
+            source,
+            target,
+            "interaction",
+            channel_id=channel_id,
+        )
+        return {
+            "relationship_status": status,
+            "familiarity_tier": familiarity,
+            "channel_norms": {
+                "interaction_frequency": interaction["event_count"],
+                "reciprocity": interaction["reciprocity"],
+                "sentiment_trend": interaction["sentiment_trend"],
+            },
+            "interaction_edge": interaction,
+        }
 
     async def discover_factions(self, edge_type: str = "ally") -> list[list[str]]:
         """Cluster users into factions based on their positive edges.
@@ -160,19 +216,56 @@ class SocialGraphMemory:
         await self._db.log_interaction(
             event.source, event.target, sentiment_score=event.sentiment
         )
+
+        inferred_targets: set[str] = set()
         if event.target is not None:
-            await self._update_relationship_type(event.source, event.target)
+            inferred_targets.add(str(event.target))
+        if event.referenced_user_id:
+            inferred_targets.add(str(event.referenced_user_id))
+        for participant in event.thread_participants:
+            if participant and participant != event.source:
+                inferred_targets.add(participant)
+        for user in event.co_occurring_users:
+            if user and user != event.source:
+                inferred_targets.add(user)
+
+        for target in inferred_targets:
+            await self.update_edge(
+                event.source,
+                target,
+                "interaction",
+                1.0,
+                channel_id=event.channel_id,
+                sentiment_score=event.sentiment,
+            )
+            await self._update_relationship_type(event.source, target)
 
         if event.reply_latency is not None:
             delta = 1 if event.reply_latency <= LATENCY_THRESHOLD else -1
             await self._db.adjust_affinity(event.source, delta)
 
-        if event.target is not None and event.emoji_counts:
-            for emoji, count in event.emoji_counts.items():
-                if emoji in POSITIVE_EMOJIS:
-                    await self.update_edge(event.source, event.target, "ally", float(count))
-                elif emoji in NEGATIVE_EMOJIS:
-                    await self.update_edge(event.source, event.target, "rival", float(count))
+        if event.emoji_counts:
+            emoji_target = event.target or event.referenced_user_id
+            if emoji_target is not None:
+                for emoji, count in event.emoji_counts.items():
+                    if emoji in POSITIVE_EMOJIS:
+                        await self.update_edge(
+                            event.source,
+                            emoji_target,
+                            "ally",
+                            float(count),
+                            channel_id=event.channel_id,
+                            sentiment_score=event.sentiment,
+                        )
+                    elif emoji in NEGATIVE_EMOJIS:
+                        await self.update_edge(
+                            event.source,
+                            emoji_target,
+                            "rival",
+                            float(count),
+                            channel_id=event.channel_id,
+                            sentiment_score=event.sentiment,
+                        )
 
     async def close(self) -> None:
         await self._db.close()

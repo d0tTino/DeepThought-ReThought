@@ -32,7 +32,29 @@ class ResponderService:
         self._responder_id = responder_id.strip().lower() or "factual"
         self._responder_kind = responder_kind.strip().lower() or self._responder_id
 
-    def _build_candidate(self, user_input: str, facts: list[str]) -> ResponseCandidate:
+    @staticmethod
+    def _bounded_social_features(social_signals: dict) -> dict:
+        if not isinstance(social_signals, dict):
+            return {}
+        channel_norms = social_signals.get("channel_norms")
+        if not isinstance(channel_norms, dict):
+            channel_norms = {}
+        return {
+            "relationship_status": social_signals.get("relationship_status", "neutral"),
+            "familiarity_tier": social_signals.get("familiarity_tier", "low"),
+            "channel_norms": {
+                "interaction_frequency": channel_norms.get("interaction_frequency", 0),
+                "reciprocity": channel_norms.get("reciprocity", 0.0),
+                "sentiment_trend": channel_norms.get("sentiment_trend", "stable"),
+            },
+        }
+
+    def _compose_prompt_context(self, user_input: str, facts: list[str], social_signals: dict) -> str:
+        bounded = self._bounded_social_features(social_signals)
+        fact_hint = facts[0] if facts else ""
+        return f"user_input={user_input[:160]} | fact={fact_hint[:120]} | social={json.dumps(bounded, sort_keys=True)}"
+
+    def _build_candidate(self, user_input: str, facts: list[str], social_signals: dict) -> ResponseCandidate:
         source = f"responder:{self._responder_id}"
         if self._responder_kind in {"factual", "qa", "tool"}:
             fact = facts[0] if facts else "I don't have enough retrieved facts yet"
@@ -41,7 +63,8 @@ class ResponderService:
             tags = ["factual", "grounded", "tool_ready"]
             style = "concise"
         elif self._responder_kind in {"persona", "conversational"}:
-            text = f"I hear you: {user_input}. I'm here and happy to keep talking."
+            prompt_context = self._compose_prompt_context(user_input, facts, social_signals)
+            text = f"I hear you: {user_input}. Context: {prompt_context}."
             confidence = 0.73
             tags = ["persona", "empathetic", "rapport"]
             style = "friendly"
@@ -68,6 +91,7 @@ class ResponderService:
                 "responder_id": self._responder_id,
                 "kind": self._responder_kind,
                 "calibration": {"slope": 1.0, "bias": 0.0},
+                "social_features": self._bounded_social_features(social_signals),
             },
             rationale_tags=tags,
         )
@@ -78,13 +102,14 @@ class ResponderService:
             payload, envelope_meta = decode_payload_or_envelope(EventSubjects.CONTEXT_ASSEMBLED, data)
             user_input = payload.get("user_input") if isinstance(payload.get("user_input"), str) else ""
             facts = payload.get("retrieved_facts") if isinstance(payload.get("retrieved_facts"), list) else []
+            social_signals = payload.get("social_signals") if isinstance(payload.get("social_signals"), dict) else {}
             input_id = payload.get("input_id") if isinstance(payload.get("input_id"), str) else "global"
             author_id = payload.get("author_id") if isinstance(payload.get("author_id"), str) else None
             user_id = payload.get("user_id") if isinstance(payload.get("user_id"), str) else None
             channel_id = payload.get("channel_id") if isinstance(payload.get("channel_id"), str) else None
 
             out = ResponseCandidatesPayload(
-                candidates=[self._build_candidate(user_input=user_input, facts=[str(x) for x in facts])],
+                candidates=[self._build_candidate(user_input=user_input, facts=[str(x) for x in facts], social_signals=social_signals)],
                 input_id=input_id,
                 user_id=author_id or user_id,
                 author_id=author_id,

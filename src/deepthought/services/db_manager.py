@@ -127,9 +127,15 @@ class DBManager:
             source_id TEXT,
             target_id TEXT,
             edge_type TEXT,
+            channel_id TEXT,
             weight REAL DEFAULT 0,
+            event_count INTEGER DEFAULT 0,
+            reciprocity REAL DEFAULT 0,
+            sentiment_sum REAL DEFAULT 0,
+            sentiment_avg REAL DEFAULT 0,
+            sentiment_trend TEXT DEFAULT 'stable',
             last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY(source_id, target_id, edge_type)
+            PRIMARY KEY(source_id, target_id, edge_type, channel_id)
         )
         """,
         """
@@ -368,6 +374,7 @@ class DBManager:
                 for query in self.CREATE_TABLE_QUERIES:
                     await self._db.execute(query)
                 await self._ensure_relationship_columns()
+                await self._ensure_social_edges_columns()
                 await self._ensure_fact_records_migration()
                 await self._db.execute("INSERT OR IGNORE INTO trust_config (id) VALUES (1)")
                 await self._db.execute("INSERT OR IGNORE INTO interaction_decay (id) VALUES (1)")
@@ -442,6 +449,26 @@ class DBManager:
             await self._db.execute("ALTER TABLE relationships ADD COLUMN interaction_weight REAL DEFAULT 0")
         if "last_interaction" not in cols:
             await self._db.execute("ALTER TABLE relationships ADD COLUMN last_interaction DATETIME")
+
+    async def _ensure_social_edges_columns(self) -> None:
+        """Add new columns to the social_edges table if they don't exist."""
+        assert self._db is not None
+        async with self._db.execute("PRAGMA table_info(social_edges)") as cur:
+            cols = [row[1] async for row in cur]
+        if "channel_id" not in cols:
+            await self._db.execute("ALTER TABLE social_edges ADD COLUMN channel_id TEXT")
+            await self._db.execute("UPDATE social_edges SET channel_id='global' WHERE channel_id IS NULL")
+        if "event_count" not in cols:
+            await self._db.execute("ALTER TABLE social_edges ADD COLUMN event_count INTEGER DEFAULT 0")
+            await self._db.execute("UPDATE social_edges SET event_count=CASE WHEN event_count=0 THEN 1 ELSE event_count END")
+        if "reciprocity" not in cols:
+            await self._db.execute("ALTER TABLE social_edges ADD COLUMN reciprocity REAL DEFAULT 0")
+        if "sentiment_sum" not in cols:
+            await self._db.execute("ALTER TABLE social_edges ADD COLUMN sentiment_sum REAL DEFAULT 0")
+        if "sentiment_avg" not in cols:
+            await self._db.execute("ALTER TABLE social_edges ADD COLUMN sentiment_avg REAL DEFAULT 0")
+        if "sentiment_trend" not in cols:
+            await self._db.execute("ALTER TABLE social_edges ADD COLUMN sentiment_trend TEXT DEFAULT 'stable'")
 
     @staticmethod
     def _normalize_timestamp_input(value: Any) -> str | None:
@@ -1627,50 +1654,137 @@ class DBManager:
             row = await cur.fetchone()
         return row[0] if row else None
 
-    async def update_edge(self, source_id: int, target_id: int, edge_type: str, weight_delta: float) -> None:
+    async def update_edge(
+        self,
+        source_id: int,
+        target_id: int,
+        edge_type: str,
+        weight_delta: float,
+        *,
+        channel_id: str | None = None,
+        sentiment_score: float | None = None,
+        event_count_delta: int = 1,
+    ) -> None:
         """Insert or update a typed edge applying decay to the stored weight."""
         await self.connect()
         assert self._db
         w_decay, _ = await self.get_decay_params()
         now = datetime.utcnow()
+        channel_key = str(channel_id) if channel_id else "global"
         async with self._db.execute(
-            "SELECT weight, last_updated FROM social_edges WHERE source_id=? AND target_id=? AND edge_type=?",
-            (str(source_id), str(target_id), edge_type),
+            "SELECT weight, event_count, sentiment_sum, last_updated FROM social_edges WHERE source_id=? AND target_id=? AND edge_type=? AND channel_id=?",
+            (str(source_id), str(target_id), edge_type, channel_key),
         ) as cur:
             row = await cur.fetchone()
+
+        sentiment_value = float(sentiment_score) if sentiment_score is not None else 0.0
+        event_inc = max(0, int(event_count_delta))
         if row:
-            weight, last_ts = row
+            weight, event_count, sentiment_sum, last_ts = row
             if last_ts:
                 last_dt = datetime.fromisoformat(str(last_ts))
                 elapsed = (now - last_dt).total_seconds()
                 weight = float(weight) * (w_decay**elapsed)
-            weight += float(weight_delta)
+            updated_weight = float(weight) + float(weight_delta)
+            updated_events = int(event_count or 0) + event_inc
+            updated_sentiment_sum = float(sentiment_sum or 0.0) + sentiment_value
+            updated_sentiment_avg = (
+                updated_sentiment_sum / updated_events if updated_events else 0.0
+            )
+            trend = "up" if updated_sentiment_avg > 0.2 else "down" if updated_sentiment_avg < -0.2 else "stable"
             await self._db.execute(
                 """
                 UPDATE social_edges
-                SET weight=?, last_updated=CURRENT_TIMESTAMP
-                WHERE source_id=? AND target_id=? AND edge_type=?
+                SET weight=?,
+                    event_count=?,
+                    sentiment_sum=?,
+                    sentiment_avg=?,
+                    sentiment_trend=?,
+                    last_updated=CURRENT_TIMESTAMP
+                WHERE source_id=? AND target_id=? AND edge_type=? AND channel_id=?
                 """,
-                (weight, str(source_id), str(target_id), edge_type),
+                (
+                    updated_weight,
+                    updated_events,
+                    updated_sentiment_sum,
+                    updated_sentiment_avg,
+                    trend,
+                    str(source_id),
+                    str(target_id),
+                    edge_type,
+                    channel_key,
+                ),
             )
         else:
+            initial_events = event_inc or 1
+            initial_avg = sentiment_value / initial_events
+            trend = "up" if initial_avg > 0.2 else "down" if initial_avg < -0.2 else "stable"
             await self._db.execute(
                 """
-                INSERT INTO social_edges (source_id, target_id, edge_type, weight, last_updated)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO social_edges (
+                    source_id, target_id, edge_type, channel_id, weight,
+                    event_count, reciprocity, sentiment_sum, sentiment_avg,
+                    sentiment_trend, last_updated
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
-                (str(source_id), str(target_id), edge_type, float(weight_delta)),
+                (
+                    str(source_id),
+                    str(target_id),
+                    edge_type,
+                    channel_key,
+                    float(weight_delta),
+                    initial_events,
+                    sentiment_value,
+                    initial_avg,
+                    trend,
+                ),
             )
+
+        await self._recompute_reciprocity(source_id, target_id, edge_type, channel_key)
         await self._db.commit()
 
-    async def get_edge_weight(self, source_id: int, target_id: int, edge_type: str) -> float:
+    async def _recompute_reciprocity(self, source_id: int, target_id: int, edge_type: str, channel_key: str) -> None:
+        assert self._db is not None
+        async with self._db.execute(
+            "SELECT weight FROM social_edges WHERE source_id=? AND target_id=? AND edge_type=? AND channel_id=?",
+            (str(source_id), str(target_id), edge_type, channel_key),
+        ) as cur:
+            forward = await cur.fetchone()
+        async with self._db.execute(
+            "SELECT weight FROM social_edges WHERE source_id=? AND target_id=? AND edge_type=? AND channel_id=?",
+            (str(target_id), str(source_id), edge_type, channel_key),
+        ) as cur:
+            backward = await cur.fetchone()
+        fw = abs(float(forward[0])) if forward else 0.0
+        bw = abs(float(backward[0])) if backward else 0.0
+        reciprocity = (2 * min(fw, bw) / (fw + bw)) if (fw + bw) > 0 else 0.0
+        await self._db.execute(
+            "UPDATE social_edges SET reciprocity=? WHERE source_id=? AND target_id=? AND edge_type=? AND channel_id=?",
+            (reciprocity, str(source_id), str(target_id), edge_type, channel_key),
+        )
+        if backward:
+            await self._db.execute(
+                "UPDATE social_edges SET reciprocity=? WHERE source_id=? AND target_id=? AND edge_type=? AND channel_id=?",
+                (reciprocity, str(target_id), str(source_id), edge_type, channel_key),
+            )
+
+    async def get_edge_weight(
+        self,
+        source_id: int,
+        target_id: int,
+        edge_type: str,
+        *,
+        channel_id: str | None = None,
+    ) -> float:
         """Return the decayed weight for the edge between ``source_id`` and ``target_id``."""
         await self.connect()
         assert self._db
         w_decay, _ = await self.get_decay_params()
+        channel_key = str(channel_id) if channel_id else "global"
         async with self._db.execute(
-            "SELECT weight, last_updated FROM social_edges WHERE source_id=? AND target_id=? AND edge_type=?",
-            (str(source_id), str(target_id), edge_type),
+            "SELECT weight, last_updated FROM social_edges WHERE source_id=? AND target_id=? AND edge_type=? AND channel_id=?",
+            (str(source_id), str(target_id), edge_type, channel_key),
         ) as cur:
             row = await cur.fetchone()
         if not row:
@@ -1682,16 +1796,28 @@ class DBManager:
             weight = float(weight) * (w_decay**elapsed)
         return float(weight)
 
-    async def get_edges(self, edge_type: str | None = None) -> list[tuple[str, str, float]]:
+    async def get_edges(
+        self,
+        edge_type: str | None = None,
+        *,
+        channel_id: str | None = None,
+    ) -> list[tuple[str, str, float]]:
         """Return all edges, optionally filtered by ``edge_type`` with decay applied."""
         await self.connect()
         assert self._db
         w_decay, _ = await self.get_decay_params()
         query = "SELECT source_id, target_id, edge_type, weight, last_updated FROM social_edges"
-        params: tuple = ()
+        clauses: list[str] = []
+        params_list: list[str] = []
         if edge_type:
-            query += " WHERE edge_type=?"
-            params = (edge_type,)
+            clauses.append("edge_type=?")
+            params_list.append(edge_type)
+        if channel_id:
+            clauses.append("channel_id=?")
+            params_list.append(str(channel_id))
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        params = tuple(params_list)
         results: list[tuple[str, str, float]] = []
         async with self._db.execute(query, params) as cur:
             async for src, tgt, etype, weight, last_ts in cur:
@@ -1701,6 +1827,44 @@ class DBManager:
                     weight = float(weight) * (w_decay**elapsed)
                 results.append((src, tgt, float(weight)))
         return results
+
+    async def get_edge_summary(
+        self,
+        source_id: int,
+        target_id: int,
+        edge_type: str,
+        *,
+        channel_id: str | None = None,
+    ) -> dict[str, Any]:
+        await self.connect()
+        assert self._db
+        channel_key = str(channel_id) if channel_id else "global"
+        async with self._db.execute(
+            """
+            SELECT weight, event_count, reciprocity, sentiment_avg, sentiment_trend, last_updated
+            FROM social_edges
+            WHERE source_id=? AND target_id=? AND edge_type=? AND channel_id=?
+            """,
+            (str(source_id), str(target_id), edge_type, channel_key),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return {
+                "weight": 0.0,
+                "event_count": 0,
+                "reciprocity": 0.0,
+                "sentiment_avg": 0.0,
+                "sentiment_trend": "stable",
+                "last_updated": None,
+            }
+        return {
+            "weight": float(row[0] or 0.0),
+            "event_count": int(row[1] or 0),
+            "reciprocity": float(row[2] or 0.0),
+            "sentiment_avg": float(row[3] or 0.0),
+            "sentiment_trend": str(row[4] or "stable"),
+            "last_updated": self._format_timestamp(row[5]),
+        }
 
     async def set_theme(self, user_id: int, channel_id: int, theme: str) -> None:
         if not isinstance(theme, str) or not theme.strip():

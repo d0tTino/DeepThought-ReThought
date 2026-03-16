@@ -163,3 +163,45 @@ async def test_social_contract_update_and_retrieval_semantics(tmp_path, monkeypa
     assert retrieved["payload"]["social_signals"]["affinity"] == updated["payload"]["affinity"]
 
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_social_signals_include_summarized_context_and_channel_norms(tmp_path, monkeypatch):
+    db = DBManager(str(tmp_path / "sg.db"))
+    await db.init_db()
+    service = SocialGraphService(db_manager=db, persona_manager=PersonaManager(db))
+    service._publisher = RecordingPublisher()
+
+    monkeypatch.setattr(
+        social_graph_service,
+        "analyze_social",
+        lambda _text: {"flirtation": 0.4, "avoidance": 0.0, "manipulation": 0.0},
+    )
+
+    payload = InputReceivedPayload(user_input="hey", input_id="in-social", author_id="u-1").to_json()
+    msg = DummyMsg(payload)
+    msg.data = json.dumps(
+        {
+            "user_input": "hey",
+            "input_id": "in-social",
+            "author_id": "u-1",
+            "target_id": "u-2",
+            "channel_id": "c-1",
+            "thread_participants": ["u-2", "u-3"],
+            "co_occurring_users": ["u-4"],
+        }
+    ).encode()
+
+    await service._handle_social_signals_requested(msg)
+
+    retrieved = service._publisher.calls[1][1]["payload"]["social_signals"]
+    assert retrieved["relationship_status"] in {"neutral", "friend", "rival"}
+    assert retrieved["familiarity_tier"] in {"low", "medium", "high"}
+    assert isinstance(retrieved["channel_norms"]["interaction_frequency"], int)
+    assert "reciprocity" in retrieved["channel_norms"]
+    assert "sentiment_trend" in retrieved["channel_norms"]
+
+    assert await db.get_edge_weight("u-1", "u-2", "interaction", channel_id="c-1") > 0
+    assert await db.get_edge_weight("u-1", "u-3", "interaction", channel_id="c-1") > 0
+    assert await db.get_edge_weight("u-1", "u-4", "interaction", channel_id="c-1") > 0
+    await db.close()

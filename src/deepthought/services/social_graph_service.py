@@ -53,7 +53,8 @@ class SocialGraphService(BaseService):
     async def _handle_social_signals_requested(self, msg: Msg) -> None:
         """Respond to SOCIAL_SIGNALS_REQUESTED with context and telemetry events."""
         try:
-            enriched = self._input_enrichment.parse_input_received(msg)
+            data = json.loads(msg.data.decode())
+            enriched = self._input_enrichment.parse_input_received_data(data, headers=getattr(msg, "headers", None))
             logger.info("SocialGraphService received input %s", enriched.input_id)
             try:
                 perception = analyze_social(enriched.user_input)
@@ -77,6 +78,26 @@ class SocialGraphService(BaseService):
                 None,
                 channel_id=enriched.channel_id,
             )
+
+            prism_payload = {
+                "source": resolved_user_id,
+                "target": data.get("target_id") or data.get("reply_to_author_id"),
+                "sentiment": float(delta),
+                "reply_latency": data.get("reply_latency"),
+                "emoji_counts": data.get("emoji_counts") or {},
+                "channel_id": enriched.channel_id,
+                "referenced_user_id": data.get("referenced_user_id"),
+                "thread_participants": data.get("thread_participants") or [],
+                "co_occurring_users": data.get("co_occurring_users") or [],
+            }
+            await self._prism.ingest(prism_payload)
+
+            social_context = await self._memory.get_social_context_summary(
+                resolved_user_id,
+                str(prism_payload["target"] or prism_payload["referenced_user_id"] or resolved_user_id),
+                channel_id=enriched.channel_id,
+            )
+
             social_snapshot = {
                 "input_id": enriched.input_id,
                 "user_id": enriched.user_id,
@@ -87,6 +108,9 @@ class SocialGraphService(BaseService):
                     "delta": delta,
                     "affinity": affinity,
                     "persona": persona,
+                    "relationship_status": social_context.get("relationship_status", "neutral"),
+                    "familiarity_tier": social_context.get("familiarity_tier", "low"),
+                    "channel_norms": social_context.get("channel_norms", {}),
                 },
             }
             social_update = {

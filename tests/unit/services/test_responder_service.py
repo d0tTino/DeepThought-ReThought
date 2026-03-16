@@ -86,3 +86,44 @@ async def test_responder_publishes_candidate_with_metadata(monkeypatch, service_
     assert expected_tag in candidate["rationale_tags"]
     assert isinstance(candidate["source_metadata"], dict)
     assert isinstance(candidate["source_metadata"].get("calibration"), dict)
+
+
+@pytest.mark.asyncio
+async def test_responder_bounded_social_features_in_candidate_metadata(monkeypatch):
+    import deepthought.services.responder_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = PersonaResponderService(DummyNATS(), DummyJS())
+    await svc.start()
+
+    context_payload = {
+        "input_id": "in-social",
+        "user_input": "hello",
+        "retrieved_facts": ["fact1"],
+        "author_id": "a-1",
+        "social_signals": {
+            "relationship_status": "friend",
+            "familiarity_tier": "high",
+            "channel_norms": {
+                "interaction_frequency": 42,
+                "reciprocity": 0.7,
+                "sentiment_trend": "up",
+                "extra_large_payload": "x" * 500,
+            },
+            "raw_blob": {"nested": "ignore me"},
+        },
+    }
+    msg = DummyMsg(json.dumps(context_payload))
+    await svc._handle_context_event(msg)
+
+    payload = svc._publisher.calls[0][1]["payload"]
+    candidate = payload["candidates"][0]
+    features = candidate["source_metadata"]["social_features"]
+    assert set(features.keys()) == {"relationship_status", "familiarity_tier", "channel_norms"}
+    assert set(features["channel_norms"].keys()) == {
+        "interaction_frequency",
+        "reciprocity",
+        "sentiment_trend",
+    }
