@@ -17,6 +17,7 @@ from ...eda.events import (
 )
 from ...eda.subscriber import Subscriber
 from .config import PerceptionConfig
+from .ingestion_worker import AttachmentIngestionWorker
 from .service import PerceptionService
 from .text_utils import hop_aligned_tokens, scrub_tokens
 
@@ -72,11 +73,13 @@ class PerceptionServiceListener:
         *,
         default_user_id: str = "user",
         asr: Any | None = None,
+        ingestion_worker: AttachmentIngestionWorker | None = None,
     ) -> None:
         self._service = service
         self._subscriber = Subscriber(nats_client, js_context)
         self._default_user_id = default_user_id
         self._asr = asr
+        self._ingestion_worker = ingestion_worker or AttachmentIngestionWorker()
         cfg = PerceptionConfig()
         self._config = cfg
         self._enable_asr_transcription = bool(getattr(cfg, "enable_asr_transcription", False))
@@ -119,14 +122,21 @@ class PerceptionServiceListener:
     async def start_extract(
         self, durable_name: str = "perception-extract-listener"
     ) -> bool:
-        """Subscribe to ``dtr.perception.extract`` events."""
+        """Subscribe to extraction request events."""
 
-        return await self._subscriber.subscribe(
+        legacy_ok = await self._subscriber.subscribe(
             subject=EventSubjects.PERCEPTION_EXTRACT,
             handler=self._handle_extract,
             use_jetstream=True,
-            durable=durable_name,
+            durable=f"{durable_name}-legacy",
         )
+        requested_ok = await self._subscriber.subscribe(
+            subject=EventSubjects.PERCEPTION_EXTRACT_REQUESTED,
+            handler=self._handle_extract,
+            use_jetstream=True,
+            durable=f"{durable_name}-requested",
+        )
+        return legacy_ok and requested_ok
 
     async def handle_input(self, msg: Msg) -> None:
         """Public alias for processing input messages."""
@@ -285,6 +295,30 @@ class PerceptionServiceListener:
                 except Exception:  # pragma: no cover - defensive
                     logger.error("Failed to ack message after error", exc_info=True)
 
+    async def _ingest_extract_artifacts(self, event: PerceptionExtractEvent) -> list[dict[str, Any]]:
+        extract_payload = event.payload
+        if extract_payload is None:
+            return []
+        if extract_payload.artifacts:
+            return [dict(item) for item in extract_payload.artifacts]
+        artifacts: list[dict[str, Any]] = []
+        for attachment in extract_payload.attachments or []:
+            try:
+                artifact = await self._ingestion_worker.ingest_attachment(attachment)
+            except Exception as exc:
+                logger.warning("Attachment ingestion failed", exc_info=True)
+                artifacts.append({"url": attachment.get("url"), "error": str(exc), "status": "failed"})
+                continue
+            artifacts.append({
+                "url": artifact.source_url,
+                "local_path": artifact.local_path,
+                "content_type": artifact.content_type,
+                "content_length": artifact.content_length,
+                "modality": artifact.modality,
+                "status": "ok",
+            })
+        return artifacts
+
     async def _handle_extract(self, msg: Msg) -> None:
         """Process a perception extraction request."""
 
@@ -301,6 +335,7 @@ class PerceptionServiceListener:
                     await msg.ack()
                 return
 
+            artifacts = await self._ingest_extract_artifacts(event)
             text_tokens = None
             if payload.text_tokens:
                 text_tokens = scrub_tokens(payload.text_tokens)
@@ -340,6 +375,21 @@ class PerceptionServiceListener:
             }
             if payload.retain_media is not None:
                 kwargs["retain_media"] = bool(payload.retain_media)
+
+            if payload.attachments is not None:
+                kwargs["provenance"] = dict(kwargs.get("provenance") or {})
+                kwargs["provenance"]["attachments"] = payload.attachments
+            if artifacts:
+                kwargs["provenance"] = dict(kwargs.get("provenance") or {})
+                kwargs["provenance"]["ingestion_artifacts"] = artifacts
+                for item in artifacts:
+                    if item.get("status") != "ok":
+                        continue
+                    modality = item.get("modality")
+                    if modality == "audio" and not kwargs.get("audio_path"):
+                        kwargs["audio_path"] = item.get("local_path")
+                    elif modality == "video" and not kwargs.get("video_path"):
+                        kwargs["video_path"] = item.get("local_path")
 
             await self._service.run(**{k: v for k, v in kwargs.items() if v is not None})
             if hasattr(msg, "ack") and callable(msg.ack):

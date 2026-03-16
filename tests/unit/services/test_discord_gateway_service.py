@@ -153,6 +153,10 @@ async def test_handle_discord_message_publishes_input_received(service):
     assert payload["payload"]["thread_id"] == "999"
     assert payload["payload"]["attachments"] is not None
     assert payload["payload"]["attachments"][0]["url"] == "https://cdn.discordapp.com/file.png"
+    extract_subject, extract_payload, _, _ = service._publisher.published[1]
+    assert extract_subject == EventSubjects.PERCEPTION_EXTRACT_REQUESTED
+    assert extract_payload["payload"]["input_id"] == input_id
+    assert extract_payload["payload"]["attachments"][0]["content_type"] == "image/png"
 
 
 @pytest.mark.asyncio

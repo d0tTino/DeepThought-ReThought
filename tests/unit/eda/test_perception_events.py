@@ -5,6 +5,7 @@ from deepthought.eda.events import (
     ModalityEmbeddings,
     PerceptionEmbeddingsEvent,
     PerceptionEmbeddingsPayload,
+    PerceptionExtractEvent,
 )
 
 
@@ -94,3 +95,18 @@ def test_roundtrip_with_multiple_modalities_and_masks():
     assert decoded.payload.by_modality["audio"].mask == [True, False]
     assert decoded.payload.by_modality["vision"].mask == [True, True]
     assert decoded.encoders == event.encoders
+
+
+def test_extract_event_roundtrip_with_attachments_and_artifacts():
+    event = PerceptionExtractEvent.from_dict(
+        {
+            "message_id": "m1",
+            "user_id": "u1",
+            "input_id": "in1",
+            "attachments": [{"url": "https://x/y.png", "content_type": "image/png"}],
+            "artifacts": [{"url": "https://x/y.png", "local_path": "/tmp/y.png", "status": "ok"}],
+        }
+    )
+    assert event.payload is not None
+    assert event.payload.attachments and event.payload.attachments[0]["content_type"] == "image/png"
+    assert event.payload.artifacts and event.payload.artifacts[0]["status"] == "ok"

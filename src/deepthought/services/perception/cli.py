@@ -249,7 +249,15 @@ async def _main() -> None:
         if not args.no_extract_listener:
             sub = await js.subscribe(
                 EventSubjects.PERCEPTION_EXTRACT,
-                durable=args.extract_durable,
+                durable=f"{args.extract_durable}-legacy",
+                deliver_policy=deliver_policy,
+                cb=listener.handle_extract,
+                manual_ack=True,
+            )
+            subscriptions.append(sub)
+            sub = await js.subscribe(
+                EventSubjects.PERCEPTION_EXTRACT_REQUESTED,
+                durable=f"{args.extract_durable}-requested",
                 deliver_policy=deliver_policy,
                 cb=listener.handle_extract,
                 manual_ack=True,

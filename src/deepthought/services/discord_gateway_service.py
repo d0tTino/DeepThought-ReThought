@@ -178,6 +178,30 @@ class DiscordGatewayService(BaseService):
             use_jetstream=True,
             timeout=10.0,
         )
+
+        if payload.attachments:
+            extract_payload = {
+                "message_id": payload.message_id or payload.input_id or "",
+                "user_id": payload.author_id or "unknown",
+                "input_id": payload.input_id,
+                "author_id": payload.author_id,
+                "channel_id": payload.channel_id,
+                "text": payload.user_input,
+                "attachments": [attachment.__dict__ for attachment in payload.attachments],
+            }
+            extract_envelope = EventEnvelope.build(
+                subject=EventSubjects.PERCEPTION_EXTRACT_REQUESTED,
+                payload=extract_payload,
+                producer=self.__class__.__name__,
+                trace_id=str(uuid.uuid4()),
+                causation_id=payload.input_id,
+            )
+            await self._publisher.publish(
+                EventSubjects.PERCEPTION_EXTRACT_REQUESTED,
+                extract_envelope.__dict__,
+                use_jetstream=True,
+                timeout=10.0,
+            )
         return payload.input_id
 
     @asynccontextmanager
