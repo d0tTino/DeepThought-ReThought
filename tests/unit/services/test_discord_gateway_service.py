@@ -317,3 +317,34 @@ async def test_ranked_response_accepts_enveloped_payload(service):
 
     assert msg.acked
     assert service._discord_client.channel.messages[-1][0] == "wrapped"
+
+
+@pytest.mark.asyncio
+async def test_reaction_and_message_edit_emit_feedback_signals(service):
+    message = SimpleNamespace(
+        content="hello",
+        id=199,
+        author=SimpleNamespace(id=5, name="alice", display_name="Alice", bot=False),
+        channel=SimpleNamespace(id=123),
+        guild=SimpleNamespace(id=7),
+        attachments=[],
+        reference=None,
+        thread=None,
+    )
+    await service.handle_discord_message(message)
+
+    reaction = SimpleNamespace(message=SimpleNamespace(id=199), emoji="👍")
+    user = SimpleNamespace(id=42, bot=False)
+    await service.handle_discord_reaction(reaction, user)
+
+    edited_before = SimpleNamespace(content="hello")
+    edited_after = SimpleNamespace(content="hello updated", id=199, author=SimpleNamespace(id=42))
+    await service.handle_discord_message_edit(edited_before, edited_after)
+
+    subjects = [entry[0] for entry in service._publisher.published]
+    assert EventSubjects.DISCORD_FEEDBACK_SIGNAL in subjects
+    feedback_events = [entry for entry in service._publisher.published if entry[0] == EventSubjects.DISCORD_FEEDBACK_SIGNAL]
+    assert len(feedback_events) == 2
+    assert feedback_events[0][1]["payload"]["signal_type"] == "reaction"
+    assert feedback_events[0][1]["payload"]["input_id"] is not None
+    assert feedback_events[1][1]["payload"]["signal_type"] == "message_edit"
