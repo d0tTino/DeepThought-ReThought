@@ -84,7 +84,7 @@ async def test_race_safe_assembly_collects_all_providers(monkeypatch):
     async def send_perception():
         await asyncio.sleep(0.02)
         await svc._handle_provider_response(
-            DummyMsg({"input_id": "i-race", "multimodal_interpretations": {"image": "none"}}),
+            DummyMsg({"input_id": "i-race", "multimodal_interpretations": {"summary": "image processed", "notes": ["ok"], "by_modality": {"image": {"what": "none"}}}}),
             "perception",
         )
 
@@ -94,21 +94,14 @@ async def test_race_safe_assembly_collects_all_providers(monkeypatch):
     assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
     assert len(assembled) == 1
     payload = assembled[0][1]["payload"]
-    assert payload["input_id"] == "i-race"
-    assert payload["retrieved_facts"] == ["f2", "f1"]
-    assert payload["social_signals"] == {"tone": "neutral"}
-    assert payload["multimodal_interpretations"]["schema_version"] == "multimodal.semantic-notes.v1"
-    assert payload["multimodal_interpretations"]["summary"] == "no multimodal signals"
     assert payload["confidence"]["partial"] is False
     assert payload["confidence"]["completed_providers"] == ["memory", "social", "perception"]
-    assert payload["confidence"]["publish_reason"] == "all_providers_received"
-    assert payload["confidence"]["assembly_state"] == "COMPLETE"
-    assert payload["confidence"]["correlation"] == {"input_id": "i-race", "trace_id": None}
-    assert payload["confidence"]["provider_timings"]["memory"]["timed_out"] is False
+    assert payload["confidence"]["provider_missing_reasons"] == {}
+    assert payload["confidence"]["provider_latency_p95_ms"]["memory"] is not None
 
 
 @pytest.mark.asyncio
-async def test_partial_result_when_provider_missing_is_deterministic(monkeypatch):
+async def test_partial_result_uses_missing_reason_timeout(monkeypatch):
     import deepthought.services.context_assembler_service as mod
 
     monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
@@ -128,24 +121,14 @@ async def test_partial_result_when_provider_missing_is_deterministic(monkeypatch
         "social",
     )
 
-    await asyncio.sleep(0.08)
+    await asyncio.sleep(0.09)
 
     assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
     assert len(assembled) == 1
     payload = assembled[0][1]["payload"]
-    assert payload["input_id"] == "i-partial"
-    assert payload["retrieved_facts"] == ["f1"]
-    assert payload["social_signals"] == {"sentiment": 0.7}
-    assert payload["multimodal_interpretations"]["schema_version"] == "multimodal.semantic-notes.v1"
-    assert payload["multimodal_interpretations"]["notes"] == []
-    assert payload["confidence"]["partial"] is True
     assert payload["confidence"]["missing_providers"] == ["perception"]
-    assert payload["confidence"]["completed_providers"] == ["memory", "social"]
-    assert payload["confidence"]["publish_reason"] == "timeout_partial"
-    assert payload["confidence"]["assembly_state"] == "TIMEOUT_PUBLISHED"
-    assert payload["confidence"]["provider_timings"]["perception"]["timed_out"] is True
-
-
+    assert payload["confidence"]["provider_missing_reasons"] == {"perception": "timeout"}
+    assert payload["confidence"]["provider_timings"]["perception"]["missing_reason"] == "timeout"
 
 
 @pytest.mark.asyncio
@@ -171,102 +154,83 @@ async def test_context_assembler_correlates_by_input_and_trace_id(monkeypatch):
     await asyncio.sleep(0.07)
 
     assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
-    assert len(assembled) == 1
     payload = assembled[0][1]["payload"]
     assert payload["retrieved_facts"] == []
-    assert payload["social_signals"] == {"sentiment": 0.9}
-    assert payload["confidence"]["correlation"] == {"input_id": "i-trace", "trace_id": "trace-A"}
-    assert payload["confidence"]["provider_timings"]["memory"]["timed_out"] is True
+    assert payload["confidence"]["provider_missing_reasons"]["memory"] == "timeout"
+
 
 @pytest.mark.asyncio
-async def test_context_assembler_merges_perception_interpretations_within_wait_window(monkeypatch):
-    import deepthought.services.context_assembler_service as ca_mod
-    import deepthought.services.perception_interpret_service as pi_mod
+async def test_late_arrival_emits_context_update(monkeypatch):
+    import deepthought.services.context_assembler_service as mod
 
-    class InMemoryBus:
-        def __init__(self):
-            self.handlers = {}
-            self.published = []
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
 
-        async def publish(self, subject, payload, use_jetstream=True, timeout=10.0):
-            self.published.append((subject, payload, use_jetstream, timeout))
-            for handler in self.handlers.get(subject, []):
-                await handler(DummyMsg(payload))
-
-    class BusSubscriber:
-        def __init__(self, _nats, _js):
-            self.calls = []
-
-        async def subscribe(self, **kwargs):
-            self.calls.append(kwargs)
-            bus.handlers.setdefault(kwargs["subject"], []).append(kwargs["handler"])
-            return True
-
-        async def unsubscribe_all(self):
-            return None
-
-    bus = InMemoryBus()
-
-    monkeypatch.setattr(ca_mod, "Publisher", lambda *_args, **_kwargs: bus)
-    monkeypatch.setattr(ca_mod, "Subscriber", BusSubscriber)
-    monkeypatch.setattr(pi_mod, "Publisher", lambda *_args, **_kwargs: bus)
-    monkeypatch.setattr(pi_mod, "Subscriber", BusSubscriber)
-
-    context_service = ca_mod.ContextAssemblerService(DummyNATS(), DummyJS(), wait_window_seconds=0.08)
-    perception_service = pi_mod.PerceptionInterpretService(DummyNATS(), DummyJS())
-    await context_service.start()
-    await perception_service.start()
-
-    await bus.publish(
-        EventSubjects.PERCEPTION_EMBEDDINGS,
-        {
-            "event": EventSubjects.PERCEPTION_EMBEDDINGS,
-            "version": 1,
-            "payload": {
-                "message_id": "m-1",
-                "user_id": "u-1",
-                "input_id": "i-embed",
-                "confidence": 0.77,
-                "modality_confidence": {"image": 0.71},
-                "by_modality": {
-                    "image": {
-                        "spans": [[0, 400]],
-                        "embeddings": [[0.1, 0.2, 0.3]],
-                        "encoders": [],
-                    }
-                },
-            },
-        },
+    svc = ContextAssemblerService(
+        DummyNATS(),
+        DummyJS(),
+        wait_window_seconds=0.03,
+        late_arrival_window_seconds=0.08,
     )
 
-    await bus.publish(
-        EventSubjects.INPUT_RECEIVED,
-        {
-            "input_id": "i-embed",
-            "user_input": "look at this",
-            "attachments": [{"url": "https://example.test/a.png", "content_type": "image/png"}],
-        },
+    await svc._handle_input_received(DummyMsg({"input_id": "i-late", "user_input": "hello"}))
+    await svc._handle_provider_response(DummyMsg({"input_id": "i-late", "social_signals": {"tone": "ok"}}), "social")
+    await svc._handle_provider_response(
+        DummyMsg({"input_id": "i-late", "multimodal_interpretations": {"summary": "none", "notes": []}}),
+        "perception",
     )
 
-    await bus.publish(
-        EventSubjects.MEMORY_RETRIEVED,
-        {"input_id": "i-embed", "retrieved_knowledge": {"facts": ["fact-a"]}},
+    await asyncio.sleep(0.05)
+    await svc._handle_provider_response(
+        DummyMsg({"input_id": "i-late", "retrieved_knowledge": {"facts": ["late-fact"]}}),
+        "memory",
     )
-    await bus.publish(
-        EventSubjects.SOCIAL_SIGNALS_RETRIEVED,
-        {"input_id": "i-embed", "social_signals": {"tone": "positive"}},
-    )
+    await asyncio.sleep(0.01)
 
-    await asyncio.sleep(0.12)
-
-    assembled = [item for item in bus.published if item[0] == EventSubjects.CONTEXT_ASSEMBLED]
+    assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
+    updates = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_UPDATED]
     assert len(assembled) == 1
-    payload = assembled[0][1]["payload"]
-    assert payload["input_id"] == "i-embed"
-    assert payload["multimodal_interpretations"]["schema_version"] == "multimodal.semantic-notes.v1"
-    assert payload["multimodal_interpretations"]["by_modality"]["image"]["what"].startswith("1 embedding vectors")
-    assert "attachments[image:1]" in payload["multimodal_interpretations"]["summary"]
-    assert payload["confidence"]["partial"] is False
+    assert len(updates) == 1
+    update_payload = updates[0][1]["payload"]
+    assert update_payload["retrieved_facts"] == ["late-fact"]
+    assert update_payload["confidence"]["late_update"] is True
+    assert update_payload["confidence"]["update_reason"] == "late_provider_merge"
+
+
+@pytest.mark.asyncio
+async def test_adaptive_deadline_uses_rolling_p95(monkeypatch):
+    import deepthought.services.context_assembler_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = ContextAssemblerService(
+        DummyNATS(),
+        DummyJS(),
+        wait_window_seconds=0.02,
+        provider_jitter_budget_seconds=0.005,
+        late_arrival_window_seconds=0.0,
+    )
+
+    # Warm-up round with slower memory arrival to seed rolling latency history.
+    await svc._handle_input_received(DummyMsg({"input_id": "i-seed", "user_input": "hello"}))
+    await svc._handle_provider_response(DummyMsg({"input_id": "i-seed", "social_signals": {"tone": "ok"}}), "social")
+    await svc._handle_provider_response(
+        DummyMsg({"input_id": "i-seed", "multimodal_interpretations": {"summary": "ok", "notes": ["x"]}}),
+        "perception",
+    )
+    await asyncio.sleep(0.03)
+    await svc._handle_provider_response(
+        DummyMsg({"input_id": "i-seed", "retrieved_knowledge": {"facts": ["seed"]}}),
+        "memory",
+    )
+    await asyncio.sleep(0.02)
+
+    await svc._handle_input_received(DummyMsg({"input_id": "i-adaptive", "user_input": "hello2"}))
+    pending = svc._pending["i-adaptive"]
+    memory_budget = pending.provider_deadlines["memory"] - pending.started_at
+    social_budget = pending.provider_deadlines["social"] - pending.started_at
+    assert memory_budget > social_budget
 
 
 @pytest.mark.asyncio

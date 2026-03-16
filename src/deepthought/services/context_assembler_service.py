@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from enum import Enum
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
 
 import nats
@@ -29,11 +30,20 @@ class _PendingAssembly:
     required_providers: set[str] = field(default_factory=set)
     provider_deadlines: dict[str, float] = field(default_factory=dict)
     provider_received_at: dict[str, float] = field(default_factory=dict)
+    provider_missing_reasons: dict[str, str | None] = field(default_factory=dict)
     started_at: float = 0.0
     published_reason: str | None = None
     state: "_AssemblyState" = field(default_factory=lambda: _AssemblyState.OPEN)
     published: bool = False
     event: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+@dataclass
+class _PublishedAssembly:
+    payload: dict[str, Any]
+    trace_id: str | None
+    expires_at: float
+    missing_at_publish: set[str]
 
 
 class _AssemblyState(str, Enum):
@@ -78,12 +88,83 @@ class ContextAssemblerService:
         js_context: JetStreamContext,
         *,
         wait_window_seconds: float = 0.2,
+        provider_jitter_budget_seconds: float = 0.01,
+        min_provider_timeout_seconds: float = 0.01,
+        max_provider_timeout_seconds: float = 0.75,
+        latency_history_size: int = 64,
+        late_arrival_window_seconds: float = 0.1,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
         self._wait_window_seconds = max(0.01, wait_window_seconds)
+        self._provider_jitter_budget_seconds = max(0.0, provider_jitter_budget_seconds)
+        self._min_provider_timeout_seconds = max(0.005, min_provider_timeout_seconds)
+        self._max_provider_timeout_seconds = max(self._min_provider_timeout_seconds, max_provider_timeout_seconds)
+        self._latency_history_size = max(5, latency_history_size)
+        self._late_arrival_window_seconds = max(0.0, late_arrival_window_seconds)
+
+        self._provider_latency_history: dict[str, deque[float]] = {
+            provider: deque(maxlen=self._latency_history_size) for provider in self._PROVIDER_ORDER
+        }
         self._pending: dict[str, _PendingAssembly] = {}
+        self._recently_published: dict[str, _PublishedAssembly] = {}
         self._lock = asyncio.Lock()
+
+    @staticmethod
+    def _estimate_p95(latencies: deque[float]) -> float | None:
+        if not latencies:
+            return None
+        ordered = sorted(latencies)
+        index = max(0, min(len(ordered) - 1, int((len(ordered) - 1) * 0.95)))
+        return ordered[index]
+
+    def _provider_timeout_seconds(self, provider: str) -> float:
+        p95 = self._estimate_p95(self._provider_latency_history[provider])
+        baseline = p95 if p95 is not None else self._wait_window_seconds
+        return max(
+            self._min_provider_timeout_seconds,
+            min(self._max_provider_timeout_seconds, baseline + self._provider_jitter_budget_seconds),
+        )
+
+    @staticmethod
+    def _provider_has_data(provider_name: str, payload: dict[str, Any]) -> bool:
+        if provider_name == "memory":
+            retrieved = payload.get("retrieved_knowledge", {})
+            facts = retrieved.get("facts") if isinstance(retrieved, dict) else None
+            return bool(facts) if isinstance(facts, list) else bool(retrieved)
+        if provider_name == "social":
+            social = payload.get("social_signals", payload)
+            return isinstance(social, dict) and bool(social)
+        if provider_name == "perception":
+            raw = payload.get("multimodal_interpretations", payload)
+            if not isinstance(raw, dict):
+                return False
+            return bool(raw.get("notes") or raw.get("by_modality") or raw.get("summary"))
+        return bool(payload)
+
+    @staticmethod
+    def _provider_explicit_unavailable(payload: dict[str, Any]) -> bool:
+        status = payload.get("status")
+        return bool(payload.get("unavailable") is True or status == "unavailable")
+
+    def _derive_provider_missing_reason(
+        self,
+        provider: str,
+        pending: _PendingAssembly,
+        *,
+        now: float,
+    ) -> str | None:
+        if provider in pending.provider_missing_reasons and pending.provider_missing_reasons[provider]:
+            return pending.provider_missing_reasons[provider]
+        if provider not in pending.provider_payloads:
+            return "timeout" if now >= pending.provider_deadlines[provider] else None
+
+        payload = pending.provider_payloads[provider]
+        if self._provider_explicit_unavailable(payload):
+            return "unavailable"
+        if not self._provider_has_data(provider, payload):
+            return "no_data"
+        return None
 
     async def _publish_fanout_requests(self, payload: dict[str, Any], *, trace_id: str | None, causation_id: str | None) -> None:
         fanout_payload = {
@@ -124,13 +205,14 @@ class ContextAssemblerService:
 
             loop_time = asyncio.get_running_loop().time()
             provider_deadlines = {
-                provider: loop_time + self._wait_window_seconds for provider in self._PROVIDER_ORDER
+                provider: loop_time + self._provider_timeout_seconds(provider) for provider in self._PROVIDER_ORDER
             }
             pending = _PendingAssembly(
                 request=payload,
                 trace_id=envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None,
                 required_providers=set(self._PROVIDER_ORDER),
                 provider_deadlines=provider_deadlines,
+                provider_missing_reasons={provider: None for provider in self._PROVIDER_ORDER},
                 started_at=loop_time,
             )
             async with self._lock:
@@ -144,6 +226,17 @@ class ContextAssemblerService:
             logger.exception("Failed to process input event in ContextAssemblerService")
             if hasattr(msg, "nak") and callable(msg.nak):
                 await msg.nak()
+
+    async def _emit_context_update(self, input_id: str, entry: _PublishedAssembly, provider_name: str) -> None:
+        envelope = EventEnvelope.build(
+            subject=EventSubjects.CONTEXT_UPDATED,
+            payload=entry.payload,
+            producer=self.__class__.__name__,
+            trace_id=entry.trace_id,
+            causation_id=input_id,
+        )
+        await self._publisher.publish(EventSubjects.CONTEXT_UPDATED, envelope.__dict__, use_jetstream=True)
+        logger.debug("Published %s late-arrival context update for input_id=%s", provider_name, input_id)
 
     async def _handle_provider_response(self, msg: Msg, provider_name: str) -> None:
         try:
@@ -163,7 +256,10 @@ class ContextAssemblerService:
             if response_trace_id is not None and not isinstance(response_trace_id, str):
                 raise ValueError("Provider payload trace_id must be a string when provided")
 
+            loop_now = asyncio.get_running_loop().time()
+            late_update_entry: _PublishedAssembly | None = None
             async with self._lock:
+                self._purge_expired_published(loop_now)
                 pending = self._pending.get(input_id)
                 if pending is not None and not pending.published:
                     if pending.trace_id and response_trace_id and pending.trace_id != response_trace_id:
@@ -177,17 +273,84 @@ class ContextAssemblerService:
                         await msg.ack()
                         return
                     pending.provider_payloads[provider_name] = payload
-                    pending.provider_received_at[provider_name] = asyncio.get_running_loop().time()
-                    if len(pending.provider_payloads) == len(pending.required_providers):
-                        pending.state = _AssemblyState.COMPLETE
-                    else:
-                        pending.state = _AssemblyState.PARTIAL_READY
+                    pending.provider_received_at[provider_name] = loop_now
+                    pending.provider_missing_reasons[provider_name] = self._derive_provider_missing_reason(
+                        provider_name,
+                        pending,
+                        now=loop_now,
+                    )
+                    latency = max(0.0, loop_now - pending.started_at)
+                    self._provider_latency_history[provider_name].append(latency)
+                    pending.state = (
+                        _AssemblyState.COMPLETE
+                        if len(pending.provider_payloads) == len(pending.required_providers)
+                        else _AssemblyState.PARTIAL_READY
+                    )
                     pending.event.set()
+                else:
+                    recent = self._recently_published.get(input_id)
+                    if (
+                        recent is not None
+                        and provider_name in recent.missing_at_publish
+                        and recent.expires_at >= loop_now
+                    ):
+                        late_update_entry = recent
+                        recent.payload = self._merge_late_provider_payload(recent.payload, provider_name, payload)
+                        recent.payload["confidence"]["update_reason"] = "late_provider_merge"
+                        recent.payload["confidence"]["late_update"] = True
+                        recent.missing_at_publish.discard(provider_name)
+
+            if late_update_entry is not None:
+                await self._emit_context_update(input_id, late_update_entry, provider_name)
             await msg.ack()
         except Exception:
             logger.exception("Failed to process provider response for %s", provider_name)
             if hasattr(msg, "nak") and callable(msg.nak):
                 await msg.nak()
+
+    def _merge_late_provider_payload(
+        self,
+        assembled_payload: dict[str, Any],
+        provider_name: str,
+        provider_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload = dict(assembled_payload)
+        confidence = dict(payload.get("confidence") or {})
+        completed = list(confidence.get("completed_providers") or [])
+        missing = list(confidence.get("missing_providers") or [])
+        missing_reasons = dict(confidence.get("provider_missing_reasons") or {})
+        provider_timings = dict(confidence.get("provider_timings") or {})
+
+        if provider_name == "memory":
+            retrieved = provider_payload.get("retrieved_knowledge", {})
+            facts = retrieved.get("facts") if isinstance(retrieved, dict) else []
+            payload["retrieved_facts"] = [str(f) for f in facts] if isinstance(facts, list) else []
+        elif provider_name == "social":
+            social = provider_payload.get("social_signals", provider_payload)
+            payload["social_signals"] = social if isinstance(social, dict) else {}
+        elif provider_name == "perception":
+            payload["multimodal_interpretations"] = self._normalize_multimodal(
+                provider_payload.get("multimodal_interpretations", provider_payload)
+            )
+
+        if provider_name not in completed:
+            completed.append(provider_name)
+        missing = [item for item in missing if item != provider_name]
+        missing_reasons.pop(provider_name, None)
+
+        timing = dict(provider_timings.get(provider_name) or {})
+        timing["timed_out"] = False
+        timing["missing_reason"] = None
+        provider_timings[provider_name] = timing
+
+        confidence["completed_providers"] = [p for p in self._PROVIDER_ORDER if p in completed]
+        confidence["missing_providers"] = [p for p in self._PROVIDER_ORDER if p in missing]
+        confidence["provider_missing_reasons"] = missing_reasons
+        confidence["provider_timings"] = provider_timings
+        confidence["provider_coverage"] = len(confidence["completed_providers"]) / len(self._PROVIDER_ORDER)
+        confidence["partial"] = bool(confidence["missing_providers"])
+        payload["confidence"] = confidence
+        return payload
 
     def _build_context_payload(self, input_id: str, pending: _PendingAssembly, elapsed: float) -> ContextAssembledPayload:
         request = pending.request
@@ -210,22 +373,41 @@ class ContextAssemblerService:
             conversation_window = []
 
         completed = [name for name in self._PROVIDER_ORDER if name in pending.provider_payloads]
-        missing = [name for name in self._PROVIDER_ORDER if name not in pending.provider_payloads]
+        now = pending.started_at + elapsed
+        missing = []
+        missing_reasons: dict[str, str] = {}
         provider_timings = {}
         for provider in self._PROVIDER_ORDER:
             deadline_offset_ms = int((pending.provider_deadlines[provider] - pending.started_at) * 1000)
             received_at = pending.provider_received_at.get(provider)
             received_offset_ms = int((received_at - pending.started_at) * 1000) if received_at is not None else None
+            missing_reason = self._derive_provider_missing_reason(provider, pending, now=now)
+            if missing_reason:
+                missing.append(provider)
+                missing_reasons[provider] = missing_reason
             provider_timings[provider] = {
                 "deadline_offset_ms": deadline_offset_ms,
                 "received_offset_ms": received_offset_ms,
-                "timed_out": provider in missing,
+                "timed_out": missing_reason == "timeout",
+                "missing_reason": missing_reason,
             }
+
+        provider_latency_p95_ms = {
+            provider: int(self._estimate_p95(self._provider_latency_history[provider]) * 1000)
+            if self._estimate_p95(self._provider_latency_history[provider]) is not None
+            else None
+            for provider in self._PROVIDER_ORDER
+        }
+        provider_timeout_budget_ms = {
+            provider: int((pending.provider_deadlines[provider] - pending.started_at) * 1000)
+            for provider in self._PROVIDER_ORDER
+        }
 
         confidence = {
             "provider_coverage": len(completed) / len(self._PROVIDER_ORDER),
             "completed_providers": completed,
             "missing_providers": missing,
+            "provider_missing_reasons": missing_reasons,
             "window_ms": int(self._wait_window_seconds * 1000),
             "elapsed_ms": int(elapsed * 1000),
             "partial": bool(missing),
@@ -233,6 +415,8 @@ class ContextAssemblerService:
             "assembly_state": pending.state.value,
             "correlation": {"input_id": input_id, "trace_id": pending.trace_id},
             "provider_timings": provider_timings,
+            "provider_latency_p95_ms": provider_latency_p95_ms,
+            "provider_timeout_budget_ms": provider_timeout_budget_ms,
         }
 
         return ContextAssembledPayload(
@@ -252,36 +436,64 @@ class ContextAssemblerService:
             timestamp=request.get("timestamp") or datetime.now(timezone.utc).isoformat(),
         )
 
+    def _purge_expired_published(self, now: float) -> None:
+        expired = [input_id for input_id, entry in self._recently_published.items() if entry.expires_at < now]
+        for input_id in expired:
+            del self._recently_published[input_id]
+
     async def _await_and_publish(self, input_id: str) -> None:
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._wait_window_seconds
         publish_reason = "timeout_partial"
-        while loop.time() < deadline:
+
+        while True:
             async with self._lock:
                 pending = self._pending.get(input_id)
                 if pending is None or pending.published:
                     return
-                if len(pending.provider_payloads) == len(self._PROVIDER_ORDER):
+
+                now = loop.time()
+                all_received = len(pending.provider_payloads) == len(self._PROVIDER_ORDER)
+                timed_out = all(now >= pending.provider_deadlines[p] for p in self._PROVIDER_ORDER if p not in pending.provider_payloads)
+                if all_received:
                     pending.state = _AssemblyState.COMPLETE
                     publish_reason = "all_providers_received"
                     break
-            await asyncio.sleep(0.005)
+                if timed_out:
+                    pending.state = _AssemblyState.TIMEOUT_PUBLISHED
+                    publish_reason = "timeout_partial"
+                    break
+
+                next_deadline = min(
+                    pending.provider_deadlines[p]
+                    for p in self._PROVIDER_ORDER
+                    if p not in pending.provider_payloads
+                )
+                sleep_for = max(0.001, min(0.01, next_deadline - now))
+
+            await asyncio.sleep(sleep_for)
 
         async with self._lock:
             pending = self._pending.get(input_id)
             if pending is None or pending.published:
                 return
-            if publish_reason == "timeout_partial":
-                pending.state = _AssemblyState.TIMEOUT_PUBLISHED
+
             pending.published_reason = publish_reason
             pending.published = True
             elapsed = loop.time() - pending.started_at
             payload = self._build_context_payload(input_id, pending, elapsed)
+            payload_dict = json.loads(payload.to_json())
+            missing = set(payload_dict.get("confidence", {}).get("missing_providers", []))
+            self._recently_published[input_id] = _PublishedAssembly(
+                payload=payload_dict,
+                trace_id=pending.trace_id,
+                expires_at=loop.time() + self._late_arrival_window_seconds,
+                missing_at_publish=missing,
+            )
             del self._pending[input_id]
 
         envelope = EventEnvelope.build(
             subject=EventSubjects.CONTEXT_ASSEMBLED,
-            payload=json.loads(payload.to_json()),
+            payload=payload_dict,
             producer=self.__class__.__name__,
             trace_id=pending.trace_id,
             causation_id=input_id,

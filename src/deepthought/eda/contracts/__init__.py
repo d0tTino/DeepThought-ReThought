@@ -19,6 +19,7 @@ class CanonicalSubjects:
     SOCIAL_SIGNALS_RETRIEVED = "dtr.social.signals.retrieved.v1"
     PERCEPTION_INTERPRET_RETRIEVED = "dtr.perception.interpret.retrieved.v1"
     CONTEXT_ASSEMBLED = "dtr.context.assembled.v1"
+    CONTEXT_UPDATED = "dtr.context.updated.v1"
     RESPONSE_CANDIDATES = "dtr.response.candidates.v1"
     RESPONSE_RANKED = "dtr.response.ranked.v1"
     PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings.v1"
@@ -38,6 +39,7 @@ LEGACY_SUBJECT_MAP: Dict[str, str] = {
     "dtr.social.signals.retrieved": CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED,
     "dtr.perception.interpret.retrieved": CanonicalSubjects.PERCEPTION_INTERPRET_RETRIEVED,
     "dtr.context.assembled": CanonicalSubjects.CONTEXT_ASSEMBLED,
+    "dtr.context.updated": CanonicalSubjects.CONTEXT_UPDATED,
     "dtr.response.candidates": CanonicalSubjects.RESPONSE_CANDIDATES,
     "dtr.response.ranked": CanonicalSubjects.RESPONSE_RANKED,
     "dtr.llm.response_generated": CanonicalSubjects.RESPONSE_RANKED,
