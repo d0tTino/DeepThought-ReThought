@@ -35,6 +35,7 @@ class EventSubjects:
     SOCIAL_UPDATED = "dtr.social.updated"
     PERCEPTION_INTERPRET_RETRIEVED = CanonicalSubjects.PERCEPTION_INTERPRET_RETRIEVED
     CONTEXT_ASSEMBLED = CanonicalSubjects.CONTEXT_ASSEMBLED
+    CONTEXT_UPDATED = CanonicalSubjects.CONTEXT_UPDATED
 
     # LLM events
     RESPONSE_GENERATED = "dtr.llm.response_generated"
