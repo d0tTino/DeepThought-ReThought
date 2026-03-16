@@ -286,3 +286,70 @@ async def test_context_and_policy_and_affinity_factors_shape_ranking(monkeypatch
     assert top_diag["factor_scores"]["policy_fit"] > 0.5
     assert top_diag["factor_scores"]["history_affinity"] > 0.0
     assert top_diag["factor_scores"]["context_degradation"] > 0.0
+
+
+@pytest.mark.asyncio
+async def test_source_calibration_profile_and_candidate_metadata(monkeypatch):
+    import deepthought.services.selector_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
+    svc = SelectorService(
+        DummyNATS(),
+        DummyJS(),
+        early_exit_confidence=0.0,
+        window_seconds=0.0,
+        source_confidence_weights={"default": 1.0},
+        source_calibration_profiles={"responder:factual": {"slope": 0.8, "bias": 0.0}},
+    )
+
+    payload = ResponseCandidatesPayload(
+        input_id="cal-profile-1",
+        candidates=[
+            ResponseCandidate(
+                text="factual",
+                confidence=0.8,
+                source="responder:factual",
+                source_metadata={"calibration": {"slope": 1.2, "bias": 0.05}},
+                rationale_tags=["factual", "grounded"],
+            ),
+            ResponseCandidate(
+                text="persona",
+                confidence=0.75,
+                source="responder:persona",
+                rationale_tags=["persona"],
+            ),
+        ],
+    )
+
+    await svc._handle_candidates_event(DummyMsg(payload.to_json()))
+
+    ranked_payload = svc._publisher.published[0][1]
+    assert ranked_payload["payload"]["final_response"] == "factual"
+
+
+@pytest.mark.asyncio
+async def test_deterministic_tie_breaking_prefers_lexicographic_source(monkeypatch):
+    import deepthought.services.selector_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
+    svc = SelectorService(
+        DummyNATS(),
+        DummyJS(),
+        early_exit_confidence=0.0,
+        window_seconds=0.0,
+    )
+
+    payload = ResponseCandidatesPayload(
+        input_id="tie-1",
+        candidates=[
+            ResponseCandidate(text="same", confidence=0.7, source="responder:persona", rationale_tags=["a"]),
+            ResponseCandidate(text="same", confidence=0.7, source="responder:factual", rationale_tags=["a"]),
+        ],
+    )
+
+    await svc._handle_candidates_event(DummyMsg(payload.to_json()))
+
+    ranked_payload = svc._publisher.published[0][1]
+    assert ranked_payload["payload"]["source"] == "responder:factual"

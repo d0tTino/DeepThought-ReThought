@@ -258,6 +258,8 @@ async def run(config_path: str) -> None:
         crews = []  # noqa: F841 - reserved for future use
         graph_tasks = []
         desires_file = cfg.get("desires_file", "desires.json")
+        responder_instances: list[Any] = []
+        responder_index = 0
         for cls in service_classes:
             if cls.__name__ == "PlanningService":
                 inst = cls(nc, js, desires_file=desires_file)
@@ -265,7 +267,15 @@ async def run(config_path: str) -> None:
                 inst = cls(nc, js)
             else:
                 inst = cls(nc, js)
-            await stack.enter_async_context(inst)
+            if cls.__name__.endswith("ResponderService") and cls.__name__ == "ResponderService":
+                responder_id = f"responder_{responder_index}"
+                inst = cls(nc, js, responder_id=responder_id)
+                await inst.start(durable_name=f"{responder_id}_durable")
+                stack.push_async_callback(inst.stop)
+                responder_instances.append(inst)
+                responder_index += 1
+            else:
+                await stack.enter_async_context(inst)
             instances.append(inst)
         await sub.subscribe(
             subject=EventSubjects.PLAN_REQUESTED,
@@ -273,7 +283,7 @@ async def run(config_path: str) -> None:
             use_jetstream=True,
             durable="planner",
         )
-        logger.info("Started %d services", len(instances))
+        logger.info("Started %d services (%d responder instances)", len(instances), len(responder_instances))
 
         try:
             await asyncio.Event().wait()
