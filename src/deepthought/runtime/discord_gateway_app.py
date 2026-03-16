@@ -68,6 +68,19 @@ class DiscordGatewayRuntime:
             if not self._should_route_message(message):
                 return
             await gateway.handle_discord_message(message)
+            content = str(getattr(message, "content", "")).lower()
+            if content.startswith("correction:") or content.startswith("fix:"):
+                await gateway.handle_discord_correction(message)
+
+        @client.event
+        async def on_message_edit(before: Any, after: Any) -> None:
+            await gateway.handle_discord_message_edit(before, after)
+
+        @client.event
+        async def on_reaction_add(reaction: Any, user: Any) -> None:
+            if bool(getattr(user, "bot", False)):
+                return
+            await gateway.handle_discord_reaction(reaction, user)
 
         try:
             started = await gateway.start()

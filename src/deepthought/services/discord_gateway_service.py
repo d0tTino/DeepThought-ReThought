@@ -15,7 +15,7 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
-from ..eda.events import EventSubjects, InputReceivedPayload, ResponseRankedPayload
+from ..eda.events import DiscordFeedbackSignalPayload, EventSubjects, InputReceivedPayload, ResponseRankedPayload
 from .base import BaseService
 from .human_interaction_policy import HumanInteractionPolicy
 
@@ -65,6 +65,7 @@ class DiscordGatewayService(BaseService):
         )
         self._discord_client = discord_client
         self._pending_routes: dict[str, _PendingRoute] = {}
+        self._message_input_index: dict[str, str] = {}
         self._interaction_policy = interaction_policy or HumanInteractionPolicy()
         self._clock = clock
         self._sleep = sleeper
@@ -157,6 +158,9 @@ class DiscordGatewayService(BaseService):
             return None
 
         self._record_inbound_activity(channel_id=payload.channel_id, author_id=payload.author_id)
+        if payload.input_id and payload.message_id:
+            self._message_input_index[payload.message_id] = payload.input_id
+
         if payload.input_id and payload.channel_id:
             self._pending_routes[payload.input_id] = _PendingRoute(
                 channel_id=payload.channel_id,
@@ -203,6 +207,97 @@ class DiscordGatewayService(BaseService):
                 timeout=10.0,
             )
         return payload.input_id
+
+
+    def _resolve_input_id(self, *, input_id: str | None = None, message_id: str | None = None) -> str | None:
+        if input_id:
+            return input_id
+        if message_id:
+            return self._message_input_index.get(message_id)
+        return None
+
+    async def _publish_discord_feedback(
+        self,
+        *,
+        signal_type: str,
+        signal: str,
+        input_id: str | None = None,
+        message_id: str | None = None,
+        author_id: str | None = None,
+        confidence: float = 0.0,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        if not self._publisher:
+            return
+        resolved_input_id = self._resolve_input_id(input_id=input_id, message_id=message_id)
+        payload = DiscordFeedbackSignalPayload(
+            signal_type=signal_type,
+            signal=signal,
+            input_id=resolved_input_id,
+            message_id=message_id,
+            author_id=author_id,
+            confidence=max(0.0, min(1.0, float(confidence))),
+            metadata=metadata or {},
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+        envelope = EventEnvelope.build(
+            subject=EventSubjects.DISCORD_FEEDBACK_SIGNAL,
+            payload=json.loads(payload.to_json()),
+            producer=self.__class__.__name__,
+            trace_id=str(uuid.uuid4()),
+            causation_id=resolved_input_id,
+        )
+        await self._publisher.publish(
+            EventSubjects.DISCORD_FEEDBACK_SIGNAL,
+            envelope.__dict__,
+            use_jetstream=True,
+            timeout=10.0,
+        )
+
+    async def handle_discord_reaction(self, reaction: Any, user: Any) -> None:
+        message = getattr(reaction, "message", None)
+        emoji = str(getattr(reaction, "emoji", ""))
+        message_id = str(getattr(message, "id", "")) if message is not None and getattr(message, "id", None) is not None else None
+        is_positive = emoji in {"👍", "✅", "❤️", "🔥", "👏"}
+        signal = "positive" if is_positive else "negative"
+        await self._publish_discord_feedback(
+            signal_type="reaction",
+            signal=signal,
+            message_id=message_id,
+            author_id=str(getattr(user, "id", "")) if getattr(user, "id", None) is not None else None,
+            confidence=0.8 if is_positive else 0.6,
+            metadata={"emoji": emoji},
+        )
+
+    async def handle_discord_message_edit(self, before: Any, after: Any) -> None:
+        before_text = str(getattr(before, "content", ""))
+        after_text = str(getattr(after, "content", ""))
+        if before_text == after_text:
+            return
+        message_id = str(getattr(after, "id", "")) if getattr(after, "id", None) is not None else None
+        await self._publish_discord_feedback(
+            signal_type="message_edit",
+            signal="edited",
+            message_id=message_id,
+            author_id=str(getattr(getattr(after, "author", None), "id", "")) if getattr(getattr(after, "author", None), "id", None) is not None else None,
+            confidence=0.4,
+            metadata={"before": before_text[:280], "after": after_text[:280]},
+        )
+
+    async def handle_discord_correction(self, message: Any, *, input_id: str | None = None) -> None:
+        text = str(getattr(message, "content", "")).strip()
+        if not text:
+            return
+        message_id = str(getattr(message, "id", "")) if getattr(message, "id", None) is not None else None
+        await self._publish_discord_feedback(
+            signal_type="explicit_correction",
+            signal="corrected",
+            input_id=input_id,
+            message_id=message_id,
+            author_id=str(getattr(getattr(message, "author", None), "id", "")) if getattr(getattr(message, "author", None), "id", None) is not None else None,
+            confidence=0.9,
+            metadata={"correction": text[:500]},
+        )
 
     @asynccontextmanager
     async def _typing_scope(self, channel: _Channel, typing_seconds: float):

@@ -29,6 +29,7 @@ class CanonicalSubjects:
     SOCIAL_PERCEPTION = "dtr.social.perception.v1"
     OUTCOME_SIGNAL = "dtr.feedback.outcome_signal.v1"
     CORRECTION_SIGNAL = "dtr.feedback.correction_signal.v1"
+    DISCORD_FEEDBACK_SIGNAL = "dtr.feedback.discord_signal.v1"
     USER_SUMMARY_REFRESH = "dtr.memory.user_summary.refresh.v1"
 
 
@@ -52,6 +53,7 @@ LEGACY_SUBJECT_MAP: Dict[str, str] = {
     "dtr.social.perception": CanonicalSubjects.SOCIAL_PERCEPTION,
     "dtr.feedback.outcome_signal": CanonicalSubjects.OUTCOME_SIGNAL,
     "dtr.feedback.correction_signal": CanonicalSubjects.CORRECTION_SIGNAL,
+    "dtr.feedback.discord_signal": CanonicalSubjects.DISCORD_FEEDBACK_SIGNAL,
     "dtr.memory.user_summary.refresh": CanonicalSubjects.USER_SUMMARY_REFRESH,
 }
 

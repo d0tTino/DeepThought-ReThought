@@ -237,6 +237,22 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS feedback_signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_type TEXT,
+            signal TEXT,
+            input_id TEXT,
+            user_id TEXT,
+            source TEXT,
+            model_id TEXT,
+            confidence REAL DEFAULT 0,
+            score REAL DEFAULT 0,
+            details TEXT,
+            exported INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS recent_topics (
             topic TEXT PRIMARY KEY,
             last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -1910,3 +1926,85 @@ class DBManager:
         ) as cur:
             rows = await cur.fetchall()
             return [r[0] for r in rows]
+
+    async def record_feedback_signal(
+        self,
+        *,
+        signal_type: str,
+        signal: str,
+        input_id: str | None,
+        user_id: str | None,
+        source: str,
+        model_id: str,
+        confidence: float,
+        score: float,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        await self.connect()
+        assert self._db
+        await self._db.execute(
+            """
+            INSERT INTO feedback_signals (
+                signal_type, signal, input_id, user_id, source, model_id, confidence, score, details
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                signal_type,
+                signal,
+                input_id,
+                user_id,
+                source,
+                model_id,
+                float(confidence),
+                float(score),
+                json.dumps(dict(details or {})),
+            ),
+        )
+        await self._db.commit()
+
+    async def fetch_high_value_feedback(self, *, limit: int = 100, min_score: float = 0.7) -> list[dict[str, Any]]:
+        await self.connect()
+        assert self._db
+        async with self._db.execute(
+            """
+            SELECT id, signal_type, signal, input_id, user_id, source, model_id, confidence, score, details, created_at
+            FROM feedback_signals
+            WHERE exported=0 AND score >= ?
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (float(min_score), int(limit)),
+        ) as cur:
+            rows = await cur.fetchall()
+        if not rows:
+            return []
+        items = []
+        row_ids = []
+        for row in rows:
+            row_ids.append(int(row[0]))
+            details: dict[str, Any] = {}
+            if row[9]:
+                try:
+                    parsed = json.loads(row[9])
+                    if isinstance(parsed, dict):
+                        details = parsed
+                except json.JSONDecodeError:
+                    details = {}
+            items.append({
+                "id": int(row[0]),
+                "signal_type": row[1],
+                "signal": row[2],
+                "input_id": row[3],
+                "user_id": row[4],
+                "source": row[5],
+                "model_id": row[6],
+                "confidence": float(row[7] or 0.0),
+                "score": float(row[8] or 0.0),
+                "details": details,
+                "created_at": row[10],
+            })
+        placeholders = ",".join("?" for _ in row_ids)
+        await self._db.execute(f"UPDATE feedback_signals SET exported=1 WHERE id IN ({placeholders})", tuple(row_ids))
+        await self._db.commit()
+        return items
+

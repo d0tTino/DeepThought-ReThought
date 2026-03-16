@@ -43,6 +43,7 @@ class EventSubjects:
     RESPONSE_RANKED = CanonicalSubjects.RESPONSE_RANKED
     OUTCOME_SIGNAL = CanonicalSubjects.OUTCOME_SIGNAL
     CORRECTION_SIGNAL = CanonicalSubjects.CORRECTION_SIGNAL
+    DISCORD_FEEDBACK_SIGNAL = CanonicalSubjects.DISCORD_FEEDBACK_SIGNAL
     USER_SUMMARY_REFRESH = CanonicalSubjects.USER_SUMMARY_REFRESH
 
     # Perception events
@@ -351,6 +352,24 @@ class ResponseRankedPayload(EventPayload):
 
 
 
+
+
+
+@dataclass
+class DiscordFeedbackSignalPayload(EventPayload):
+    """Structured feedback emitted from Discord interactions."""
+
+    signal_type: str
+    signal: str
+    input_id: Optional[str] = None
+    message_id: Optional[str] = None
+    user_id: Optional[str] = None
+    author_id: Optional[str] = None
+    response_source: Optional[str] = None
+    model_id: Optional[str] = None
+    confidence: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    timestamp: Optional[str] = None
 
 @dataclass
 class OutcomeSignalPayload(EventPayload):
