@@ -117,6 +117,26 @@ async def test_run(monkeypatch, tmp_path):
 
     monkeypatch.setattr(orchestrator, "_connect_nats", fake_connect)
 
+    class DummySub:
+        def __init__(self, *a, **k):
+            pass
+
+        async def subscribe(self, *a, **k):
+            return True
+
+        async def unsubscribe_all(self):
+            pass
+
+    class DummyPub:
+        def __init__(self, *a, **k):
+            pass
+
+        async def publish(self, *a, **k):
+            return True
+
+    monkeypatch.setattr(orchestrator, "Subscriber", DummySub)
+    monkeypatch.setattr(orchestrator, "Publisher", DummyPub)
+
     monkeypatch.setattr(asyncio.Event, "wait", lambda self: asyncio.sleep(0))
 
     cfg = tmp_path / "cfg.json"

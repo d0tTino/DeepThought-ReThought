@@ -254,6 +254,8 @@ class ResponseCandidate(EventPayload):
     safety_passed: Optional[bool] = None
     confidence_components: Dict[str, Any] = field(default_factory=dict)
     safety_metadata: Dict[str, Any] = field(default_factory=dict)
+    source_metadata: Dict[str, Any] = field(default_factory=dict)
+    rationale_tags: list[str] = field(default_factory=list)
 
 
 @dataclass

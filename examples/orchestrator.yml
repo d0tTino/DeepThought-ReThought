@@ -11,7 +11,9 @@ services:
   - perception
   - perception_interpret
   - context_assembler
-  - llm_remote
+  - factual_responder
+  - persona_responder
+  - safety_responder
   - selector
   - feedback
   - reasoning
@@ -76,16 +78,45 @@ service_bindings:
         event_subject: EventSubjects.MEMORY_RETRIEVED
         jetstream: true
 
-  llm_remote:
-    description: HTTP-backed responder that turns assembled context into candidates.
+  factual_responder:
+    description: Fact-grounded QA/tool responder that emits concise candidates.
     env:
       - NATS_URL
-      - LLM_ENDPOINT
     subscribe:
       - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
-        durable: llm_remote_service
+        durable: responder_factual_service
+        required_reliability: true
+    publish:
+      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+        event_subject: EventSubjects.RESPONSE_CANDIDATES
+        jetstream: true
+
+  persona_responder:
+    description: Persona-aligned conversational responder for rapport and continuity.
+    env:
+      - NATS_URL
+    subscribe:
+      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+        event_subject: EventSubjects.CONTEXT_ASSEMBLED
+        jetstream: true
+        durable: responder_persona_service
+        required_reliability: true
+    publish:
+      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+        event_subject: EventSubjects.RESPONSE_CANDIDATES
+        jetstream: true
+
+  safety_responder:
+    description: Safety responder that can emit refusal/safe-default candidates.
+    env:
+      - NATS_URL
+    subscribe:
+      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+        event_subject: EventSubjects.CONTEXT_ASSEMBLED
+        jetstream: true
+        durable: responder_safety_service
         required_reliability: true
     publish:
       - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates

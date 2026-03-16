@@ -52,6 +52,7 @@ class SelectorService:
         window_seconds: float = 0.15,
         early_exit_confidence: float = 0.9,
         source_confidence_weights: Optional[dict[str, float]] = None,
+        source_calibration_profiles: Optional[dict[str, dict[str, float]]] = None,
         toxicity_guard: Optional[Callable[[ResponseCandidate], bool]] = None,
         contradiction_checker: Optional[Callable[[ResponseCandidate, list[ResponseCandidate]], bool]] = None,
         repetition_penalty: Optional[Callable[[ResponseCandidate, list[ResponseCandidate]], float]] = None,
@@ -62,6 +63,11 @@ class SelectorService:
         self._window_seconds = max(0.0, window_seconds)
         self._early_exit_confidence = early_exit_confidence
         self._source_confidence_weights = source_confidence_weights or {}
+        self._source_calibration_profiles = {
+            key.lower(): value
+            for key, value in (source_calibration_profiles or {}).items()
+            if isinstance(value, dict)
+        }
         self._toxicity_guard = toxicity_guard or self._default_toxicity_guard
         self._contradiction_checker = contradiction_checker or (lambda _c, _all: True)
         self._repetition_penalty = repetition_penalty or self._default_repetition_penalty
@@ -86,7 +92,27 @@ class SelectorService:
     def _normalized_confidence(self, candidate: ResponseCandidate) -> float:
         source = (candidate.source or "default").lower()
         weight = self._source_confidence_weights.get(source, self._source_confidence_weights.get("default", 1.0))
-        return max(0.0, candidate.confidence * weight)
+        calibrated = max(0.0, candidate.confidence * weight)
+        profile = self._source_calibration_profiles.get(source) or self._source_calibration_profiles.get("default") or {}
+        slope = float(profile.get("slope", 1.0))
+        bias = float(profile.get("bias", 0.0))
+        floor = float(profile.get("floor", 0.0))
+        ceiling = float(profile.get("ceiling", 1.0))
+
+        metadata = candidate.source_metadata if isinstance(candidate.source_metadata, dict) else {}
+        if isinstance(metadata.get("calibration"), dict):
+            source_calibration = metadata["calibration"]
+            slope *= float(source_calibration.get("slope", 1.0))
+            bias += float(source_calibration.get("bias", 0.0))
+
+        calibrated = slope * calibrated + bias
+        return max(floor, min(ceiling, calibrated))
+
+    def _deterministic_tiebreak_key(self, candidate: ResponseCandidate) -> tuple[str, str, str]:
+        source = (candidate.source or "").strip().lower()
+        text = (candidate.text or "").strip().lower()
+        rationale = ",".join(sorted(candidate.rationale_tags)) if isinstance(candidate.rationale_tags, list) else ""
+        return (source, text, rationale)
 
     def _choose_fallback(self, interaction_policy: Optional[dict]) -> tuple[str, str]:
         policy = interaction_policy or {}
@@ -187,7 +213,7 @@ class SelectorService:
             penalty = self._repetition_penalty(candidate, candidates)
             final_score = max(
                 0.0,
-                normalized + policy_adjustment + affinity_adjustment + context_adjustment - penalty,
+                normalized + policy_adjustment + affinity_adjustment + context_adjustment - penalty + min(0.05, 0.01 * len(candidate.rationale_tags or [])),
             )
             factor_scores = {
                 "base_confidence": normalized,
@@ -225,7 +251,13 @@ class SelectorService:
                 }
             )
 
-        ranked = [candidate for _, candidate in sorted(scored, key=lambda item: item[0], reverse=True)]
+        ranked = [
+            candidate
+            for _, candidate in sorted(
+                scored,
+                key=lambda item: (-item[0], self._deterministic_tiebreak_key(item[1])),
+            )
+        ]
         return ranked, sorted(diagnostics, key=lambda item: item["score"], reverse=True)
 
     async def _publish_selection(self, state: _AggregationState, trace_id: str | None = None, causation_id: str | None = None) -> None:
