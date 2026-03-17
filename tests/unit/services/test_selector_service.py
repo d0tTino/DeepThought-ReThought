@@ -76,6 +76,7 @@ async def test_rank_by_confidence(service):
     telemetry_subject, telemetry_payload = service._publisher.published[1]
     assert telemetry_subject == "dtr.telemetry.selector_ranking.v1"
     assert telemetry_payload["chosen_source"] is None
+    assert telemetry_payload["policy_version"] == "v1"
 
 
 @pytest.mark.asyncio
@@ -277,6 +278,7 @@ async def test_context_and_policy_and_affinity_factors_shape_ranking(monkeypatch
     ranked = svc._publisher.published[0][1]
     telemetry = svc._publisher.published[1][1]
     assert ranked["payload"]["final_response"] == "tailored"
+    assert ranked["payload"]["interaction_policy"]["policy_version"] == "v1"
     assert telemetry["weights"]["policy_fit"] == pytest.approx(0.2)
     assert telemetry["weights"]["history_affinity"] == pytest.approx(0.15)
     assert telemetry["weights"]["context_degradation"] == pytest.approx(0.25)
@@ -286,6 +288,7 @@ async def test_context_and_policy_and_affinity_factors_shape_ranking(monkeypatch
     assert top_diag["factor_scores"]["policy_fit"] > 0.5
     assert top_diag["factor_scores"]["history_affinity"] > 0.0
     assert top_diag["factor_scores"]["context_degradation"] > 0.0
+    assert top_diag["policy_artifacts"]
 
 
 @pytest.mark.asyncio

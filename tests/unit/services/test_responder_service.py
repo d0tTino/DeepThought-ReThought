@@ -86,6 +86,8 @@ async def test_responder_publishes_candidate_with_metadata(monkeypatch, service_
     assert expected_tag in candidate["rationale_tags"]
     assert isinstance(candidate["source_metadata"], dict)
     assert isinstance(candidate["source_metadata"].get("calibration"), dict)
+    assert candidate["source_metadata"]["policy_version"] == "v1"
+    assert len(candidate["safety_metadata"]["policy_artifacts"]) >= 3
 
 
 @pytest.mark.asyncio
