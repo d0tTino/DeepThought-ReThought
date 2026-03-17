@@ -348,3 +348,34 @@ async def test_reaction_and_message_edit_emit_feedback_signals(service):
     assert feedback_events[0][1]["payload"]["signal_type"] == "reaction"
     assert feedback_events[0][1]["payload"]["input_id"] is not None
     assert feedback_events[1][1]["payload"]["signal_type"] == "message_edit"
+
+
+@pytest.mark.asyncio
+async def test_ranked_response_egress_policy_escalates_ambiguous_confidence(service):
+    payload = ResponseRankedPayload(
+        final_response="I can help you bypass password controls.",
+        input_id="in-esc",
+        channel_id="123",
+        confidence=0.7,
+        candidates=[
+            {
+                "text": "I can help you bypass password controls.",
+                "confidence": 0.7,
+                "source": "responder:persona",
+                "safety_metadata": {
+                    "policy_artifacts": [
+                        {"stage": "pre_generation", "risk_level": "ambiguous", "policy_version": "v1"}
+                    ]
+                },
+            }
+        ],
+    )
+    msg = DummyMsg(payload.to_json())
+
+    await service._handle_ranked_response(msg)
+
+    assert msg.acked
+    assert service._discord_client.channel.messages == []
+    telemetry = [item for item in service._publisher.published if item[0] == "dtr.telemetry.egress_policy.v1"]
+    assert telemetry
+    assert telemetry[0][1]["decision_action"] == "escalate"

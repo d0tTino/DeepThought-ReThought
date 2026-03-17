@@ -22,6 +22,7 @@ from ..eda.events import (
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
 from . import moderation
+from .policy_engine import VersionedPolicyEngine
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class SelectorService:
         self._context_degradation_weight = 0.25
         self._policy_fit_weight = 0.2
         self._history_affinity_weight = 0.15
+        self._policy_engine = VersionedPolicyEngine()
 
     def _default_toxicity_guard(self, candidate: ResponseCandidate) -> bool:
         score, _ = moderation.evaluate_toxicity(candidate.text)
@@ -215,6 +217,13 @@ class SelectorService:
                 0.0,
                 normalized + policy_adjustment + affinity_adjustment + context_adjustment - penalty + min(0.05, 0.01 * len(candidate.rationale_tags or [])),
             )
+            policy_decision = self._policy_engine.evaluate_candidate(
+                text=candidate.text,
+                confidence=normalized,
+                prior_artifacts=self._candidate_policy_artifacts(candidate),
+            )
+            if not policy_decision.allowed:
+                rejection_reasons.append(f"policy:{policy_decision.action}")
             factor_scores = {
                 "base_confidence": normalized,
                 "context_degradation": context_degradation,
@@ -224,6 +233,8 @@ class SelectorService:
                 "history_affinity": affinity_score,
                 "history_adjustment": affinity_adjustment,
                 "repetition_penalty": penalty,
+                "policy_risk_level": policy_decision.risk_level,
+                "policy_confidence_band": policy_decision.confidence_band,
             }
             if rejection_reasons:
                 diagnostics.append(
@@ -235,6 +246,7 @@ class SelectorService:
                         "score": final_score,
                         "factor_scores": factor_scores,
                         "rejection_reasons": rejection_reasons,
+                        "policy_artifacts": [*self._candidate_policy_artifacts(candidate), policy_decision.artifacts],
                     }
                 )
                 continue
@@ -248,6 +260,7 @@ class SelectorService:
                     "score": final_score,
                     "factor_scores": factor_scores,
                     "rejection_reasons": [],
+                    "policy_artifacts": [*self._candidate_policy_artifacts(candidate), policy_decision.artifacts],
                 }
             )
 
@@ -260,10 +273,17 @@ class SelectorService:
         ]
         return ranked, sorted(diagnostics, key=lambda item: item["score"], reverse=True)
 
+    def _candidate_policy_artifacts(self, candidate: ResponseCandidate) -> list[dict]:
+        metadata = candidate.safety_metadata if isinstance(candidate.safety_metadata, dict) else {}
+        artifacts = metadata.get("policy_artifacts")
+        if isinstance(artifacts, list):
+            return [item for item in artifacts if isinstance(item, dict)]
+        return []
+
     async def _publish_selection(self, state: _AggregationState, trace_id: str | None = None, causation_id: str | None = None) -> None:
         ranked_candidates, diagnostics = self._rank_candidates(
             state.candidates,
-            interaction_policy=state.interaction_policy,
+            interaction_policy={**(state.interaction_policy or {}), "policy_version": self._policy_engine.VERSION},
             context_confidence=state.context_confidence,
             social_intent_hints=state.social_intent_hints,
             user_history_affinity=state.user_history_affinity,
@@ -282,10 +302,12 @@ class SelectorService:
             )
             final_confidence = float(selected_diag.get("score", self._normalized_confidence(selected))) if selected_diag else self._normalized_confidence(selected)
             final_source = selected.source
+            selected_policy_artifacts = self._candidate_policy_artifacts(selected)
         else:
             final_response, fallback_reason = self._choose_fallback(state.interaction_policy)
             final_confidence = 0.0
             final_source = "selector_fallback"
+            selected_policy_artifacts = []
 
         ranked_payload = ResponseRankedPayload(
             final_response=final_response,
@@ -296,7 +318,7 @@ class SelectorService:
             timestamp=datetime.now(timezone.utc).isoformat(),
             confidence=final_confidence,
             source=final_source,
-            interaction_policy=state.interaction_policy,
+            interaction_policy={**(state.interaction_policy or {}), "policy_version": self._policy_engine.VERSION},
             candidates=ranked_candidates,
         )
         envelope = EventEnvelope.build(
@@ -318,6 +340,8 @@ class SelectorService:
             "chosen_source": final_source,
             "selected_confidence": final_confidence,
             "fallback_reason": fallback_reason,
+            "chosen_policy_artifacts": selected_policy_artifacts,
+            "policy_version": self._policy_engine.VERSION,
             "window_seconds": self._window_seconds,
             "candidate_count": len(state.candidates),
             "context_confidence": state.context_confidence,
@@ -385,7 +409,7 @@ class SelectorService:
 
                 ranked_candidates, diagnostics = self._rank_candidates(
                     state.candidates,
-                    interaction_policy=state.interaction_policy,
+                    interaction_policy={**(state.interaction_policy or {}), "policy_version": self._policy_engine.VERSION},
                     context_confidence=state.context_confidence,
                     social_intent_hints=state.social_intent_hints,
                     user_history_affinity=state.user_history_affinity,

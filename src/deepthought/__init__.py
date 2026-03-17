@@ -23,6 +23,9 @@ def _ensure_torch_numpy_compat() -> None:
 
     torch._deepthought_numpy_checked = True  # type: ignore[attr-defined]
 
+    if not hasattr(torch, "from_numpy"):
+        return
+
     try:
         torch.from_numpy(_np.zeros(1, dtype=_np.float32))
     except RuntimeError as exc:

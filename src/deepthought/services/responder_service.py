@@ -12,6 +12,7 @@ from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import EventSubjects, ResponseCandidate, ResponseCandidatesPayload
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+from .policy_engine import VersionedPolicyEngine
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class ResponderService:
         self._subscriber = Subscriber(nats_client, js_context)
         self._responder_id = responder_id.strip().lower() or "factual"
         self._responder_kind = responder_kind.strip().lower() or self._responder_id
+        self._policy_engine = VersionedPolicyEngine()
 
     @staticmethod
     def _bounded_social_features(social_signals: dict) -> dict:
@@ -54,7 +56,13 @@ class ResponderService:
         fact_hint = facts[0] if facts else ""
         return f"user_input={user_input[:160]} | fact={fact_hint[:120]} | social={json.dumps(bounded, sort_keys=True)}"
 
-    def _build_candidate(self, user_input: str, facts: list[str], social_signals: dict) -> ResponseCandidate:
+    def _build_candidate(
+        self,
+        user_input: str,
+        facts: list[str],
+        social_signals: dict,
+        policy_artifacts: list[dict],
+    ) -> ResponseCandidate:
         source = f"responder:{self._responder_id}"
         if self._responder_kind in {"factual", "qa", "tool"}:
             fact = facts[0] if facts else "I don't have enough retrieved facts yet"
@@ -80,18 +88,31 @@ class ResponderService:
                 tags = ["safety", "allow"]
             style = "safety"
 
+        decision = self._policy_engine.evaluate_candidate(
+            text=text,
+            confidence=confidence,
+            prior_artifacts=policy_artifacts,
+        )
+
         return ResponseCandidate(
             text=text,
             confidence=confidence,
             source=source,
-            safety_passed=True,
+            safety_passed=decision.allowed,
             confidence_components={"model": confidence, "prior": 0.8},
-            safety_metadata={"style": style, "policy": "keyword_v1"},
+            safety_metadata={
+                "style": style,
+                "policy": "keyword_v1",
+                "policy_artifacts": [*policy_artifacts, decision.artifacts],
+                "policy_action": decision.action,
+                "policy_reason": decision.reason,
+            },
             source_metadata={
                 "responder_id": self._responder_id,
                 "kind": self._responder_kind,
                 "calibration": {"slope": 1.0, "bias": 0.0},
                 "social_features": self._bounded_social_features(social_signals),
+                "policy_version": self._policy_engine.VERSION,
             },
             rationale_tags=tags,
         )
@@ -108,8 +129,19 @@ class ResponderService:
             user_id = payload.get("user_id") if isinstance(payload.get("user_id"), str) else None
             channel_id = payload.get("channel_id") if isinstance(payload.get("channel_id"), str) else None
 
+            risk_artifact = self._policy_engine.classify_input_risk(user_input)
+            hardening_artifact = self._policy_engine.harden_prompt(user_input, risk_artifact=risk_artifact)
+            policy_artifacts = [risk_artifact, hardening_artifact]
+
             out = ResponseCandidatesPayload(
-                candidates=[self._build_candidate(user_input=user_input, facts=[str(x) for x in facts], social_signals=social_signals)],
+                candidates=[
+                    self._build_candidate(
+                        user_input=user_input,
+                        facts=[str(x) for x in facts],
+                        social_signals=social_signals,
+                        policy_artifacts=policy_artifacts,
+                    )
+                ],
                 input_id=input_id,
                 user_id=author_id or user_id,
                 author_id=author_id,

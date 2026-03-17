@@ -18,6 +18,7 @@ from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import DiscordFeedbackSignalPayload, EventSubjects, InputReceivedPayload, ResponseRankedPayload
 from .base import BaseService
 from .human_interaction_policy import HumanInteractionPolicy
+from .policy_engine import VersionedPolicyEngine
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class DiscordGatewayService(BaseService):
         self._recent_channel_activity: dict[str, list[float]] = {}
         self._familiarity_counts: dict[tuple[str, str], int] = {}
         self._cooldown_until: dict[str, float] = {}
+        self._policy_engine = VersionedPolicyEngine()
         self.add_subscription(
             response_subject,
             self._handle_ranked_response,
@@ -373,6 +375,43 @@ class DiscordGatewayService(BaseService):
         self._set_cooldown(cooldown_keys, decision.cooldown_seconds)
         return True
 
+
+    def _collect_policy_artifacts(self, payload: ResponseRankedPayload) -> list[dict[str, Any]]:
+        artifacts: list[dict[str, Any]] = []
+        for candidate in payload.candidates or []:
+            metadata = candidate.safety_metadata if isinstance(candidate.safety_metadata, dict) else {}
+            cand_artifacts = metadata.get("policy_artifacts")
+            if isinstance(cand_artifacts, list):
+                artifacts.extend(item for item in cand_artifacts if isinstance(item, dict))
+        return artifacts
+
+    async def _publish_egress_escalation(
+        self,
+        *,
+        payload: ResponseRankedPayload,
+        decision_reason: str,
+        decision_action: str,
+    ) -> None:
+        if not self._publisher:
+            return
+        escalation_payload = {
+            "input_id": payload.input_id,
+            "channel_id": payload.channel_id,
+            "author_id": payload.author_id,
+            "response_source": payload.source,
+            "confidence": payload.confidence,
+            "decision_action": decision_action,
+            "decision_reason": decision_reason,
+            "policy_version": self._policy_engine.VERSION,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        await self._publisher.publish(
+            "dtr.telemetry.egress_policy.v1",
+            escalation_payload,
+            use_jetstream=True,
+            timeout=10.0,
+        )
+
     async def _handle_ranked_response(self, msg: Msg) -> None:
         action = "ack"
         try:
@@ -383,6 +422,21 @@ class DiscordGatewayService(BaseService):
             payload = ResponseRankedPayload.from_dict(decoded_payload)
             if not payload.final_response:
                 raise ValueError("final_response is required")
+
+            policy_artifacts = self._collect_policy_artifacts(payload)
+            egress_decision = self._policy_engine.evaluate_egress(
+                content=payload.final_response,
+                confidence=payload.confidence,
+                policy_artifacts=policy_artifacts,
+            )
+            if not egress_decision.allowed:
+                await self._publish_egress_escalation(
+                    payload=payload,
+                    decision_reason=egress_decision.reason,
+                    decision_action=egress_decision.action,
+                )
+                action = "ack"
+                return await msg.ack()
 
             route = self._pending_routes.get(payload.input_id or "") if payload.input_id else None
             channel_id = payload.channel_id or (route.channel_id if route else None)
