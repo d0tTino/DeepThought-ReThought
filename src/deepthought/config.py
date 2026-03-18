@@ -9,7 +9,7 @@ import subprocess
 import warnings
 from importlib import metadata
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import AnyUrl, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -128,7 +128,9 @@ def _build_env_overrides() -> dict[str, object]:
     vector_gpu = _coerce_bool(os.getenv("DT_VECTOR_USE_GPU"))
     if vector_gpu is not None:
         _set(("vector_use_gpu",), vector_gpu)
+    _set(("runtime_profile",), os.getenv("DT_RUNTIME_PROFILE"))
     _set(("graph_backend",), os.getenv("DT_GRAPH_BACKEND"))
+    _set(("graph_local_path",), os.getenv("DT_GRAPH_LOCAL_PATH"))
 
     response_filter_enabled = _coerce_bool(os.getenv("DT_RESPONSE_FILTER_ENABLED"))
     if response_filter_enabled is not None:
@@ -201,6 +203,56 @@ class RewardThresholds(BaseSettings):
 DEFAULT_SOCIAL_MODEL = Path(__file__).resolve().parent / "perception" / "default_social_perception_model.json"
 
 
+GraphRuntimeProfile = Literal["development", "production", "test"]
+
+
+def _normalize_runtime_profile(value: str | None) -> str:
+    normalized = (value or "development").strip().lower()
+    aliases = {
+        "dev": "development",
+        "local": "development",
+        "prod": "production",
+        "testing": "test",
+        "tests": "test",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def resolve_graph_backend_for_profile(
+    runtime_profile: str | None,
+    graph_backend: str | None,
+) -> str:
+    """Return the canonical graph backend for the selected runtime profile."""
+
+    profile = _normalize_runtime_profile(runtime_profile)
+    requested = (graph_backend or "").strip().lower()
+
+    if profile == "test":
+        if requested and requested not in {"stub", "noop", "none", "inmemory", "in-memory"}:
+            raise ValueError("Test profile requires the in-memory stub graph backend")
+        return "stub"
+
+    if profile == "development":
+        if not requested:
+            return "file"
+        if requested in {"file", "local", "dev", "development"}:
+            return "file"
+        if requested in {"memgraph", "neo4j"}:
+            return requested
+        if requested in {"stub", "noop", "none", "inmemory", "in-memory"}:
+            raise ValueError("Development profile requires a persistent local or remote graph backend")
+        raise ValueError(f"Unsupported graph backend for development profile: {graph_backend}")
+
+    if profile == "production":
+        if not requested:
+            return "memgraph"
+        if requested not in {"memgraph", "neo4j"}:
+            raise ValueError("Production profile requires Neo4j or Memgraph")
+        return requested
+
+    raise ValueError(f"Unknown runtime profile: {runtime_profile}")
+
+
 class Settings(BaseSettings):
     """Application wide settings."""
 
@@ -237,7 +289,9 @@ class Settings(BaseSettings):
     memory_capacity: int = 100
     memory_top_k: int = 3
 
-    graph_backend: str = Field("memgraph", env="DT_GRAPH_BACKEND")
+    runtime_profile: GraphRuntimeProfile = Field("development", env="DT_RUNTIME_PROFILE")
+    graph_backend: str = Field("", env="DT_GRAPH_BACKEND")
+    graph_local_path: str = Field("data/graph_memory.json", env="DT_GRAPH_LOCAL_PATH")
     mg_host: str = Field("localhost", env="DT_MG_HOST")
     mg_port: int = Field(7687, env="DT_MG_PORT")
     mg_user: str = Field("memgraph", env="DT_MG_USER")
@@ -264,7 +318,27 @@ class Settings(BaseSettings):
         env="DT_RESPONSE_FILTER_FALLBACK_MESSAGE",
     )
 
+
+    @model_validator(mode="after")
+    def _normalize_memory_runtime(self) -> "Settings":
+        self.runtime_profile = _normalize_runtime_profile(getattr(self, "runtime_profile", None))  # type: ignore[assignment]
+        self.graph_backend = resolve_graph_backend_for_profile(
+            getattr(self, "runtime_profile", None), getattr(self, "graph_backend", None)
+        )
+        return self
+
     model_config = SettingsConfigDict(env_prefix="DT_", env_nested_delimiter="__")
+
+
+
+def _finalize_settings(settings: Settings) -> Settings:
+    """Apply runtime-profile normalization for settings instances."""
+
+    settings.runtime_profile = _normalize_runtime_profile(getattr(settings, "runtime_profile", None))  # type: ignore[assignment]
+    settings.graph_backend = resolve_graph_backend_for_profile(
+        getattr(settings, "runtime_profile", None), getattr(settings, "graph_backend", None)
+    )
+    return settings
 
 
 def load_settings(config_file: Optional[str] = None) -> Settings:
@@ -298,19 +372,19 @@ def load_settings(config_file: Optional[str] = None) -> Settings:
             raise ValueError("Config data must be a mapping")
 
         if hasattr(Settings, "model_validate"):
-            return Settings.model_validate(data)
+            return _finalize_settings(Settings.model_validate(data))
 
         # Fallback for environments where pydantic is stubbed during tests.
         inst = Settings()  # pragma: no cover
         _assign_settings(inst, data)  # pragma: no cover
-        return inst  # pragma: no cover
+        return _finalize_settings(inst)  # pragma: no cover
     if hasattr(Settings, "model_validate"):
-        return Settings()
+        return _finalize_settings(Settings())
     inst = Settings()  # pragma: no cover - executed with stubbed settings
     env_overrides = _build_env_overrides()
     if env_overrides:
         _assign_settings(inst, env_overrides)
-    return inst
+    return _finalize_settings(inst)
 
 
 _settings_cache: Optional[Settings] = None

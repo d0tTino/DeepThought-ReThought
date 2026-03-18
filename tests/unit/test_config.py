@@ -221,3 +221,36 @@ def test_llm_backend_env_overrides(monkeypatch):
     assert settings.llm_model_path == "local/model"
     assert settings.llm_quantization_bits == 4
     assert settings.llm_local_max_new_tokens == 256
+
+
+def test_graph_backend_defaults_to_local_persistence_in_development():
+    settings = load_settings()
+
+    assert settings.runtime_profile == "development"
+    assert settings.graph_backend == "file"
+
+
+def test_production_profile_defaults_to_memgraph(monkeypatch):
+    monkeypatch.setenv("DT_RUNTIME_PROFILE", "production")
+
+    settings = load_settings()
+
+    assert settings.runtime_profile == "production"
+    assert settings.graph_backend == "memgraph"
+
+
+def test_test_profile_uses_in_memory_stub(monkeypatch):
+    monkeypatch.setenv("DT_RUNTIME_PROFILE", "test")
+
+    settings = load_settings()
+
+    assert settings.runtime_profile == "test"
+    assert settings.graph_backend == "stub"
+
+
+def test_production_profile_rejects_non_persistent_graph_backend(monkeypatch):
+    monkeypatch.setenv("DT_RUNTIME_PROFILE", "production")
+    monkeypatch.setenv("DT_GRAPH_BACKEND", "noop")
+
+    with pytest.raises(ValueError, match="Production profile requires Neo4j or Memgraph"):
+        load_settings()

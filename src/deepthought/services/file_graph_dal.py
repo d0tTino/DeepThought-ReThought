@@ -8,7 +8,7 @@ from typing import Any, List
 
 import importlib
 
-from ..graph import GraphBackend
+from ..graph.backend import GraphBackend
 
 logger = logging.getLogger(__name__)
 

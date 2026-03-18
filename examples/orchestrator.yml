@@ -37,6 +37,12 @@ service_bindings:
     description: Unified memory + retrieval + social signal persistence.
     env:
       - NATS_URL
+      - DT_RUNTIME_PROFILE
+      - DT_GRAPH_BACKEND
+      - DT_MG_HOST
+      - DT_MG_PORT
+      - DT_MG_USER
+      - DT_MG_PASSWORD
       - DT_MEMORY_DB
       - DT_SOCIAL_GRAPH_DB
       - DT_SEARCH_DB
@@ -305,6 +311,12 @@ environment:
   NATS_URL: ${NATS_URL:-nats://localhost:4222}
   DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
   LLM_ENDPOINT: ${LLM_ENDPOINT:-http://localhost:8000/generate}
+  DT_RUNTIME_PROFILE: ${DT_RUNTIME_PROFILE:-production}
+  DT_GRAPH_BACKEND: ${DT_GRAPH_BACKEND:-memgraph}
+  DT_MG_HOST: ${DT_MG_HOST:-memgraph}
+  DT_MG_PORT: ${DT_MG_PORT:-7687}
+  DT_MG_USER: ${DT_MG_USER:-memgraph}
+  DT_MG_PASSWORD: ${DT_MG_PASSWORD:-memgraph}
   DT_MEMORY_DB: ${DT_MEMORY_DB:-./data/memory.db}
   DT_SOCIAL_GRAPH_DB: ${DT_SOCIAL_GRAPH_DB:-./data/social_graph.db}
   DT_SEARCH_DB: ${DT_SEARCH_DB:-./examples/data/sample_docs.json}

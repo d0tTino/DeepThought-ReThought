@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Graph backend strategy interfaces."""
+
+from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
@@ -69,7 +69,7 @@ def create_graph_backend(
     backend: str = "memgraph", *, settings: Settings | None = None, **params: Any
 ) -> GraphBackend:
     """Return a :class:`GraphBackend` implementation for ``backend``."""
-    from ..config import get_settings, Settings
+    from ..config import get_settings
 
     settings = settings or get_settings()
 
@@ -81,6 +81,11 @@ def create_graph_backend(
     if lower == "neo4j":
         connector = Neo4jConnector(settings=settings, **params)
         return Neo4jBackend(connector)
-    if lower in {"none", "noop", "stub"}:
+    if lower == "file":
+        from ..services.file_graph_dal import FileGraphBackend
+
+        graph_file = params.pop("graph_file", settings.graph_local_path)
+        return FileGraphBackend(graph_file)
+    if lower in {"none", "noop", "stub", "inmemory", "in-memory"}:
         return NoOpGraphBackend()
     raise ValueError(f"Unknown graph backend: {backend}")
