@@ -152,11 +152,33 @@ async def test_handle_discord_message_publishes_input_received(service):
     assert payload["payload"]["reference_message_id"] == "66"
     assert payload["payload"]["thread_id"] == "999"
     assert payload["payload"]["attachments"] is not None
+    assert payload["payload"]["conversation_window"][-1]["text"] == "hello"
     assert payload["payload"]["attachments"][0]["url"] == "https://cdn.discordapp.com/file.png"
     extract_subject, extract_payload, _, _ = service._publisher.published[1]
     assert extract_subject == EventSubjects.PERCEPTION_EXTRACT_REQUESTED
     assert extract_payload["payload"]["input_id"] == input_id
     assert extract_payload["payload"]["attachments"][0]["content_type"] == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_handle_discord_message_includes_bounded_recent_window(service):
+    for idx in range(8):
+        message = SimpleNamespace(
+            content=f"turn-{idx}",
+            id=200 + idx,
+            author=SimpleNamespace(id=5, name="alice", display_name="Alice", bot=False),
+            channel=SimpleNamespace(id=123),
+            guild=SimpleNamespace(id=7),
+            thread=SimpleNamespace(id=999),
+        )
+        await service.handle_discord_message(message)
+
+    subject, payload, _, _ = service._publisher.published[-1]
+    assert subject == EventSubjects.INPUT_RECEIVED
+    window = payload["payload"]["conversation_window"]
+    assert len(window) == 6
+    assert [turn["text"] for turn in window] == [f"turn-{idx}" for idx in range(2, 8)]
+    assert payload["payload"]["recent_turn_summary"] == "turn-4 | turn-5 | turn-6"
 
 
 @pytest.mark.asyncio

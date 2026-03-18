@@ -159,6 +159,8 @@ class InputReceivedPayload(EventPayload):
     reference_message_id: Optional[str] = None
     thread_id: Optional[str] = None
     attachments: Optional[list[AttachmentDescriptor]] = None
+    conversation_window: list[Dict[str, Any]] = field(default_factory=list)
+    recent_turn_summary: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "InputReceivedPayload":
@@ -176,7 +178,10 @@ class InputReceivedPayload(EventPayload):
             "author_is_bot": data.get("author_is_bot"),
             "reference_message_id": data.get("reference_message_id"),
             "thread_id": data.get("thread_id"),
+            "recent_turn_summary": data.get("recent_turn_summary"),
         }
+        conversation_window = data.get("conversation_window")
+        normalized["conversation_window"] = conversation_window if isinstance(conversation_window, list) else []
         raw_attachments = data.get("attachments")
         if isinstance(raw_attachments, list):
             attachments = [

@@ -359,6 +359,9 @@ class ContextAssemblerService:
         facts = retrieved.get("facts") if isinstance(retrieved, dict) else []
         if not isinstance(facts, list):
             facts = []
+        retrieval_layers = retrieved.get("layers") if isinstance(retrieved, dict) else {}
+        if not isinstance(retrieval_layers, dict):
+            retrieval_layers = {}
 
         social_payload = pending.provider_payloads.get("social", {})
         social_signals = social_payload.get("social_signals", social_payload)
@@ -368,9 +371,34 @@ class ContextAssemblerService:
         perception_payload = pending.provider_payloads.get("perception", {})
         multimodal = self._normalize_multimodal(perception_payload.get("multimodal_interpretations", perception_payload))
 
-        conversation_window = request.get("conversation_window")
-        if not isinstance(conversation_window, list):
-            conversation_window = []
+        request_window = request.get("conversation_window")
+        memory_window = retrieved.get("conversation_window") if isinstance(retrieved, dict) else None
+        conversation_window = []
+        for candidate in (request_window, memory_window):
+            if not isinstance(candidate, list):
+                continue
+            for turn in candidate:
+                if isinstance(turn, dict):
+                    conversation_window.append(turn)
+        if conversation_window:
+            deduped_window = []
+            seen_turns: set[tuple[str, str]] = set()
+            for turn in conversation_window:
+                key = (str(turn.get("message_id") or ""), str(turn.get("timestamp") or ""))
+                if key in seen_turns:
+                    continue
+                seen_turns.add(key)
+                deduped_window.append(turn)
+            conversation_window = deduped_window[-8:]
+
+        recent_turn_summary = request.get("recent_turn_summary")
+        if not isinstance(recent_turn_summary, str) or not recent_turn_summary.strip():
+            memory_summary = retrieved.get("recent_turn_summary") if isinstance(retrieved, dict) else None
+            recent_turn_summary = memory_summary if isinstance(memory_summary, str) and memory_summary.strip() else None
+
+        retrieval_policy = retrieved.get("retrieval_policy") if isinstance(retrieved, dict) else None
+        if not isinstance(retrieval_policy, dict):
+            retrieval_policy = {}
 
         completed = [name for name in self._PROVIDER_ORDER if name in pending.provider_payloads]
         now = pending.started_at + elapsed
@@ -417,6 +445,8 @@ class ContextAssemblerService:
             "provider_timings": provider_timings,
             "provider_latency_p95_ms": provider_latency_p95_ms,
             "provider_timeout_budget_ms": provider_timeout_budget_ms,
+            "retrieval_layers": retrieval_layers,
+            "retrieval_policy": retrieval_policy,
         }
 
         return ContextAssembledPayload(
@@ -432,7 +462,7 @@ class ContextAssemblerService:
             author_name=request.get("author_name"),
             channel_id=request.get("channel_id"),
             channel_context=request.get("channel_context"),
-            recent_turn_summary=request.get("recent_turn_summary"),
+            recent_turn_summary=recent_turn_summary,
             timestamp=request.get("timestamp") or datetime.now(timezone.utc).isoformat(),
         )
 

@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import monotonic
@@ -37,6 +38,84 @@ class _PendingRoute:
     source_message_id: str | None
     thread_id: str | None
     author_id: str | None
+
+
+
+
+@dataclass(frozen=True)
+class _ConversationTurn:
+    role: str
+    text: str
+    author_id: str | None
+    channel_id: str | None
+    thread_id: str | None
+    message_id: str | None
+    timestamp: str
+
+    def as_payload(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "text": self.text,
+            "author_id": self.author_id,
+            "channel_id": self.channel_id,
+            "thread_id": self.thread_id,
+            "message_id": self.message_id,
+            "timestamp": self.timestamp,
+        }
+
+
+class _ConversationStateStore:
+    def __init__(self, *, window_size: int = 6) -> None:
+        self._window_size = max(1, window_size)
+        self._windows: dict[tuple[str, str], deque[_ConversationTurn]] = {}
+
+    def record_input(self, payload: InputReceivedPayload) -> list[dict[str, Any]]:
+        turn = _ConversationTurn(
+            role="user",
+            text=payload.user_input,
+            author_id=payload.author_id,
+            channel_id=payload.channel_id,
+            thread_id=payload.thread_id,
+            message_id=payload.message_id,
+            timestamp=payload.timestamp or datetime.now(timezone.utc).isoformat(),
+        )
+        for key in self._scope_keys(payload.channel_id, payload.thread_id, payload.author_id):
+            window = self._windows.setdefault(key, deque(maxlen=self._window_size))
+            window.append(turn)
+        return self.window_for(payload.channel_id, payload.thread_id, payload.author_id)
+
+    def window_for(
+        self,
+        channel_id: str | None,
+        thread_id: str | None,
+        author_id: str | None,
+    ) -> list[dict[str, Any]]:
+        merged: list[_ConversationTurn] = []
+        seen: set[tuple[str | None, str]] = set()
+        for key in self._scope_keys(channel_id, thread_id, author_id):
+            for turn in self._windows.get(key, ()):  # deterministic scope priority
+                dedupe_key = (turn.message_id, turn.timestamp)
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
+                merged.append(turn)
+        merged.sort(key=lambda turn: (turn.timestamp, turn.message_id or ""))
+        return [turn.as_payload() for turn in merged[-self._window_size :]]
+
+    @staticmethod
+    def _scope_keys(
+        channel_id: str | None,
+        thread_id: str | None,
+        author_id: str | None,
+    ) -> list[tuple[str, str]]:
+        keys: list[tuple[str, str]] = []
+        if thread_id:
+            keys.append(("thread", thread_id))
+        if channel_id:
+            keys.append(("channel", channel_id))
+        if author_id:
+            keys.append(("user", author_id))
+        return keys
 
 
 class DiscordGatewayService(BaseService):
@@ -74,6 +153,7 @@ class DiscordGatewayService(BaseService):
         self._familiarity_counts: dict[tuple[str, str], int] = {}
         self._cooldown_until: dict[str, float] = {}
         self._policy_engine = VersionedPolicyEngine()
+        self._conversation_state = _ConversationStateStore()
         self.add_subscription(
             response_subject,
             self._handle_ranked_response,
@@ -159,7 +239,16 @@ class DiscordGatewayService(BaseService):
             logger.debug("Ignoring bot-authored Discord message", extra={"author_id": payload.author_id})
             return None
 
+        payload.conversation_window = self._conversation_state.record_input(payload)
         self._record_inbound_activity(channel_id=payload.channel_id, author_id=payload.author_id)
+        if payload.conversation_window:
+            recent_user_turns = [
+                turn.get("text", "")
+                for turn in payload.conversation_window[:-1]
+                if turn.get("role") == "user" and isinstance(turn.get("text"), str)
+            ]
+            if recent_user_turns:
+                payload.recent_turn_summary = " | ".join(recent_user_turns[-3:])
         if payload.input_id and payload.message_id:
             self._message_input_index[payload.message_id] = payload.input_id
 
