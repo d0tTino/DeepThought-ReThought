@@ -900,17 +900,33 @@ For the comprehensive plan outlining each phase, see [docs/discord_bot_phase_rep
 Two lightweight reference modules show how components can interact through NATS:
 
 * **BasicMemory** -- subscribes to `INPUT_RECEIVED` events, stores each user input in a local `memory.json` file and then publishes a `MEMORY_RETRIEVED` event containing the most recent entries.
-* **BasicLLM** -- listens for `MEMORY_RETRIEVED`, runs a small language model to generate one or more reply candidates, and publishes `RESPONSE_CANDIDATES`. A selector then publishes `RESPONSE_RANKED` for delivery. This module requires the optional heavy dependencies `transformers` and `torch`.
+* **BasicLLM** -- lightweight reference module for candidate generation. In the primary production path, `context_assembler` feeds `llm_remote`, which publishes grounded `RESPONSE_CANDIDATES` for the selector before the Discord gateway delivers `RESPONSE_RANKED`. This module requires the optional heavy dependencies `transformers` and `torch`.
 
 ### Example Workflow
 
 1. The `InputHandler` emits an `INPUT_RECEIVED` event when it receives a message.
 2. `BasicMemory` logs the text to `memory.json` and publishes a `MEMORY_RETRIEVED` event with the last few inputs.
-3. `BasicLLM` generates response candidates from those facts and publishes a `RESPONSE_CANDIDATES` event.
-4. A selector consumes candidates and publishes `RESPONSE_RANKED`.
-5. The `OutputHandler` (or another consumer) can then deliver the ranked response to the user.
+3. `ContextAssemblerService` publishes `CONTEXT_ASSEMBLED` for the canonical `llm_remote` conversational responder.
+4. `llm_remote` generates grounded response candidates and publishes `RESPONSE_CANDIDATES`; optional heuristic responders can add auxiliary specialist candidates on the same subject.
+5. `SelectorService` consumes candidates and publishes `RESPONSE_RANKED` for the Discord gateway or another output consumer.
 
 
+
+
+### Canonical Conversational Responder Contract
+
+The default bot architecture is:
+
+`context assembler -> llm responder -> selector -> Discord gateway`
+
+The canonical conversational responder consumes `EventSubjects.CONTEXT_ASSEMBLED` and publishes `EventSubjects.RESPONSE_CANDIDATES`. Every emitted `ResponseCandidate` should include grounded metadata so downstream ranking remains stable across responder types:
+
+- `source`
+- `confidence`
+- `safety_passed`
+- calibration metadata under `source_metadata`
+
+Heuristic responders in `src/deepthought/services/responder_service.py` are optional specialist candidate producers. They can publish extra factual, persona, or safety-oriented candidates to improve ranking, but they are not the default end-user voice anymore.
 
 ## DSPy Pipelines
 

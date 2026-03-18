@@ -486,3 +486,19 @@ async def test_generate_candidates_local_quantized_backend(monkeypatch):
     assert isinstance(result[0].confidence, float)
     assert result[0].safety_metadata["rule"] == "keyword_v1"
     await llm.stop_listening()
+
+
+@pytest.mark.asyncio
+async def test_generate_candidates_include_grounded_metadata(monkeypatch):
+    resp = DummyResponse({"candidates": [{"text": "generated", "source": "remote_http", "score": 0.7}]})
+    session = DummySession(resp)
+    llm = create_llm(monkeypatch, session)
+
+    result = await llm._generate_candidates("hello")
+
+    metadata = result[0].source_metadata
+    assert metadata["source"] == result[0].source
+    assert metadata["confidence"] == result[0].confidence
+    assert metadata["safety_passed"] == result[0].safety_passed
+    assert metadata["calibration_metadata"]["candidate_count"] == 3
+    assert metadata["grounding"]["contract"] == "canonical_conversational_responder_v1"

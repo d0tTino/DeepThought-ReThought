@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class ResponderService:
-    """Configurable responder that emits candidate responses for selector ranking."""
+    """Optional heuristic specialist that emits selector inputs, not the primary bot voice."""
 
     def __init__(
         self,
@@ -56,6 +56,48 @@ class ResponderService:
         fact_hint = facts[0] if facts else ""
         return f"user_input={user_input[:160]} | fact={fact_hint[:120]} | social={json.dumps(bounded, sort_keys=True)}"
 
+    def _build_specialist_payload(
+        self,
+        user_input: str,
+        facts: list[str],
+        social_signals: dict,
+    ) -> tuple[str, float, list[str], str, str]:
+        if self._responder_kind in {"factual", "qa", "tool"}:
+            fact = facts[0] if facts else "I don't have enough retrieved facts yet"
+            return (
+                f"Useful grounding fact: {fact}.",
+                0.78,
+                ["specialist", "factual", "grounded", "tool_ready"],
+                "concise",
+                "Fact-grounded specialist hint",
+            )
+        if self._responder_kind in {"persona", "conversational"}:
+            prompt_context = self._compose_prompt_context(user_input, facts, social_signals)
+            return (
+                f"Tone/rapport hint: acknowledge the user warmly while staying aligned with {prompt_context}.",
+                0.73,
+                ["specialist", "persona", "empathetic", "rapport"],
+                "friendly",
+                "Persona specialist hint",
+            )
+
+        blocked = any(token in user_input.lower() for token in ("harm", "attack", "exploit"))
+        if blocked:
+            return (
+                "Safety hint: refuse harmful assistance and redirect to safer alternatives.",
+                0.93,
+                ["specialist", "safety", "refusal", "policy"],
+                "safety",
+                "Safety specialist refusal",
+            )
+        return (
+            "Safety hint: content appears answerable, but avoid escalating risk and keep the reply bounded.",
+            0.62,
+            ["specialist", "safety", "allow"],
+            "safety",
+            "Safety specialist allow hint",
+        )
+
     def _build_candidate(
         self,
         user_input: str,
@@ -64,53 +106,48 @@ class ResponderService:
         policy_artifacts: list[dict],
     ) -> ResponseCandidate:
         source = f"responder:{self._responder_id}"
-        if self._responder_kind in {"factual", "qa", "tool"}:
-            fact = facts[0] if facts else "I don't have enough retrieved facts yet"
-            text = f"Factual answer: {fact}."
-            confidence = 0.78
-            tags = ["factual", "grounded", "tool_ready"]
-            style = "concise"
-        elif self._responder_kind in {"persona", "conversational"}:
-            prompt_context = self._compose_prompt_context(user_input, facts, social_signals)
-            text = f"I hear you: {user_input}. Context: {prompt_context}."
-            confidence = 0.73
-            tags = ["persona", "empathetic", "rapport"]
-            style = "friendly"
-        else:
-            blocked = any(token in user_input.lower() for token in ("harm", "attack", "exploit"))
-            if blocked:
-                text = "I can’t help with harmful actions. I can help with safer alternatives instead."
-                confidence = 0.93
-                tags = ["safety", "refusal", "policy"]
-            else:
-                text = "This looks safe to answer. Please continue with what you need."
-                confidence = 0.62
-                tags = ["safety", "allow"]
-            style = "safety"
+        text, confidence, tags, style, role_description = self._build_specialist_payload(
+            user_input=user_input,
+            facts=facts,
+            social_signals=social_signals,
+        )
 
         decision = self._policy_engine.evaluate_candidate(
             text=text,
             confidence=confidence,
             prior_artifacts=policy_artifacts,
         )
+        safety_passed = decision.allowed
+        confidence_components = {"model": confidence, "prior": 0.8}
+        calibration = {"slope": 1.0, "bias": 0.0, "version": "heuristic_v1"}
 
         return ResponseCandidate(
             text=text,
             confidence=confidence,
             source=source,
-            safety_passed=decision.allowed,
-            confidence_components={"model": confidence, "prior": 0.8},
+            safety_passed=safety_passed,
+            confidence_components=confidence_components,
             safety_metadata={
                 "style": style,
                 "policy": "keyword_v1",
                 "policy_artifacts": [*policy_artifacts, decision.artifacts],
                 "policy_action": decision.action,
                 "policy_reason": decision.reason,
+                "safety_passed": safety_passed,
             },
             source_metadata={
+                "source": source,
                 "responder_id": self._responder_id,
                 "kind": self._responder_kind,
-                "calibration": {"slope": 1.0, "bias": 0.0},
+                "role": "specialist_candidate_producer",
+                "role_description": role_description,
+                "is_primary_voice": False,
+                "calibration": calibration,
+                "calibration_metadata": {
+                    "calibration": calibration,
+                    "confidence_components": confidence_components,
+                    "policy_version": self._policy_engine.VERSION,
+                },
                 "social_features": self._bounded_social_features(social_signals),
                 "policy_version": self._policy_engine.VERSION,
             },
@@ -155,7 +192,12 @@ class ResponderService:
                 trace_id=envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None,
                 causation_id=envelope_meta.get("event_id") if isinstance(envelope_meta.get("event_id"), str) else input_id,
             )
-            await self._publisher.publish(EventSubjects.RESPONSE_CANDIDATES, envelope.__dict__, use_jetstream=True, timeout=10.0)
+            await self._publisher.publish(
+                EventSubjects.RESPONSE_CANDIDATES,
+                envelope.__dict__,
+                use_jetstream=True,
+                timeout=10.0,
+            )
             await msg.ack()
         except Exception:
             logger.error("ResponderService[%s] failed", self._responder_id, exc_info=True)
