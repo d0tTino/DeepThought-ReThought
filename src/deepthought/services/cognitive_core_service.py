@@ -80,6 +80,7 @@ class CognitiveCoreService(BaseService):
         if memory is None:
             memory = create_memory_backend(settings=self._settings)
         self._memory = memory
+        self._ensure_graph_backend_ready()
         self._db = db or DBManager()
         if search is None:
             db_path = self._settings.search_db
@@ -111,22 +112,49 @@ class CognitiveCoreService(BaseService):
         self._consolidation_interval_s = 60.0
         self._retrieval_policy = RetrievalPolicy()
 
+    def _graph_connector(self):
+        graph_backend = getattr(self._memory, "graph_backend", None)
+        if hasattr(graph_backend, "_dal"):
+            return getattr(getattr(graph_backend, "_dal", None), "_connector", None)
+        if graph_backend is not None and hasattr(graph_backend, "_connector"):
+            return getattr(graph_backend, "_connector", None)
+        return None
+
+    def _ensure_graph_backend_ready(self) -> None:
+        backend = (self._settings.graph_backend or "").lower()
+        if backend in {"stub", "noop", "none", "inmemory", "in-memory"}:
+            if self._settings.runtime_profile != "test":
+                raise RuntimeError("In-memory stub graph backend is only allowed in test profile")
+            return
+        if backend == "file":
+            graph_file = getattr(self._settings, "graph_local_path", "graph_memory.json")
+            parent = os.path.dirname(graph_file)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            try:
+                with open(graph_file, "a", encoding="utf-8"):
+                    pass
+            except OSError as exc:
+                raise RuntimeError(f"Local graph backend is unavailable: {graph_file}") from exc
+            return
+        connector = self._graph_connector()
+        if connector is None:
+            raise RuntimeError(f"Configured graph backend '{backend}' did not expose a connector")
+        try:
+            connector.execute("RETURN 1 AS ok", {})
+        except Exception as exc:
+            raise RuntimeError(
+                f"Configured graph backend '{backend}' is unavailable for runtime profile "
+                f"'{self._settings.runtime_profile}'"
+            ) from exc
+
     def _build_graph_memory_store(self):
         backend = (self._settings.graph_backend or "").lower()
         if backend in {"memgraph", "neo4j"}:
-            try:
-                graph_backend = getattr(self._memory, "graph_backend", None)
-                connector = None
-                if hasattr(graph_backend, "_dal"):
-                    connector = getattr(
-                        getattr(graph_backend, "_dal", None), "_connector", None
-                    )
-                elif graph_backend is not None and hasattr(graph_backend, "_connector"):
-                    connector = getattr(graph_backend, "_connector", None)
-                if connector is not None:
-                    return CypherGraphMemoryStore(connector)
-            except Exception:
-                logger.warning("Falling back to in-memory graph store", exc_info=True)
+            connector = self._graph_connector()
+            if connector is None:
+                raise RuntimeError(f"Configured graph backend '{backend}' did not expose a connector")
+            return CypherGraphMemoryStore(connector)
         return InMemoryGraphMemoryStore()
 
     @classmethod
@@ -740,6 +768,7 @@ class CognitiveCoreService(BaseService):
             use_jetstream=True,
             durable=f"{durable_name}_bdi",
         )
+        self._ensure_graph_backend_ready()
         started = await super().start()
         if started:
             logger.info(

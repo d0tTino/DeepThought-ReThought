@@ -83,6 +83,14 @@ relational database layers behind a single interface. Internally it relies on
 tracking interactions. An optional `OfflineSearch` index may be attached to
 augment memory with local documents.
 
+The Discord-bot runtime now uses an explicit graph-memory profile:
+
+- `development`: `DT_GRAPH_BACKEND=file`, a lightweight persistent local graph file.
+- `production`: `DT_GRAPH_BACKEND=memgraph` or `DT_GRAPH_BACKEND=neo4j`; a remote persistent graph backend is required.
+- `test`: `DT_GRAPH_BACKEND=stub`; an in-memory stub is used only for tests.
+
+`CognitiveCoreService` performs a startup health check against the configured graph backend and fails fast if that backend is unavailable. Production-oriented profiles no longer degrade silently to in-memory graph state. The default orchestrator and Compose deployment set `DT_RUNTIME_PROFILE=production` and provision exactly one persistent graph backend: Memgraph.
+
 When an `INPUT_RECEIVED` event arrives the service stores the text in each
 backend, queries for relevant context and publishes `MEMORY_RETRIEVED`. Downstream
 services subscribe to this subject and may then respond with
