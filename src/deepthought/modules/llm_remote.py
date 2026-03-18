@@ -280,7 +280,50 @@ class RemoteLLM:
         lowered = text.lower()
         blocked_terms = ["kill", "bomb", "dox", "self-harm"]
         matched = [term for term in blocked_terms if term in lowered]
-        return (not matched), {"rule": "keyword_v1", "matched_terms": matched, "severity": "high" if matched else "none"}
+        safe = not matched
+        return safe, {
+            "rule": "keyword_v1",
+            "matched_terms": matched,
+            "severity": "high" if matched else "none",
+            "safety_passed": safe,
+        }
+
+    def _build_grounded_metadata(
+        self,
+        *,
+        source: str,
+        confidence: float,
+        confidence_components: dict[str, float],
+        safety_passed: bool,
+        safety_metadata: dict[str, object],
+        prompt: str | None = None,
+        response_mode: str = "generative",
+    ) -> dict[str, object]:
+        calibration = {
+            "slope": 1.0,
+            "bias": 0.0,
+            "version": "remote_llm_v1",
+        }
+        return {
+            "source": source,
+            "backend": self._backend_name,
+            "response_mode": response_mode,
+            "is_primary_voice": True,
+            "confidence": confidence,
+            "safety_passed": safety_passed,
+            "calibration": calibration,
+            "calibration_metadata": {
+                "calibration": calibration,
+                "confidence_components": confidence_components,
+                "prompt_chars": len(prompt or ""),
+                "candidate_count": self._num_candidates,
+            },
+            "grounding": {
+                "contract": "canonical_conversational_responder_v1",
+                "prompt_grounded": bool(prompt),
+                "safety_rule": safety_metadata.get("rule"),
+            },
+        }
 
     async def _generate_candidates(self, prompt: str) -> list[ResponseCandidate]:
         if self._use_dspy and self._qa_pipeline is not None:
@@ -297,6 +340,15 @@ class RemoteLLM:
                     safety_passed=safe,
                     confidence_components=components,
                     safety_metadata=safety_metadata,
+                    source_metadata=self._build_grounded_metadata(
+                        source=f"{self._source_name}:dspy",
+                        confidence=confidence,
+                        confidence_components=components,
+                        safety_passed=safe,
+                        safety_metadata=safety_metadata,
+                        prompt=prompt,
+                        response_mode="dspy",
+                    ),
                 )
             ]
 
@@ -318,6 +370,14 @@ class RemoteLLM:
                     safety_passed=safe,
                     confidence_components=components,
                     safety_metadata=safety_metadata,
+                    source_metadata=self._build_grounded_metadata(
+                        source=source,
+                        confidence=confidence,
+                        confidence_components=components,
+                        safety_passed=safe,
+                        safety_metadata=safety_metadata,
+                        prompt=prompt,
+                    ),
                 )
             )
 
@@ -399,7 +459,16 @@ class RemoteLLM:
                         source=f"{self._source_name}:clarifying_fallback",
                         safety_passed=True,
                         confidence_components={"fallback": 1.0},
-                        safety_metadata={"rule": "low_multimodal_confidence"},
+                        safety_metadata={"rule": "low_multimodal_confidence", "safety_passed": True},
+                        source_metadata=self._build_grounded_metadata(
+                            source=f"{self._source_name}:clarifying_fallback",
+                            confidence=0.95,
+                            confidence_components={"fallback": 1.0},
+                            safety_passed=True,
+                            safety_metadata={"rule": "low_multimodal_confidence", "safety_passed": True},
+                            prompt=prompt,
+                            response_mode="clarifying_fallback",
+                        ),
                     )
                 ]
             else:

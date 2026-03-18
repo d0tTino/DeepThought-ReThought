@@ -87,7 +87,11 @@ async def test_responder_publishes_candidate_with_metadata(monkeypatch, service_
     assert isinstance(candidate["source_metadata"], dict)
     assert isinstance(candidate["source_metadata"].get("calibration"), dict)
     assert candidate["source_metadata"]["policy_version"] == "v1"
+    assert candidate["source_metadata"]["role"] == "specialist_candidate_producer"
+    assert candidate["source_metadata"]["is_primary_voice"] is False
+    assert candidate["source_metadata"]["source"] == expected_source
     assert len(candidate["safety_metadata"]["policy_artifacts"]) >= 3
+    assert candidate["safety_metadata"]["safety_passed"] == candidate["safety_passed"]
 
 
 @pytest.mark.asyncio

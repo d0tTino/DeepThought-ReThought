@@ -11,9 +11,7 @@ services:
   - perception
   - perception_interpret
   - context_assembler
-  - factual_responder
-  - persona_responder
-  - safety_responder
+  - llm_remote
   - selector
   - feedback
   - reasoning
@@ -78,8 +76,28 @@ service_bindings:
         event_subject: EventSubjects.MEMORY_RETRIEVED
         jetstream: true
 
+  llm_remote:
+    description: Canonical conversational responder path built on llm_remote_service.py and modules/llm_remote.py.
+    env:
+      - NATS_URL
+      - LLM_ENDPOINT
+      - LLM_BACKEND
+      - LLM_NUM_CANDIDATES
+      - LLM_SOURCE_NAME
+    subscribe:
+      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+        event_subject: EventSubjects.CONTEXT_ASSEMBLED
+        jetstream: true
+        durable: llm_remote_service
+        required_reliability: true
+    publish:
+      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+        event_subject: EventSubjects.RESPONSE_CANDIDATES
+        jetstream: true
+
   factual_responder:
-    description: Fact-grounded QA/tool responder that emits concise candidates.
+    optional: true
+    description: Optional fact specialist that contributes heuristic candidates for selector/ranker context.
     env:
       - NATS_URL
     subscribe:
@@ -87,14 +105,15 @@ service_bindings:
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
         durable: responder_factual_service
-        required_reliability: true
+        required_reliability: false
     publish:
       - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
 
   persona_responder:
-    description: Persona-aligned conversational responder for rapport and continuity.
+    optional: true
+    description: Optional persona specialist that adds rapport-oriented candidate hints for the selector.
     env:
       - NATS_URL
     subscribe:
@@ -102,14 +121,15 @@ service_bindings:
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
         durable: responder_persona_service
-        required_reliability: true
+        required_reliability: false
     publish:
       - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
 
   safety_responder:
-    description: Safety responder that can emit refusal/safe-default candidates.
+    optional: true
+    description: Optional safety specialist that contributes refusal or safe-default candidates.
     env:
       - NATS_URL
     subscribe:
@@ -117,7 +137,7 @@ service_bindings:
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
         durable: responder_safety_service
-        required_reliability: true
+        required_reliability: false
     publish:
       - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
         event_subject: EventSubjects.RESPONSE_CANDIDATES

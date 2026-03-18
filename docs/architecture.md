@@ -16,9 +16,10 @@ For the default orchestrator profile, the following event chain is **required**.
 2. `MEMORY_RETRIEVED` is published by `cognitive_core` and consumed by `context_assembler`.
 3. Social context must come from either `SOCIAL_UPDATED` (from `social_graph`) **or** `SOCIAL_SIGNALS_RETRIEVED` (from alternative social providers) and be consumed by `context_assembler`.
 4. `PERCEPTION_INTERPRET_RETRIEVED` is published by `perception_interpret` and consumed by `context_assembler`.
-5. `CONTEXT_ASSEMBLED` is published by `context_assembler` and consumed by `llm_remote` (or another LLM responder).
-6. `RESPONSE_RANKED` is published by `selector`, consumed by `discord_gateway` for delivery, and consumed by `feedback` for adaptation context capture.
-7. `OUTCOME_SIGNAL` and `CORRECTION_SIGNAL` are consumed by `feedback` via durable JetStream consumers to adapt affinity and confidence state.
+5. `CONTEXT_ASSEMBLED` is published by `context_assembler` and consumed by the canonical `llm_remote` conversational responder. Optional heuristic responders may also subscribe to contribute auxiliary candidates.
+6. `RESPONSE_CANDIDATES` is published primarily by `llm_remote`, then consumed by `selector`; optional heuristic responders may publish additional specialist candidates on the same subject for ranking.
+7. `RESPONSE_RANKED` is published by `selector`, consumed by `discord_gateway` for delivery, and consumed by `feedback` for adaptation context capture.
+8. `OUTCOME_SIGNAL` and `CORRECTION_SIGNAL` are consumed by `feedback` via durable JetStream consumers to adapt affinity and confidence state.
 
 Operators should treat this as a deployment invariant and verify that each required subject has at least one publisher and one subscriber before startup.
 
@@ -37,15 +38,15 @@ sequenceDiagram
     participant User
     participant Bot
     participant ContextAssembler
-    participant LLM
+    participant LLMResponder
     participant Selector
 
     User->>Bot: Message
     Bot->>NATS: INPUT_RECEIVED
     NATS->>ContextAssembler: INPUT_RECEIVED (+ provider outputs)
     ContextAssembler->>NATS: CONTEXT_ASSEMBLED
-    NATS->>LLM: CONTEXT_ASSEMBLED
-    LLM->>NATS: RESPONSE_CANDIDATES
+    NATS->>LLMResponder: CONTEXT_ASSEMBLED
+    LLMResponder->>NATS: RESPONSE_CANDIDATES
     NATS->>Selector: RESPONSE_CANDIDATES
     Selector->>NATS: RESPONSE_RANKED
     NATS->>Feedback: RESPONSE_RANKED
@@ -53,14 +54,14 @@ sequenceDiagram
     Bot-->>User: Reply
 ```
 
-The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events and receives the final reply on `RESPONSE_RANKED` after the responder publishes `RESPONSE_CANDIDATES` and the selector picks the winner.
+The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events and receives the final reply on `RESPONSE_RANKED` after the canonical path `context_assembler -> llm_remote -> selector -> discord_gateway` completes. Heuristic responders can be enabled as auxiliary candidate producers, but they are no longer the default user-facing voice.
 
 Feedback adaptation is part of the default production DAG and should be deployed with durable subscriptions for `RESPONSE_RANKED`, `OUTCOME_SIGNAL`, and `CORRECTION_SIGNAL` as documented in [`examples/orchestrator.yml`](../examples/orchestrator.yml).
 
 
 ### Candidate schema expectations (`RESPONSE_CANDIDATES`)
 
-`ResponseCandidatesPayload` should carry one or more `ResponseCandidate` entries. Responders are expected to emit multiple candidates when the backend supports sampling or hybrid tool/rule generation.
+`ResponseCandidatesPayload` should carry one or more `ResponseCandidate` entries. The canonical conversational responder consumes `CONTEXT_ASSEMBLED` and emits `RESPONSE_CANDIDATES`. It should emit multiple candidates when the backend supports sampling or hybrid tool/rule generation. Optional heuristic specialists may publish additional candidates on the same subject.
 
 Each candidate should include:
 
@@ -68,8 +69,9 @@ Each candidate should include:
 - `confidence`: Calibrated `0..1` confidence used by selector ranking.
 - `source`: Candidate origin label (for example `remote_llm:sampling`, `tool`, or `rule`) used by source-specific selector weighting.
 - `safety_passed`: Boolean safety gate result for selector filtering.
-- `confidence_components`: Optional token/model/heuristic component breakdown for diagnostics and calibration audits.
-- `safety_metadata`: Optional policy details (matched terms, policy version, severity) for telemetry and incident triage.
+- `confidence_components`: Component breakdown for diagnostics and calibration audits.
+- `safety_metadata`: Policy details (matched terms, policy version, severity) for telemetry and incident triage.
+- `source_metadata`: Grounded responder metadata including canonical `source`, `confidence`, `safety_passed`, and calibration metadata so selector/ranker services can reason over heterogeneous candidates consistently.
 
 Selectors may down-weight or reject candidates using `source`, `confidence`, and safety fields; producers should keep this metadata stable across versions.
 
