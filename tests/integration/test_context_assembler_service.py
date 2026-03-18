@@ -101,6 +101,54 @@ async def test_race_safe_assembly_collects_all_providers(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_context_assembler_composes_request_and_memory_context(monkeypatch):
+    import deepthought.services.context_assembler_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = ContextAssemblerService(DummyNATS(), DummyJS(), wait_window_seconds=0.05)
+
+    await svc._handle_input_received(
+        DummyMsg(
+            {
+                "input_id": "i-compose",
+                "user_input": "hello",
+                "conversation_window": [{"role": "user", "text": "from-request", "timestamp": "2026-03-18T00:00:00+00:00"}],
+            }
+        )
+    )
+    await svc._handle_provider_response(
+        DummyMsg(
+            {
+                "input_id": "i-compose",
+                "retrieved_knowledge": {
+                    "facts": ["fact-a"],
+                    "conversation_window": [{"role": "assistant", "text": "from-memory", "timestamp": "2026-03-18T00:00:01+00:00"}],
+                    "recent_turn_summary": "summary-from-memory",
+                    "layers": {"recent_episodic_turns": ["user: from-request"]},
+                    "retrieval_policy": {"recent_turns": 4},
+                },
+            }
+        ),
+        "memory",
+    )
+    await svc._handle_provider_response(DummyMsg({"input_id": "i-compose", "social_signals": {"tone": "neutral"}}), "social")
+    await svc._handle_provider_response(
+        DummyMsg({"input_id": "i-compose", "multimodal_interpretations": {"summary": "none", "notes": []}}),
+        "perception",
+    )
+    await asyncio.sleep(0.06)
+
+    assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
+    payload = assembled[0][1]["payload"]
+    assert [turn["text"] for turn in payload["conversation_window"]] == ["from-request", "from-memory"]
+    assert payload["recent_turn_summary"] == "summary-from-memory"
+    assert payload["confidence"]["retrieval_layers"] == {"recent_episodic_turns": ["user: from-request"]}
+    assert payload["confidence"]["retrieval_policy"] == {"recent_turns": 4}
+
+
+@pytest.mark.asyncio
 async def test_partial_result_uses_missing_reason_timeout(monkeypatch):
     import deepthought.services.context_assembler_service as mod
 

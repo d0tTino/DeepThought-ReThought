@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -41,6 +42,15 @@ from .db_manager import DBManager
 from .input_enrichment_service import InputEnrichmentService
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RetrievalPolicy:
+    recent_turns: int = 4
+    durable_user_facts: int = 4
+    topic_memory: int = 4
+    continuity_summaries: int = 2
+    final_fact_budget: int = 12
 
 
 class CognitiveCoreService(BaseService):
@@ -99,6 +109,7 @@ class CognitiveCoreService(BaseService):
         self._salience_summaries: list[dict[str, str | float]] = []
         self._consolidation_task: asyncio.Task | None = None
         self._consolidation_interval_s = 60.0
+        self._retrieval_policy = RetrievalPolicy()
 
     def _build_graph_memory_store(self):
         backend = (self._settings.graph_backend or "").lower()
@@ -326,6 +337,93 @@ class CognitiveCoreService(BaseService):
             graph_facts.append(format_fact_snippet(fact))
         return summary_facts + graph_facts
 
+    @staticmethod
+    def _normalize_fact_entries(entries: list[str], *, prefix: str | None = None) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in entries:
+            text = " ".join(str(item).split()).strip()
+            if not text:
+                continue
+            key = text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(f"{prefix}{text}" if prefix else text)
+        return normalized
+
+    def _recent_episodic_turns(
+        self,
+        *,
+        conversation_window: list[dict[str, object]],
+        user_input: str,
+    ) -> list[str]:
+        prior_turns: list[str] = []
+        for turn in conversation_window[:-1]:
+            if not isinstance(turn, dict):
+                continue
+            role = str(turn.get("role") or "user")
+            text = " ".join(str(turn.get("text") or "").split()).strip()
+            if text:
+                prior_turns.append(f"{role}: {text}")
+        if not prior_turns and user_input.strip():
+            prior_turns.append(f"user: {user_input.strip()}")
+        return self._normalize_fact_entries(prior_turns)[-self._retrieval_policy.recent_turns :]
+
+    def _channel_thread_continuity(
+        self,
+        *,
+        conversation_window: list[dict[str, object]],
+        recent_turn_summary: str | None,
+        channel_id: str | None,
+        thread_id: str | None,
+    ) -> list[str]:
+        continuity: list[str] = []
+        if recent_turn_summary and recent_turn_summary.strip():
+            continuity.append(f"recent summary: {recent_turn_summary.strip()}")
+        if thread_id:
+            continuity.append(f"thread focus: thread:{thread_id}")
+        elif channel_id:
+            continuity.append(f"channel focus: channel:{channel_id}")
+        if conversation_window:
+            participants = sorted(
+                {
+                    str(turn.get("author_id")).strip()
+                    for turn in conversation_window
+                    if isinstance(turn, dict) and str(turn.get("author_id") or "").strip()
+                }
+            )
+            if participants:
+                continuity.append(f"active participants: {', '.join(participants[:4])}")
+        return self._normalize_fact_entries(continuity)[: self._retrieval_policy.continuity_summaries]
+
+    def _assemble_retrieval_layers(
+        self,
+        *,
+        recent_turns: list[str],
+        durable_user_facts: list[str],
+        topic_memory: list[str],
+        continuity_summaries: list[str],
+    ) -> dict[str, list[str]]:
+        return {
+            "recent_episodic_turns": recent_turns[: self._retrieval_policy.recent_turns],
+            "durable_user_facts": durable_user_facts[: self._retrieval_policy.durable_user_facts],
+            "topic_entity_memory": topic_memory[: self._retrieval_policy.topic_memory],
+            "channel_thread_continuity": continuity_summaries[: self._retrieval_policy.continuity_summaries],
+        }
+
+    def _flatten_retrieval_layers(self, layers: dict[str, list[str]]) -> list[str]:
+        ordered: list[str] = []
+        for layer_name in (
+            "recent_episodic_turns",
+            "durable_user_facts",
+            "topic_entity_memory",
+            "channel_thread_continuity",
+        ):
+            for item in layers.get(layer_name, []):
+                ordered.append(f"[{layer_name}] {item}")
+        return ordered[: self._retrieval_policy.final_fact_budget]
+
     async def _handle_input(self, msg: Msg) -> None:
         input_id = "unknown"
         start = time.perf_counter()
@@ -344,6 +442,15 @@ class CognitiveCoreService(BaseService):
             user_id = enriched.user_id
             author_id = enriched.author_id
             channel_id = enriched.channel_id
+            conversation_window = decoded_payload.get("conversation_window")
+            if not isinstance(conversation_window, list):
+                conversation_window = []
+            recent_turn_summary = decoded_payload.get("recent_turn_summary")
+            if not isinstance(recent_turn_summary, str):
+                recent_turn_summary = None
+            thread_id = decoded_payload.get("thread_id")
+            if not isinstance(thread_id, str):
+                thread_id = None
             logger.info("CognitiveCoreService received input %s", input_id)
 
             resolved_user_id = enriched.resolved_user_id
@@ -394,9 +501,7 @@ class CognitiveCoreService(BaseService):
                     source_id=input_id,
                 )
 
-            memory_facts = (
-                self._memory.retrieve_context(user_input) if self._memory else []
-            )
+            memory_facts = self._memory.retrieve_context(user_input) if self._memory else []
             vector_facts: List[str] = []
             if self._search:
                 try:
@@ -412,32 +517,27 @@ class CognitiveCoreService(BaseService):
                 str(resolved_user_id), user_input
             )
 
-            facts: List[str] = []
-            merged_facts: dict[str, dict[str, List[str] | str]] = {}
-            for source, entries in (
-                ("memory", memory_facts),
-                ("vector", vector_facts),
-                ("graph", graph_facts),
-                ("db", db_facts),
-            ):
-                for item in entries:
-                    if not item or not str(item).strip():
-                        continue
-                    normalized = " ".join(str(item).split()).strip().lower()
-                    if not normalized:
-                        continue
-                    if normalized not in merged_facts:
-                        merged_facts[normalized] = {
-                            "text": str(item).strip(),
-                            "sources": [source],
-                        }
-                        continue
-                    if source not in merged_facts[normalized]["sources"]:
-                        merged_facts[normalized]["sources"].append(source)
-
-            for data in merged_facts.values():
-                source_tag = ",".join(data["sources"])
-                facts.append(f"[{source_tag}] {data['text']}")
+            recent_turns = self._recent_episodic_turns(
+                conversation_window=conversation_window,
+                user_input=user_input,
+            )
+            durable_user_facts = self._normalize_fact_entries(
+                [*db_facts, *memory_facts, *vector_facts]
+            )
+            topic_memory = self._normalize_fact_entries(graph_facts)
+            continuity_summaries = self._channel_thread_continuity(
+                conversation_window=conversation_window,
+                recent_turn_summary=recent_turn_summary,
+                channel_id=channel_id,
+                thread_id=thread_id,
+            )
+            retrieval_layers = self._assemble_retrieval_layers(
+                recent_turns=recent_turns,
+                durable_user_facts=durable_user_facts,
+                topic_memory=topic_memory,
+                continuity_summaries=continuity_summaries,
+            )
+            facts = self._flatten_retrieval_layers(retrieval_layers)
             trace_id = (
                 envelope_meta.get("trace_id")
                 if isinstance(envelope_meta.get("trace_id"), str)
@@ -449,12 +549,20 @@ class CognitiveCoreService(BaseService):
                 else input_id
             )
             payload = MemoryRetrievedPayload(
-                retrieved_knowledge={"facts": facts, "source": "cognitive_core"},
+                retrieved_knowledge={
+                    "facts": facts,
+                    "source": "cognitive_core",
+                    "layers": retrieval_layers,
+                    "retrieval_policy": self._retrieval_policy.__dict__,
+                    "conversation_window": conversation_window[-self._retrieval_policy.recent_turns :],
+                    "recent_turn_summary": recent_turn_summary,
+                },
                 user_input=user_input,
                 input_id=input_id,
                 user_id=author_id or user_id,
                 author_id=author_id,
                 channel_id=channel_id,
+                recent_turn_summary=recent_turn_summary,
                 timestamp=datetime.now(timezone.utc).isoformat(),
             )
 

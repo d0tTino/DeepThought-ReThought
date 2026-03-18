@@ -1,3 +1,6 @@
+#! /usr/bin/env python
+# ruff: noqa: E402
+
 import importlib.machinery
 import sys
 import types
@@ -264,7 +267,8 @@ async def test_handle_input_stores_and_publishes(monkeypatch):
     subject, sent_payload = service._publisher.published[0]
     assert subject == EventSubjects.MEMORY_RETRIEVED
     assert sent_payload["payload"]["input_id"] == "x"
-    assert "[memory,db] hello" in sent_payload["payload"]["retrieved_knowledge"]["facts"]
+    assert "[durable_user_facts] hello" in sent_payload["payload"]["retrieved_knowledge"]["facts"]
+    assert sent_payload["payload"]["retrieved_knowledge"]["layers"]["recent_episodic_turns"] == ["user: hello"]
     assert service._graph_memory.retrieve_user_evidence("anonymous", limit=5)
 
 
@@ -350,6 +354,47 @@ async def test_handle_input_does_not_cross_contaminate_users():
     _, user_b_payload = service._publisher.published[-1]
     facts = user_b_payload["payload"]["retrieved_knowledge"]["facts"]
     assert not any("favorite: tea" in fact for fact in facts)
+
+
+@pytest.mark.asyncio
+async def test_handle_input_returns_stable_retrieval_layers():
+    memory = DummyMemory()
+    db = DummyDB()
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    msg = DummyMsg(
+        json.dumps(
+            {
+                "user_input": "Can you continue?",
+                "input_id": "x-layered",
+                "user_id": "u1",
+                "channel_id": "c1",
+                "thread_id": "t1",
+                "conversation_window": [
+                    {"role": "user", "text": "Earlier question", "author_id": "u1", "timestamp": "2026-03-18T00:00:00+00:00"},
+                    {"role": "assistant", "text": "Earlier answer", "author_id": "bot", "timestamp": "2026-03-18T00:00:01+00:00"},
+                    {"role": "user", "text": "Can you continue?", "author_id": "u1", "timestamp": "2026-03-18T00:00:02+00:00"},
+                ],
+                "recent_turn_summary": "Earlier question | Earlier answer",
+            }
+        )
+    )
+
+    await service._handle_input(msg)
+
+    _, payload = service._publisher.published[-1]
+    layers = payload["payload"]["retrieved_knowledge"]["layers"]
+    assert list(layers) == [
+        "recent_episodic_turns",
+        "durable_user_facts",
+        "topic_entity_memory",
+        "channel_thread_continuity",
+    ]
+    assert layers["recent_episodic_turns"] == ["user: Earlier question", "assistant: Earlier answer"]
+    assert payload["payload"]["retrieved_knowledge"]["retrieval_policy"]["recent_turns"] == 4
+    assert "recent summary: Earlier question | Earlier answer" in layers["channel_thread_continuity"][0]
 
 
 class DummyStore:
