@@ -170,6 +170,7 @@ class ResponderService:
             hardening_artifact = self._policy_engine.harden_prompt(user_input, risk_artifact=risk_artifact)
             policy_artifacts = [risk_artifact, hardening_artifact]
 
+            selector_inputs = social_signals.get("selector_inputs") if isinstance(social_signals.get("selector_inputs"), dict) else {}
             out = ResponseCandidatesPayload(
                 candidates=[
                     self._build_candidate(
@@ -184,6 +185,9 @@ class ResponderService:
                 author_id=author_id,
                 channel_id=channel_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
+                interaction_policy=selector_inputs.get("interaction_policy"),
+                social_intent_hints=selector_inputs.get("social_intent_hints"),
+                user_history_affinity=selector_inputs.get("user_history_affinity"),
             )
             envelope = EventEnvelope.build(
                 subject=EventSubjects.RESPONSE_CANDIDATES,

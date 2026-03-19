@@ -133,3 +133,35 @@ async def test_responder_bounded_social_features_in_candidate_metadata(monkeypat
         "reciprocity",
         "sentiment_trend",
     }
+
+
+@pytest.mark.asyncio
+async def test_responder_passes_selector_inputs_from_durable_social_model(monkeypatch):
+    import deepthought.services.responder_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = PersonaResponderService(DummyNATS(), DummyJS())
+    await svc.start()
+
+    context_payload = {
+        "input_id": "in-selector",
+        "user_input": "hello",
+        "retrieved_facts": ["fact1"],
+        "author_id": "a-1",
+        "social_signals": {
+            "selector_inputs": {
+                "interaction_policy": {"response_style": "friendly", "ask_clarifying_on_no_safe": True},
+                "social_intent_hints": {"preferred_style": "friendly", "high_rapport_expected": True},
+                "user_history_affinity": {"default": 0.5, "intent": 0.3},
+            }
+        },
+    }
+    msg = DummyMsg(json.dumps(context_payload))
+    await svc._handle_context_event(msg)
+
+    payload = svc._publisher.calls[0][1]["payload"]
+    assert payload["interaction_policy"]["response_style"] == "friendly"
+    assert payload["social_intent_hints"]["high_rapport_expected"] is True
+    assert payload["user_history_affinity"]["default"] == pytest.approx(0.5)
