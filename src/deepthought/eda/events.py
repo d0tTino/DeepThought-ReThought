@@ -227,6 +227,7 @@ class ContextAssembledPayload(EventPayload):
     social_signals: Dict[str, Any] = field(default_factory=dict)
     multimodal_interpretations: Dict[str, Any] = field(default_factory=dict)
     confidence: Dict[str, Any] = field(default_factory=dict)
+    adaptation_state: Dict[str, Any] = field(default_factory=dict)
     user_id: Optional[str] = None
     author_id: Optional[str] = None
     author_name: Optional[str] = None
@@ -280,6 +281,7 @@ class ResponseCandidatesPayload(EventPayload):
     context_confidence: Optional[Dict[str, Any]] = None
     social_intent_hints: Optional[Dict[str, Any]] = None
     user_history_affinity: Optional[Dict[str, float]] = None
+    adaptation_state: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ResponseCandidatesPayload":
@@ -309,6 +311,7 @@ class ResponseCandidatesPayload(EventPayload):
             }
             if isinstance(data.get("user_history_affinity"), dict)
             else None,
+            adaptation_state=data.get("adaptation_state") if isinstance(data.get("adaptation_state"), dict) else None,
         )
 
 

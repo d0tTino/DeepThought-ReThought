@@ -7,7 +7,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import nats
 from nats.aio.client import Client as NATS
@@ -18,8 +18,15 @@ from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import ContextAssembledPayload, EventSubjects
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+if TYPE_CHECKING:  # pragma: no cover
+    from .db_manager import DBManager
 
 logger = logging.getLogger(__name__)
+
+
+class _NullAdaptationStore:
+    async def get_adaptation_state(self, *, user_id: str | None = None) -> dict[str, Any]:
+        return {}
 
 
 @dataclass
@@ -86,6 +93,7 @@ class ContextAssemblerService:
         self,
         nats_client: NATS,
         js_context: JetStreamContext,
+        db_manager: "DBManager | None" = None,
         *,
         wait_window_seconds: float = 0.2,
         provider_jitter_budget_seconds: float = 0.01,
@@ -96,6 +104,15 @@ class ContextAssemblerService:
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
+        if db_manager is None:
+            try:
+                from .db_manager import DBManager
+
+                self._db = DBManager()
+            except ModuleNotFoundError:
+                self._db = _NullAdaptationStore()
+        else:
+            self._db = db_manager
         self._wait_window_seconds = max(0.01, wait_window_seconds)
         self._provider_jitter_budget_seconds = max(0.0, provider_jitter_budget_seconds)
         self._min_provider_timeout_seconds = max(0.005, min_provider_timeout_seconds)
@@ -109,6 +126,54 @@ class ContextAssemblerService:
         self._pending: dict[str, _PendingAssembly] = {}
         self._recently_published: dict[str, _PublishedAssembly] = {}
         self._lock = asyncio.Lock()
+
+    async def _load_adaptation_state(self, request: dict[str, Any]) -> dict[str, Any]:
+        principal = request.get("author_id") or request.get("user_id")
+        if not isinstance(principal, str) or not principal.strip():
+            return {}
+        try:
+            return await self._db.get_adaptation_state(user_id=principal)
+        except Exception:
+            logger.exception("Failed to load adaptation state for principal=%s", principal)
+            return {}
+
+    @staticmethod
+    def _merge_adaptation_into_social_signals(
+        social_signals: dict[str, Any],
+        adaptation_state: dict[str, Any],
+    ) -> dict[str, Any]:
+        merged = dict(social_signals)
+        selector_inputs = dict(merged.get("selector_inputs") or {})
+        user_profile = adaptation_state.get("user") if isinstance(adaptation_state.get("user"), dict) else {}
+        response_style = None
+        if isinstance(user_profile.get("response_style"), dict):
+            response_style = user_profile["response_style"].get("preferred")
+        fallback_profile = adaptation_state.get("fallback") if isinstance(adaptation_state.get("fallback"), dict) else {}
+        source_profiles = adaptation_state.get("sources") if isinstance(adaptation_state.get("sources"), dict) else {}
+
+        interaction_policy = dict(selector_inputs.get("interaction_policy") or {})
+        if isinstance(response_style, str) and response_style.strip():
+            interaction_policy["response_style"] = response_style.strip().lower()
+        if "aggressiveness" in fallback_profile:
+            interaction_policy["fallback_aggressiveness"] = fallback_profile.get("aggressiveness")
+
+        user_history_affinity = dict(selector_inputs.get("user_history_affinity") or {})
+        for source_name, source_profile in source_profiles.items():
+            if not isinstance(source_profile, dict):
+                continue
+            selector_profile = source_profile.get("selector")
+            if not isinstance(selector_profile, dict):
+                continue
+            weight_multiplier = selector_profile.get("weight_multiplier")
+            if isinstance(weight_multiplier, (int, float)):
+                user_history_affinity.setdefault(str(source_name), max(-1.0, min(1.0, float(weight_multiplier) - 1.0)))
+
+        selector_inputs["interaction_policy"] = interaction_policy
+        selector_inputs["user_history_affinity"] = user_history_affinity
+        selector_inputs["adaptation_state"] = adaptation_state
+        merged["selector_inputs"] = selector_inputs
+        merged["adaptation_state"] = adaptation_state
+        return merged
 
     @staticmethod
     def _estimate_p95(latencies: deque[float]) -> float | None:
@@ -207,6 +272,8 @@ class ContextAssemblerService:
             provider_deadlines = {
                 provider: loop_time + self._provider_timeout_seconds(provider) for provider in self._PROVIDER_ORDER
             }
+            adaptation_state = await self._load_adaptation_state(payload)
+            payload["adaptation_state"] = adaptation_state
             pending = _PendingAssembly(
                 request=payload,
                 trace_id=envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None,
@@ -367,6 +434,8 @@ class ContextAssemblerService:
         social_signals = social_payload.get("social_signals", social_payload)
         if not isinstance(social_signals, dict):
             social_signals = {}
+        adaptation_state = request.get("adaptation_state") if isinstance(request.get("adaptation_state"), dict) else {}
+        social_signals = self._merge_adaptation_into_social_signals(social_signals, adaptation_state)
 
         perception_payload = pending.provider_payloads.get("perception", {})
         multimodal = self._normalize_multimodal(perception_payload.get("multimodal_interpretations", perception_payload))
@@ -399,6 +468,9 @@ class ContextAssemblerService:
         retrieval_policy = retrieved.get("retrieval_policy") if isinstance(retrieved, dict) else None
         if not isinstance(retrieval_policy, dict):
             retrieval_policy = {}
+        retrieval_adaptation = adaptation_state.get("retrieval") if isinstance(adaptation_state.get("retrieval"), dict) else {}
+        if retrieval_adaptation:
+            retrieval_policy = {**retrieval_policy, **retrieval_adaptation}
 
         completed = [name for name in self._PROVIDER_ORDER if name in pending.provider_payloads]
         now = pending.started_at + elapsed
@@ -457,6 +529,7 @@ class ContextAssemblerService:
             social_signals=social_signals,
             multimodal_interpretations=multimodal,
             confidence=confidence,
+            adaptation_state=adaptation_state,
             user_id=request.get("user_id"),
             author_id=request.get("author_id"),
             author_name=request.get("author_name"),

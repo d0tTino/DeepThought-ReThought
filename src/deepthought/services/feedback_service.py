@@ -31,6 +31,10 @@ from .db_manager import DBManager
 logger = logging.getLogger(__name__)
 
 
+def _clamp(value: float, *, lower: float = 0.0, upper: float = 1.0) -> float:
+    return max(lower, min(upper, float(value)))
+
+
 class FeedbackService(BaseService):
     """Consume response feedback and adapt social/memory confidence state."""
 
@@ -190,6 +194,88 @@ class FeedbackService(BaseService):
         history.append(now)
         return len(history) > self._abuse_max_events
 
+    @staticmethod
+    def _inferred_style_for_source(source: str | None) -> str | None:
+        source_key = (source or "").strip().lower()
+        if "persona" in source_key:
+            return "friendly"
+        if "safety" in source_key:
+            return "cautious"
+        if "factual" in source_key or "tool" in source_key:
+            return "concise"
+        return None
+
+    async def _update_adaptation_profile(
+        self,
+        *,
+        user_id: str | None,
+        source: str,
+        signal: str,
+        affinity_delta: float,
+        confidence_delta: float,
+        signal_confidence: float,
+        score: float,
+    ) -> None:
+        normalized_source = (source or "unknown").strip().lower()
+        feedback_direction = 1.0 if affinity_delta >= 0 else -1.0
+        confidence_direction = 1.0 if confidence_delta >= 0 else -1.0
+        intensity = _clamp(abs(affinity_delta) * 0.18 + abs(confidence_delta) * 1.2 + signal_confidence * 0.12, lower=0.02, upper=0.35)
+
+        source_patch = {
+            "selector": {
+                "weight_multiplier": round(_clamp(1.0 + feedback_direction * intensity, lower=0.5, upper=1.75), 4),
+            },
+            "confidence": {
+                "calibration": {
+                    "bias": round(confidence_direction * min(0.12, abs(confidence_delta) * 0.8 + intensity * 0.1), 4),
+                    "slope": round(_clamp(1.0 + confidence_direction * min(0.25, abs(confidence_delta) * 0.35), lower=0.7, upper=1.3), 4),
+                }
+            },
+            "feedback_summary": {
+                "last_signal": signal,
+                "last_score": round(float(score), 4),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        }
+        await self._db.upsert_adaptation_profile(scope_type="source", scope_key=normalized_source, profile=source_patch)
+
+        normalized_user = user_id.strip().lower() if isinstance(user_id, str) and user_id.strip() else None
+        if not normalized_user:
+            return
+
+        style = self._inferred_style_for_source(normalized_source)
+        user_patch: dict[str, Any] = {
+            "fallback": {
+                "aggressiveness": round(_clamp(0.35 - feedback_direction * intensity, lower=0.05, upper=0.95), 4),
+            },
+            "memory": {
+                "salience_boost": round(_clamp(abs(affinity_delta) * 0.25 + max(0.0, -confidence_delta) * 1.5, lower=0.0, upper=1.0), 4),
+                "retrieval_priority": round(_clamp(0.45 + max(0.0, abs(confidence_delta)) * 1.2 + (0.15 if signal == "corrected" else 0.0), lower=0.0, upper=1.0), 4),
+            },
+            "confidence": {
+                "default_calibration": {
+                    "bias": round(confidence_direction * min(0.15, abs(confidence_delta) * 0.9), 4),
+                    "slope": round(_clamp(1.0 + confidence_direction * min(0.2, abs(confidence_delta) * 0.5), lower=0.75, upper=1.25), 4),
+                }
+            },
+            "selector": {
+                "source_affinity": {
+                    normalized_source: round(_clamp(0.5 + feedback_direction * intensity, lower=0.0, upper=1.0), 4),
+                }
+            },
+            "feedback_summary": {
+                "last_signal": signal,
+                "last_score": round(float(score), 4),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        }
+        if style:
+            user_patch["response_style"] = {
+                "preferred": style,
+                "preferences": {style: round(_clamp(0.5 + feedback_direction * intensity, lower=0.0, upper=1.0), 4)},
+            }
+        await self._db.upsert_adaptation_profile(scope_type="user", scope_key=normalized_user, profile=user_patch)
+
     async def _apply_feedback(
         self,
         *,
@@ -240,6 +326,15 @@ class FeedbackService(BaseService):
             confidence=signal_confidence,
             score=score,
             details=details,
+        )
+        await self._update_adaptation_profile(
+            user_id=resolved_user,
+            source=source_label,
+            signal=signal,
+            affinity_delta=affinity_delta,
+            confidence_delta=confidence_delta,
+            signal_confidence=signal_confidence,
+            score=score,
         )
 
         RESPONSE_FEEDBACK_SIGNALS_TOTAL.labels(

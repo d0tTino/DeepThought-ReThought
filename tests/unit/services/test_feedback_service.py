@@ -12,6 +12,7 @@ class DummyDB:
         self.affinity_calls = []
         self.confidence_calls = []
         self.feedback_rows = []
+        self.adaptation_profiles = {}
 
     async def adjust_affinity(self, user_id, delta):
         self.affinity_calls.append((user_id, delta))
@@ -25,6 +26,23 @@ class DummyDB:
     async def fetch_high_value_feedback(self, *, limit=100, min_score=0.7):
         high = [r for r in self.feedback_rows if float(r.get("score", 0.0)) >= min_score]
         return high[:limit]
+
+    async def upsert_adaptation_profile(self, *, scope_type, scope_key, profile, merge=True):
+        key = (scope_type, scope_key)
+        current = self.adaptation_profiles.get(key, {})
+
+        def merge_dict(base, override):
+            merged = dict(base)
+            for name, value in override.items():
+                if isinstance(value, dict) and isinstance(merged.get(name), dict):
+                    merged[name] = merge_dict(merged[name], value)
+                else:
+                    merged[name] = value
+            return merged
+
+        next_profile = merge_dict(current, profile) if merge else dict(profile)
+        self.adaptation_profiles[key] = next_profile
+        return next_profile
 
 
 class DummyPublisher:
@@ -106,6 +124,32 @@ async def test_feedback_service_discord_reaction_mapping_and_guardrails():
         details={"emoji": "👎"},
     )
     assert len(service._db.feedback_rows) == prior
+
+
+@pytest.mark.asyncio
+async def test_feedback_service_persists_user_and_source_adaptation_profiles():
+    service = FeedbackService(nats_client=None, js_context=None, db_manager=DummyDB())
+    service._publisher = DummyPublisher()
+
+    await service._apply_feedback(
+        signal_type="outcome",
+        signal="positive",
+        input_id="in-3",
+        user_id="u-3",
+        source="responder:persona",
+        model_id="m-3",
+        affinity_delta=1.0,
+        confidence_delta=0.1,
+        signal_confidence=0.95,
+        details={},
+    )
+
+    user_profile = service._db.adaptation_profiles[("user", "u-3")]
+    source_profile = service._db.adaptation_profiles[("source", "responder:persona")]
+    assert user_profile["response_style"]["preferred"] == "friendly"
+    assert user_profile["fallback"]["aggressiveness"] < 0.35
+    assert source_profile["selector"]["weight_multiplier"] > 1.0
+    assert source_profile["confidence"]["calibration"]["bias"] > 0.0
 
 
 @pytest.mark.asyncio

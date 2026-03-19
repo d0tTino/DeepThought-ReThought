@@ -38,6 +38,7 @@ class _AggregationState:
     context_confidence: dict = field(default_factory=dict)
     social_intent_hints: dict = field(default_factory=dict)
     user_history_affinity: dict[str, float] = field(default_factory=dict)
+    adaptation_state: dict = field(default_factory=dict)
     opened_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     flush_task: asyncio.Task[None] | None = None
 
@@ -91,11 +92,28 @@ class SelectorService:
         duplicates = sum(1 for item in all_candidates if item.text.strip().lower() == candidate.text.strip().lower())
         return min(0.3, max(0, duplicates - 1) * 0.1)
 
-    def _normalized_confidence(self, candidate: ResponseCandidate) -> float:
+    def _source_adaptation(self, adaptation_state: Optional[dict], source: str) -> dict:
+        if not isinstance(adaptation_state, dict):
+            return {}
+        sources = adaptation_state.get("sources")
+        if not isinstance(sources, dict):
+            return {}
+        profile = sources.get(source)
+        return dict(profile) if isinstance(profile, dict) else {}
+
+    def _normalized_confidence(self, candidate: ResponseCandidate, adaptation_state: Optional[dict] = None) -> float:
         source = (candidate.source or "default").lower()
         weight = self._source_confidence_weights.get(source, self._source_confidence_weights.get("default", 1.0))
+        source_adaptation = self._source_adaptation(adaptation_state, source)
+        selector_profile = source_adaptation.get("selector") if isinstance(source_adaptation.get("selector"), dict) else {}
+        if isinstance(selector_profile.get("weight_multiplier"), (int, float)):
+            weight *= float(selector_profile["weight_multiplier"])
         calibrated = max(0.0, candidate.confidence * weight)
         profile = self._source_calibration_profiles.get(source) or self._source_calibration_profiles.get("default") or {}
+        adaptation_confidence = source_adaptation.get("confidence") if isinstance(source_adaptation.get("confidence"), dict) else {}
+        adaptation_calibration = adaptation_confidence.get("calibration") if isinstance(adaptation_confidence, dict) else {}
+        if isinstance(adaptation_calibration, dict):
+            profile = {**profile, **adaptation_calibration}
         slope = float(profile.get("slope", 1.0))
         bias = float(profile.get("bias", 0.0))
         floor = float(profile.get("floor", 0.0))
@@ -116,9 +134,16 @@ class SelectorService:
         rationale = ",".join(sorted(candidate.rationale_tags)) if isinstance(candidate.rationale_tags, list) else ""
         return (source, text, rationale)
 
-    def _choose_fallback(self, interaction_policy: Optional[dict]) -> tuple[str, str]:
+    def _choose_fallback(self, interaction_policy: Optional[dict], adaptation_state: Optional[dict] = None) -> tuple[str, str]:
         policy = interaction_policy or {}
-        if policy.get("ask_clarifying_on_no_safe", True):
+        fallback_profile = adaptation_state.get("fallback") if isinstance(adaptation_state, dict) and isinstance(adaptation_state.get("fallback"), dict) else {}
+        aggressiveness = fallback_profile.get("aggressiveness", policy.get("fallback_aggressiveness", 0.5))
+        try:
+            fallback_aggressiveness = max(0.0, min(1.0, float(aggressiveness)))
+        except (TypeError, ValueError):
+            fallback_aggressiveness = 0.5
+        should_clarify = policy.get("ask_clarifying_on_no_safe", True) and fallback_aggressiveness <= 0.6
+        if should_clarify:
             return (
                 "I don't yet have a safe, reliable answer. Could you clarify what outcome you want?",
                 "clarifying_question",
@@ -192,6 +217,7 @@ class SelectorService:
         context_confidence: Optional[dict] = None,
         social_intent_hints: Optional[dict] = None,
         user_history_affinity: Optional[dict[str, float]] = None,
+        adaptation_state: Optional[dict] = None,
     ) -> tuple[list[ResponseCandidate], list[dict]]:
         diagnostics: list[dict] = []
         scored: list[tuple[float, ResponseCandidate]] = []
@@ -200,7 +226,7 @@ class SelectorService:
 
         for candidate in candidates:
             rejection_reasons: list[str] = []
-            normalized = self._normalized_confidence(candidate)
+            normalized = self._normalized_confidence(candidate, adaptation_state)
             policy_fit = self._policy_fit_score(candidate, interaction_policy, social_intent_hints)
             policy_adjustment = self._policy_fit_weight * policy_fit
             affinity_score = self._user_history_affinity_score(candidate, user_history_affinity, social_intent_hints)
@@ -236,6 +262,9 @@ class SelectorService:
                 "policy_risk_level": policy_decision.risk_level,
                 "policy_confidence_band": policy_decision.confidence_band,
             }
+            source_adaptation = self._source_adaptation(adaptation_state, (candidate.source or "default").lower())
+            if source_adaptation:
+                factor_scores["adaptation"] = source_adaptation
             if rejection_reasons:
                 diagnostics.append(
                     {
@@ -287,6 +316,7 @@ class SelectorService:
             context_confidence=state.context_confidence,
             social_intent_hints=state.social_intent_hints,
             user_history_affinity=state.user_history_affinity,
+            adaptation_state=state.adaptation_state,
         )
         fallback_reason = None
         if ranked_candidates:
@@ -304,7 +334,7 @@ class SelectorService:
             final_source = selected.source
             selected_policy_artifacts = self._candidate_policy_artifacts(selected)
         else:
-            final_response, fallback_reason = self._choose_fallback(state.interaction_policy)
+            final_response, fallback_reason = self._choose_fallback(state.interaction_policy, state.adaptation_state)
             final_confidence = 0.0
             final_source = "selector_fallback"
             selected_policy_artifacts = []
@@ -347,6 +377,7 @@ class SelectorService:
             "context_confidence": state.context_confidence,
             "social_intent_hints": state.social_intent_hints,
             "user_history_affinity": state.user_history_affinity,
+            "adaptation_state": state.adaptation_state,
             "weights": {
                 "context_degradation": self._context_degradation_weight,
                 "policy_fit": self._policy_fit_weight,
@@ -395,6 +426,7 @@ class SelectorService:
                         context_confidence=payload.context_confidence or {},
                         social_intent_hints=payload.social_intent_hints or {},
                         user_history_affinity=payload.user_history_affinity or {},
+                        adaptation_state=payload.adaptation_state or {},
                     )
                     self._pending_by_input[input_id] = state
 
@@ -406,6 +438,7 @@ class SelectorService:
                 state.context_confidence = state.context_confidence or (payload.context_confidence or {})
                 state.social_intent_hints = state.social_intent_hints or (payload.social_intent_hints or {})
                 state.user_history_affinity = state.user_history_affinity or (payload.user_history_affinity or {})
+                state.adaptation_state = state.adaptation_state or (payload.adaptation_state or {})
 
                 ranked_candidates, diagnostics = self._rank_candidates(
                     state.candidates,
@@ -413,6 +446,7 @@ class SelectorService:
                     context_confidence=state.context_confidence,
                     social_intent_hints=state.social_intent_hints,
                     user_history_affinity=state.user_history_affinity,
+                    adaptation_state=state.adaptation_state,
                 )
                 top_score = diagnostics[0]["score"] if diagnostics else 0.0
                 early_exit = bool(ranked_candidates) and top_score >= self._early_exit_confidence
