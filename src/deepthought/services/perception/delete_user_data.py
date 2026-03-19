@@ -10,6 +10,7 @@ from pathlib import Path
 
 from nats.aio.client import Client as NATS
 
+from ...eda.contracts import EventEnvelope
 from .config import PerceptionConfig
 from .user_embeddings import UserEmbeddings
 
@@ -20,9 +21,14 @@ async def trigger_replay_jobs(user_id: str, nats_url: str) -> None:
     nc = NATS()
     await nc.connect(servers=[nats_url])
     js = nc.jetstream()
+    envelope = EventEnvelope.build(
+        subject="dtr.perception.replay.delete_user",
+        payload={"user_id": user_id},
+        producer="perception.delete_user_data",
+    )
     await js.publish(
         "dtr.perception.replay.delete_user",
-        json.dumps({"user_id": user_id}).encode(),
+        json.dumps(envelope.__dict__).encode(),
     )
     await nc.drain()
 

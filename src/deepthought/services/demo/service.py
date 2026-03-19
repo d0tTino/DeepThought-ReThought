@@ -7,6 +7,7 @@ from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
 from deepthought.eda import Publisher, Subscriber
+from deepthought.eda.contracts import EventEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,12 @@ class DemoService:
     async def _handle_input(self, msg: Msg) -> None:
         logger.info("Handling message %s", msg.subject)
         try:
-            await self._publisher.publish("dtr.template.output", msg.data, use_jetstream=True)
+            envelope = EventEnvelope.build(
+                subject="dtr.template.output",
+                payload={"data": msg.data.decode(errors="replace")},
+                producer=self.__class__.__name__,
+            )
+            await self._publisher.publish("dtr.template.output", envelope.__dict__, use_jetstream=True)
         finally:
             await msg.ack()
 

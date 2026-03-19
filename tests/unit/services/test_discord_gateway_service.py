@@ -100,13 +100,11 @@ class DummyDiscordClient:
 
 
 @pytest.fixture
-
 def fake_clock():
     return FakeClock()
 
 
 @pytest.fixture
-
 def service(monkeypatch, fake_clock):
     import deepthought.services.base as base_mod
 
@@ -400,4 +398,4 @@ async def test_ranked_response_egress_policy_escalates_ambiguous_confidence(serv
     assert service._discord_client.channel.messages == []
     telemetry = [item for item in service._publisher.published if item[0] == "dtr.telemetry.egress_policy.v1"]
     assert telemetry
-    assert telemetry[0][1]["decision_action"] == "escalate"
+    assert telemetry[0][1]["payload"]["decision_action"] == "escalate"

@@ -75,8 +75,8 @@ async def test_rank_by_confidence(service):
     assert ranked["payload"]["final_response"] == "high"
     telemetry_subject, telemetry_payload = service._publisher.published[1]
     assert telemetry_subject == "dtr.telemetry.selector_ranking.v1"
-    assert telemetry_payload["chosen_source"] is None
-    assert telemetry_payload["policy_version"] == "v1"
+    assert telemetry_payload["payload"]["chosen_source"] is None
+    assert telemetry_payload["payload"]["policy_version"] == "v1"
 
 
 @pytest.mark.asyncio
@@ -179,7 +179,7 @@ async def test_source_calibration_changes_ranking(monkeypatch):
     await svc._handle_candidates_event(msg)
 
     assert svc._publisher.published[0][1]["payload"]["final_response"] == "weighted"
-    diagnostics = svc._publisher.published[1][1]["diagnostics"]
+    diagnostics = svc._publisher.published[1][1]["payload"]["diagnostics"]
     assert diagnostics[0]["source"] == "trusted"
 
 
@@ -211,7 +211,7 @@ async def test_mixed_source_and_confidence_filters_and_weights(monkeypatch):
     await svc._handle_candidates_event(msg)
 
     ranked = svc._publisher.published[0][1]
-    telemetry = svc._publisher.published[1][1]
+    telemetry = svc._publisher.published[1][1]["payload"]
     assert ranked["payload"]["final_response"] == "safe tool"
     rejected = [item for item in telemetry["diagnostics"] if item["rejection_reasons"]]
     assert rejected and rejected[0]["text"] == "unsafe rule"
@@ -276,7 +276,7 @@ async def test_context_and_policy_and_affinity_factors_shape_ranking(monkeypatch
     await svc._handle_candidates_event(msg)
 
     ranked = svc._publisher.published[0][1]
-    telemetry = svc._publisher.published[1][1]
+    telemetry = svc._publisher.published[1][1]["payload"]
     assert ranked["payload"]["final_response"] == "tailored"
     assert ranked["payload"]["interaction_policy"]["policy_version"] == "v1"
     assert telemetry["weights"]["policy_fit"] == pytest.approx(0.2)
@@ -392,7 +392,7 @@ async def test_adaptation_state_changes_selector_weight_and_fallback(monkeypatch
     await svc._handle_candidates_event(DummyMsg(payload.to_json()))
 
     ranked_payload = svc._publisher.published[0][1]
-    telemetry_payload = svc._publisher.published[1][1]
+    telemetry_payload = svc._publisher.published[1][1]["payload"]
     assert ranked_payload["payload"]["source"] == "responder:persona"
     assert telemetry_payload["adaptation_state"]["fallback"]["aggressiveness"] == pytest.approx(0.9)
 
