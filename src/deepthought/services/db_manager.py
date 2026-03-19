@@ -319,6 +319,15 @@ class DBManager:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS adaptation_profiles (
+            scope_type TEXT NOT NULL,
+            scope_key TEXT NOT NULL,
+            profile_json TEXT NOT NULL DEFAULT '{}',
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(scope_type, scope_key)
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS recent_topics (
             topic TEXT PRIMARY KEY,
             last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -2289,3 +2298,106 @@ class DBManager:
         await self._db.commit()
         return items
 
+    @staticmethod
+    def _deep_merge_profile(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
+        merged = dict(base)
+        for key, value in override.items():
+            if isinstance(value, Mapping) and isinstance(merged.get(key), Mapping):
+                merged[key] = DBManager._deep_merge_profile(
+                    dict(merged[key]),  # type: ignore[arg-type]
+                    value,
+                )
+            else:
+                merged[key] = value
+        return merged
+
+    async def upsert_adaptation_profile(
+        self,
+        *,
+        scope_type: str,
+        scope_key: str,
+        profile: Mapping[str, Any],
+        merge: bool = True,
+    ) -> dict[str, Any]:
+        await self.connect()
+        assert self._db
+        scope_type = str(scope_type).strip().lower()
+        scope_key = str(scope_key).strip().lower()
+        if not scope_type or not scope_key:
+            raise ValueError("scope_type and scope_key must be non-empty strings")
+
+        current: dict[str, Any] = {}
+        async with self._db.execute(
+            "SELECT profile_json FROM adaptation_profiles WHERE scope_type=? AND scope_key=?",
+            (scope_type, scope_key),
+        ) as cur:
+            row = await cur.fetchone()
+        if row and row[0]:
+            try:
+                parsed = json.loads(row[0])
+                if isinstance(parsed, dict):
+                    current = parsed
+            except json.JSONDecodeError:
+                current = {}
+
+        next_profile = self._deep_merge_profile(current, profile) if merge else dict(profile)
+        await self._db.execute(
+            """
+            INSERT INTO adaptation_profiles (scope_type, scope_key, profile_json, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(scope_type, scope_key) DO UPDATE SET
+                profile_json=excluded.profile_json,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (scope_type, scope_key, json.dumps(next_profile)),
+        )
+        await self._db.commit()
+        return next_profile
+
+    async def get_adaptation_state(self, *, user_id: str | None = None) -> dict[str, Any]:
+        await self.connect()
+        assert self._db
+
+        state: dict[str, Any] = {
+            "user": {},
+            "sources": {},
+            "retrieval": {},
+            "fallback": {},
+            "confidence": {},
+        }
+
+        normalized_user_id = str(user_id).strip().lower() if isinstance(user_id, str) and user_id.strip() else None
+        if normalized_user_id:
+            async with self._db.execute(
+                "SELECT profile_json FROM adaptation_profiles WHERE scope_type='user' AND scope_key=?",
+                (normalized_user_id,),
+            ) as cur:
+                row = await cur.fetchone()
+            if row and row[0]:
+                try:
+                    parsed = json.loads(row[0])
+                    if isinstance(parsed, dict):
+                        state["user"] = parsed
+                except json.JSONDecodeError:
+                    state["user"] = {}
+
+        async with self._db.execute(
+            "SELECT scope_key, profile_json FROM adaptation_profiles WHERE scope_type='source'"
+        ) as cur:
+            rows = await cur.fetchall()
+        for scope_key, profile_json in rows:
+            parsed: dict[str, Any] = {}
+            if profile_json:
+                try:
+                    decoded = json.loads(profile_json)
+                    if isinstance(decoded, dict):
+                        parsed = decoded
+                except json.JSONDecodeError:
+                    parsed = {}
+            state["sources"][str(scope_key)] = parsed
+
+        user_profile = state["user"] if isinstance(state["user"], dict) else {}
+        state["retrieval"] = dict(user_profile.get("memory", {})) if isinstance(user_profile.get("memory"), dict) else {}
+        state["fallback"] = dict(user_profile.get("fallback", {})) if isinstance(user_profile.get("fallback"), dict) else {}
+        state["confidence"] = dict(user_profile.get("confidence", {})) if isinstance(user_profile.get("confidence"), dict) else {}
+        return state

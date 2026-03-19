@@ -61,40 +61,45 @@ class ResponderService:
         user_input: str,
         facts: list[str],
         social_signals: dict,
+        response_style: str | None,
     ) -> tuple[str, float, list[str], str, str]:
+        preferred_style = (response_style or "").strip().lower()
         if self._responder_kind in {"factual", "qa", "tool"}:
             fact = facts[0] if facts else "I don't have enough retrieved facts yet"
+            style = preferred_style or "concise"
             return (
                 f"Useful grounding fact: {fact}.",
                 0.78,
-                ["specialist", "factual", "grounded", "tool_ready"],
-                "concise",
+                ["specialist", "factual", "grounded", "tool_ready", style],
+                style,
                 "Fact-grounded specialist hint",
             )
         if self._responder_kind in {"persona", "conversational"}:
             prompt_context = self._compose_prompt_context(user_input, facts, social_signals)
+            style = preferred_style or "friendly"
             return (
                 f"Tone/rapport hint: acknowledge the user warmly while staying aligned with {prompt_context}.",
                 0.73,
-                ["specialist", "persona", "empathetic", "rapport"],
-                "friendly",
+                ["specialist", "persona", "empathetic", "rapport", style],
+                style,
                 "Persona specialist hint",
             )
 
         blocked = any(token in user_input.lower() for token in ("harm", "attack", "exploit"))
+        style = preferred_style or "safety"
         if blocked:
             return (
                 "Safety hint: refuse harmful assistance and redirect to safer alternatives.",
                 0.93,
-                ["specialist", "safety", "refusal", "policy"],
-                "safety",
+                ["specialist", "safety", "refusal", "policy", style],
+                style,
                 "Safety specialist refusal",
             )
         return (
             "Safety hint: content appears answerable, but avoid escalating risk and keep the reply bounded.",
             0.62,
-            ["specialist", "safety", "allow"],
-            "safety",
+            ["specialist", "safety", "allow", style],
+            style,
             "Safety specialist allow hint",
         )
 
@@ -104,12 +109,15 @@ class ResponderService:
         facts: list[str],
         social_signals: dict,
         policy_artifacts: list[dict],
+        response_style: str | None,
+        source_adaptation: dict[str, object],
     ) -> ResponseCandidate:
         source = f"responder:{self._responder_id}"
         text, confidence, tags, style, role_description = self._build_specialist_payload(
             user_input=user_input,
             facts=facts,
             social_signals=social_signals,
+            response_style=response_style,
         )
 
         decision = self._policy_engine.evaluate_candidate(
@@ -119,7 +127,13 @@ class ResponderService:
         )
         safety_passed = decision.allowed
         confidence_components = {"model": confidence, "prior": 0.8}
-        calibration = {"slope": 1.0, "bias": 0.0, "version": "heuristic_v1"}
+        source_confidence = source_adaptation.get("confidence") if isinstance(source_adaptation.get("confidence"), dict) else {}
+        source_calibration = source_confidence.get("calibration") if isinstance(source_confidence, dict) else {}
+        calibration = {
+            "slope": float(source_calibration.get("slope", 1.0)) if isinstance(source_calibration, dict) else 1.0,
+            "bias": float(source_calibration.get("bias", 0.0)) if isinstance(source_calibration, dict) else 0.0,
+            "version": "heuristic_v1",
+        }
 
         return ResponseCandidate(
             text=text,
@@ -145,13 +159,15 @@ class ResponderService:
                 "calibration": calibration,
                 "calibration_metadata": {
                     "calibration": calibration,
-                    "confidence_components": confidence_components,
-                    "policy_version": self._policy_engine.VERSION,
-                },
-                "social_features": self._bounded_social_features(social_signals),
+                "confidence_components": confidence_components,
                 "policy_version": self._policy_engine.VERSION,
+                "adaptation": source_adaptation,
             },
-            rationale_tags=tags,
+            "social_features": self._bounded_social_features(social_signals),
+            "adaptation": source_adaptation,
+            "policy_version": self._policy_engine.VERSION,
+        },
+        rationale_tags=tags,
         )
 
     async def _handle_context_event(self, msg: Msg) -> None:
@@ -171,6 +187,15 @@ class ResponderService:
             policy_artifacts = [risk_artifact, hardening_artifact]
 
             selector_inputs = social_signals.get("selector_inputs") if isinstance(social_signals.get("selector_inputs"), dict) else {}
+            adaptation_state = payload.get("adaptation_state") if isinstance(payload.get("adaptation_state"), dict) else {}
+            response_style = None
+            interaction_policy = selector_inputs.get("interaction_policy")
+            if isinstance(interaction_policy, dict) and isinstance(interaction_policy.get("response_style"), str):
+                response_style = interaction_policy.get("response_style")
+            source_adaptation = {}
+            sources = adaptation_state.get("sources") if isinstance(adaptation_state.get("sources"), dict) else {}
+            if isinstance(sources.get(f"responder:{self._responder_id}"), dict):
+                source_adaptation = dict(sources[f"responder:{self._responder_id}"])
             out = ResponseCandidatesPayload(
                 candidates=[
                     self._build_candidate(
@@ -178,6 +203,8 @@ class ResponderService:
                         facts=[str(x) for x in facts],
                         social_signals=social_signals,
                         policy_artifacts=policy_artifacts,
+                        response_style=response_style,
+                        source_adaptation=source_adaptation,
                     )
                 ],
                 input_id=input_id,
@@ -188,6 +215,7 @@ class ResponderService:
                 interaction_policy=selector_inputs.get("interaction_policy"),
                 social_intent_hints=selector_inputs.get("social_intent_hints"),
                 user_history_affinity=selector_inputs.get("user_history_affinity"),
+                adaptation_state=adaptation_state,
             )
             envelope = EventEnvelope.build(
                 subject=EventSubjects.RESPONSE_CANDIDATES,

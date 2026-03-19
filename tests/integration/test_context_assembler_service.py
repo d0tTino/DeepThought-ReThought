@@ -48,6 +48,14 @@ class DummyMsg:
         self.nacked = True
 
 
+class DummyDB:
+    def __init__(self, adaptation_state=None):
+        self.adaptation_state = adaptation_state or {}
+
+    async def get_adaptation_state(self, *, user_id=None):
+        return self.adaptation_state
+
+
 @pytest.mark.asyncio
 async def test_race_safe_assembly_collects_all_providers(monkeypatch):
     import deepthought.services.context_assembler_service as mod
@@ -295,3 +303,45 @@ async def test_context_assembler_uses_social_signals_retrieved_as_social_provide
     subjects = [call["subject"] for call in svc._subscriber.calls]
     assert EventSubjects.SOCIAL_SIGNALS_RETRIEVED in subjects
     assert EventSubjects.SOCIAL_UPDATED not in subjects
+
+
+@pytest.mark.asyncio
+async def test_context_assembler_merges_adaptation_state_into_selector_inputs(monkeypatch):
+    import deepthought.services.context_assembler_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = ContextAssemblerService(
+        DummyNATS(),
+        DummyJS(),
+        db_manager=DummyDB(
+            {
+                "user": {
+                    "response_style": {"preferred": "concise"},
+                    "fallback": {"aggressiveness": 0.2},
+                    "memory": {"salience_boost": 0.7, "retrieval_priority": 0.9},
+                },
+                "sources": {
+                    "responder:factual": {"selector": {"weight_multiplier": 1.25}},
+                },
+                "retrieval": {"salience_boost": 0.7, "retrieval_priority": 0.9},
+                "fallback": {"aggressiveness": 0.2},
+            }
+        ),
+        wait_window_seconds=0.05,
+    )
+
+    await svc._handle_input_received(DummyMsg({"input_id": "i-adapt", "user_input": "hello", "author_id": "u-adapt"}))
+    await svc._handle_provider_response(DummyMsg({"input_id": "i-adapt", "retrieved_knowledge": {"facts": ["fact-a"]}}), "memory")
+    await svc._handle_provider_response(DummyMsg({"input_id": "i-adapt", "social_signals": {"selector_inputs": {"interaction_policy": {"ask_clarifying_on_no_safe": True}}}}), "social")
+    await svc._handle_provider_response(DummyMsg({"input_id": "i-adapt", "multimodal_interpretations": {"summary": "none", "notes": []}}), "perception")
+    await asyncio.sleep(0.06)
+
+    assembled = [c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED]
+    payload = assembled[0][1]["payload"]
+    assert payload["adaptation_state"]["user"]["response_style"]["preferred"] == "concise"
+    assert payload["social_signals"]["selector_inputs"]["interaction_policy"]["response_style"] == "concise"
+    assert payload["social_signals"]["selector_inputs"]["interaction_policy"]["fallback_aggressiveness"] == pytest.approx(0.2)
+    assert payload["confidence"]["retrieval_policy"]["salience_boost"] == pytest.approx(0.7)
+    assert payload["social_signals"]["selector_inputs"]["user_history_affinity"]["responder:factual"] == pytest.approx(0.25)

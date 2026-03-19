@@ -356,3 +356,52 @@ async def test_deterministic_tie_breaking_prefers_lexicographic_source(monkeypat
 
     ranked_payload = svc._publisher.published[0][1]
     assert ranked_payload["payload"]["source"] == "responder:factual"
+
+
+@pytest.mark.asyncio
+async def test_adaptation_state_changes_selector_weight_and_fallback(monkeypatch):
+    import deepthought.services.selector_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
+    svc = SelectorService(
+        DummyNATS(),
+        DummyJS(),
+        early_exit_confidence=0.0,
+        window_seconds=0.0,
+    )
+
+    payload = ResponseCandidatesPayload(
+        input_id="adapt-selector-1",
+        interaction_policy={"ask_clarifying_on_no_safe": True},
+        adaptation_state={
+            "fallback": {"aggressiveness": 0.9},
+            "sources": {
+                "responder:persona": {
+                    "selector": {"weight_multiplier": 1.4},
+                    "confidence": {"calibration": {"bias": 0.05}},
+                }
+            },
+        },
+        candidates=[
+            ResponseCandidate(text="persona", confidence=0.6, source="responder:persona"),
+            ResponseCandidate(text="factual", confidence=0.7, source="responder:factual", safety_passed=False),
+        ],
+    )
+
+    await svc._handle_candidates_event(DummyMsg(payload.to_json()))
+
+    ranked_payload = svc._publisher.published[0][1]
+    telemetry_payload = svc._publisher.published[1][1]
+    assert ranked_payload["payload"]["source"] == "responder:persona"
+    assert telemetry_payload["adaptation_state"]["fallback"]["aggressiveness"] == pytest.approx(0.9)
+
+    fallback_payload = ResponseCandidatesPayload(
+        input_id="adapt-selector-fallback",
+        interaction_policy={"ask_clarifying_on_no_safe": True},
+        adaptation_state={"fallback": {"aggressiveness": 0.95}},
+        candidates=[ResponseCandidate(text="unsafe", confidence=0.6, source="x", safety_passed=False)],
+    )
+    await svc._handle_candidates_event(DummyMsg(fallback_payload.to_json()))
+    await asyncio.sleep(0.02)
+    assert "safer way" in svc._publisher.published[2][1]["payload"]["final_response"].lower()

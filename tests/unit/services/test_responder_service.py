@@ -165,3 +165,41 @@ async def test_responder_passes_selector_inputs_from_durable_social_model(monkey
     assert payload["interaction_policy"]["response_style"] == "friendly"
     assert payload["social_intent_hints"]["high_rapport_expected"] is True
     assert payload["user_history_affinity"]["default"] == pytest.approx(0.5)
+
+
+@pytest.mark.asyncio
+async def test_responder_applies_adaptation_state_to_candidate_metadata(monkeypatch):
+    import deepthought.services.responder_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = FactualResponderService(DummyNATS(), DummyJS())
+    await svc.start()
+
+    context_payload = {
+        "input_id": "in-adaptation",
+        "user_input": "hello",
+        "retrieved_facts": ["fact1"],
+        "author_id": "a-1",
+        "adaptation_state": {
+            "sources": {
+                "responder:factual": {
+                    "confidence": {"calibration": {"slope": 0.85, "bias": 0.04}}
+                }
+            }
+        },
+        "social_signals": {
+            "selector_inputs": {
+                "interaction_policy": {"response_style": "concise", "ask_clarifying_on_no_safe": True},
+            }
+        },
+    }
+    msg = DummyMsg(json.dumps(context_payload))
+    await svc._handle_context_event(msg)
+
+    payload = svc._publisher.calls[0][1]["payload"]
+    candidate = payload["candidates"][0]
+    assert "concise" in candidate["rationale_tags"]
+    assert candidate["source_metadata"]["adaptation"]["confidence"]["calibration"]["slope"] == pytest.approx(0.85)
+    assert payload["adaptation_state"]["sources"]["responder:factual"]["confidence"]["calibration"]["bias"] == pytest.approx(0.04)
