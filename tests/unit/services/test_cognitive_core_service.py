@@ -204,6 +204,7 @@ class DummyDB:
         self.affinity = 0.0
         self.affinity_user_ids = []
         self.perceptions = []
+        self.multimodal_memories = []
 
     async def store_memory(self, user_id, memory, topic="", sentiment_score=None):
         self.memory_user_ids.append(user_id)
@@ -225,6 +226,19 @@ class DummyDB:
         if limit is not None:
             memories = memories[: int(limit)]
         return [("", m) for m in memories]
+
+    async def store_multimodal_memory(self, payload):
+        self.multimodal_memories = [p for p in self.multimodal_memories if p.get("input_id") != payload.get("input_id")]
+        self.multimodal_memories.append(payload)
+
+    async def recall_multimodal_memories(self, user_id, *, channel_id=None, limit=None):
+        rows = [
+            row for row in reversed(self.multimodal_memories)
+            if str(row.get("user_id")) == str(user_id) and (channel_id is None or row.get("channel_id") in {None, channel_id})
+        ]
+        if limit is not None:
+            rows = rows[: int(limit)]
+        return rows
 
     async def close(self):
         pass
@@ -443,3 +457,39 @@ async def test_handle_embeddings_upserts(monkeypatch):
     assert msg.acked
     assert memory._store.upserts == [([[0.1, 0.2]], ["m1:0"])]
     assert len(memory.graph_backend.queries) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_input_persists_and_retrieves_multimodal_memories():
+    memory = DummyMemory()
+    db = DummyDB()
+    service = CognitiveCoreService(DummyNATS(), DummyJS(), Settings(), memory=memory, db=db)
+    service._top_k = 8
+    service._publisher = DummyPublisher()
+    service._subscriber = DummySubscriber()
+
+    first = DummyMsg(json.dumps({
+        "user_input": "here is a photo",
+        "input_id": "img-1",
+        "user_id": "u-mm",
+        "channel_id": "c-mm",
+        "attachments": [{"url": "https://example.test/cat.png", "content_type": "image/png", "filename": "cat.png"}],
+    }))
+    second = DummyMsg(json.dumps({
+        "user_input": "what did I send earlier?",
+        "input_id": "img-2",
+        "user_id": "u-mm",
+        "channel_id": "c-mm",
+    }))
+
+    await service._handle_input(first)
+    await service._handle_input(second)
+
+    assert first.acked and second.acked
+    assert db.multimodal_memories[0]["input_id"] == "img-1"
+    assert db.multimodal_memories[0]["observations"][0]["summary"] == "user posted image attachment"
+    _, payload = service._publisher.published[-1]
+    retrieved = payload["payload"]["retrieved_knowledge"]
+    assert any("multimodal summary:" in fact for fact in retrieved["facts"])
+    assert any("multimodal image event: user posted image attachment" in fact for fact in retrieved["facts"])
+    assert retrieved["multimodal_memories"][0]["input_id"] == "img-1"

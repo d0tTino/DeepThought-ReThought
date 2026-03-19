@@ -123,6 +123,11 @@ def test_perception_interpret_service_evicts_after_publish(monkeypatch):
     assert envelope["event_id"]
     assert envelope["causation_id"]
     assert envelope["payload"]["input_id"] == "input-1"
+    multimodal_memory = envelope["payload"]["multimodal_memory"]
+    assert multimodal_memory["schema_version"] == "multimodal.memory.v1"
+    assert multimodal_memory["input_id"] == "input-1"
+    assert multimodal_memory["attachments"][0]["media_type"] == "image"
+    assert multimodal_memory["observations"][0]["summary"] == "user posted image attachment"
     assert service.cache_metrics["cache_size"] == 0
     assert service.cache_metrics["evictions"] == 1
     assert service.cache_metrics["hit_rate"] == 1.0

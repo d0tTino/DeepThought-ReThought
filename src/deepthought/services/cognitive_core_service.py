@@ -8,7 +8,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -42,6 +42,116 @@ from .db_manager import DBManager
 from .input_enrichment_service import InputEnrichmentService
 
 logger = logging.getLogger(__name__)
+
+
+def _media_type_from_attachment(attachment: dict[str, Any]) -> str:
+    content_type = attachment.get("content_type")
+    if isinstance(content_type, str) and "/" in content_type:
+        return content_type.split("/", maxsplit=1)[0].strip().lower() or "file"
+    return "file"
+
+
+def _build_multimodal_memory_payload(
+    *,
+    input_id: str,
+    user_id: str,
+    channel_id: str | None,
+    timestamp: str,
+    attachments: list[dict[str, Any]],
+    multimodal_interpretations: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if not attachments:
+        return None
+    interpretations = multimodal_interpretations if isinstance(multimodal_interpretations, dict) else {}
+    by_modality = interpretations.get("by_modality") if isinstance(interpretations.get("by_modality"), dict) else {}
+    confidence_obj = interpretations.get("confidence") if isinstance(interpretations.get("confidence"), dict) else {}
+    aggregate_confidence = float(confidence_obj.get("aggregate")) if isinstance(confidence_obj.get("aggregate"), (int, float)) else 0.6
+    low_confidence = bool(confidence_obj.get("low_confidence"))
+    attachment_rows: list[dict[str, Any]] = []
+    confidence_rows = [{
+        "label": "aggregate",
+        "value": round(aggregate_confidence, 3),
+        "uncertain": low_confidence,
+        "reason": "low multimodal confidence" if low_confidence else "",
+    }]
+    observation_rows: list[dict[str, Any]] = []
+    entity_rows: list[dict[str, Any]] = []
+    media_counts: dict[str, int] = {}
+    for idx, attachment in enumerate(attachments):
+        media_type = _media_type_from_attachment(attachment)
+        media_counts[media_type] = media_counts.get(media_type, 0) + 1
+        note = by_modality.get(media_type) if isinstance(by_modality.get(media_type), dict) else {}
+        conf = float(note.get("confidence")) if isinstance(note.get("confidence"), (int, float)) else aggregate_confidence
+        attachment_rows.append({
+            "attachment_index": idx,
+            "media_type": media_type,
+            "content_type": attachment.get("content_type"),
+            "filename": attachment.get("filename"),
+            "url": attachment.get("url"),
+            "size": attachment.get("size") if isinstance(attachment.get("size"), int) else None,
+            "summary": str(note.get("what") or f"{media_type} attachment present"),
+            "confidence": round(conf, 3),
+        })
+        if media_type == "audio":
+            event_summary = "user shared audio/voice note attachment"
+        elif media_type == "video":
+            event_summary = "user shared video attachment"
+        elif media_type == "image":
+            event_summary = "user posted image attachment"
+        else:
+            event_summary = f"user shared {media_type} attachment"
+        observation_rows.append({
+            "observation_id": f"{input_id}:{media_type}:{idx}",
+            "observation_type": "event_summary",
+            "modality": media_type,
+            "summary": event_summary,
+            "confidence": round(conf, 3),
+            "uncertain": low_confidence,
+            "happened_at": timestamp,
+            "input_id": input_id,
+            "user_id": user_id,
+            "channel_id": channel_id,
+        })
+        who = note.get("who") if isinstance(note, dict) else None
+        if isinstance(who, str) and who.strip() and who.strip().lower() != "unknown":
+            entity_rows.append({
+                "entity_id": f"{input_id}:{media_type}:{who.strip().lower()}",
+                "name": who.strip(),
+                "entity_type": "referenced_subject",
+                "role": media_type,
+                "confidence": round(conf, 3),
+            })
+    summary = str(interpretations.get("summary") or f"attachments[{', '.join(f'{k}:{v}' for k, v in sorted(media_counts.items()))}]")
+    return {
+        "schema_version": "multimodal.memory.v1",
+        "input_id": input_id,
+        "user_id": user_id,
+        "channel_id": channel_id,
+        "observed_at": timestamp,
+        "summary": summary,
+        "attachment_summary": ", ".join(f"{k}:{v}" for k, v in sorted(media_counts.items())),
+        "attachments": attachment_rows,
+        "confidence": confidence_rows,
+        "entities": entity_rows,
+        "observations": observation_rows,
+    }
+
+
+def _multimodal_memory_to_fact_snippets(memories: list[dict[str, Any]]) -> list[str]:
+    snippets: list[str] = []
+    for memory in memories:
+        summary = " ".join(str(memory.get("summary") or "").split()).strip()
+        if summary:
+            snippets.append(f"multimodal summary: {summary}")
+        for observation in memory.get("observations") or []:
+            if not isinstance(observation, dict):
+                continue
+            summary = " ".join(str(observation.get("summary") or "").split()).strip()
+            if not summary:
+                continue
+            modality = str(observation.get("modality") or "attachment")
+            snippets.append(f"multimodal {modality} event: {summary}")
+    return snippets
 
 
 @dataclass(frozen=True)
@@ -473,6 +583,13 @@ class CognitiveCoreService(BaseService):
             conversation_window = decoded_payload.get("conversation_window")
             if not isinstance(conversation_window, list):
                 conversation_window = []
+            raw_attachments = decoded_payload.get("attachments")
+            attachments = [item for item in raw_attachments if isinstance(item, dict)] if isinstance(raw_attachments, list) else []
+            multimodal_interpretations = (
+                decoded_payload.get("multimodal_interpretations")
+                if isinstance(decoded_payload.get("multimodal_interpretations"), dict)
+                else None
+            )
             recent_turn_summary = decoded_payload.get("recent_turn_summary")
             if not isinstance(recent_turn_summary, str):
                 recent_turn_summary = None
@@ -493,6 +610,16 @@ class CognitiveCoreService(BaseService):
             scored = self._lifecycle_policy.score_event(user_input)
             db_topic = f"tier:{scored.tier}"
             await self._db.store_memory(resolved_user_id, user_input, topic=db_topic)
+            multimodal_memory_payload = _build_multimodal_memory_payload(
+                input_id=input_id,
+                user_id=str(resolved_user_id),
+                channel_id=channel_id,
+                timestamp=turn_timestamp,
+                attachments=attachments,
+                multimodal_interpretations=multimodal_interpretations,
+            )
+            if multimodal_memory_payload is not None and hasattr(self._db, "store_multimodal_memory"):
+                await self._db.store_multimodal_memory(multimodal_memory_payload)
 
             ingest_conversation_turns(
                 [
@@ -541,6 +668,14 @@ class CognitiveCoreService(BaseService):
             db_facts = await self._db_context(
                 resolved_user_id=resolved_user_id, channel_id=channel_id
             )
+            multimodal_memories = []
+            if hasattr(self._db, "recall_multimodal_memories"):
+                multimodal_memories = await self._db.recall_multimodal_memories(
+                    resolved_user_id, channel_id=channel_id, limit=self._top_k
+                )
+            multimodal_facts = self._normalize_fact_entries(
+                _multimodal_memory_to_fact_snippets(multimodal_memories)
+            )
             graph_facts = self._prioritized_graph_facts(
                 str(resolved_user_id), user_input
             )
@@ -550,7 +685,7 @@ class CognitiveCoreService(BaseService):
                 user_input=user_input,
             )
             durable_user_facts = self._normalize_fact_entries(
-                [*db_facts, *memory_facts, *vector_facts]
+                [*db_facts, *multimodal_facts, *memory_facts, *vector_facts]
             )
             topic_memory = self._normalize_fact_entries(graph_facts)
             continuity_summaries = self._channel_thread_continuity(
@@ -584,6 +719,7 @@ class CognitiveCoreService(BaseService):
                     "retrieval_policy": self._retrieval_policy.__dict__,
                     "conversation_window": conversation_window[-self._retrieval_policy.recent_turns :],
                     "recent_turn_summary": recent_turn_summary,
+                    "multimodal_memories": multimodal_memories[: self._top_k],
                 },
                 user_input=user_input,
                 input_id=input_id,

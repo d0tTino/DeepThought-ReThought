@@ -169,6 +169,72 @@ class DBManager:
             attributes TEXT
         )
         """,
+
+        """
+        CREATE TABLE IF NOT EXISTS multimodal_memories (
+            memory_id TEXT PRIMARY KEY,
+            input_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            channel_id TEXT,
+            observed_at TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            attachment_summary TEXT,
+            schema_version TEXT,
+            source_payload TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS multimodal_memory_attachments (
+            memory_id TEXT NOT NULL,
+            attachment_index INTEGER NOT NULL,
+            media_type TEXT,
+            content_type TEXT,
+            filename TEXT,
+            url TEXT,
+            size INTEGER,
+            summary TEXT,
+            confidence REAL DEFAULT 0,
+            PRIMARY KEY(memory_id, attachment_index)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS multimodal_memory_confidence (
+            memory_id TEXT NOT NULL,
+            label TEXT NOT NULL,
+            value REAL DEFAULT 0,
+            uncertain INTEGER DEFAULT 0,
+            reason TEXT,
+            PRIMARY KEY(memory_id, label)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS multimodal_memory_entities (
+            memory_id TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            entity_type TEXT,
+            role TEXT,
+            confidence REAL DEFAULT 0,
+            PRIMARY KEY(memory_id, entity_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS multimodal_memory_observations (
+            observation_id TEXT PRIMARY KEY,
+            memory_id TEXT NOT NULL,
+            observation_type TEXT,
+            modality TEXT,
+            summary TEXT NOT NULL,
+            confidence REAL DEFAULT 0,
+            uncertain INTEGER DEFAULT 0,
+            happened_at TEXT,
+            input_id TEXT,
+            user_id TEXT,
+            channel_id TEXT
+        )
+        """,
         """
         CREATE TABLE IF NOT EXISTS theories (
             subject_id TEXT,
@@ -771,6 +837,221 @@ class DBManager:
                 (topic,),
             )
         await self._db.commit()
+
+    async def store_multimodal_memory(self, payload: Mapping[str, Any]) -> None:
+        await self.connect()
+        assert self._db
+        memory_id = str(payload.get("input_id") or "").strip()
+        user_id = str(payload.get("user_id") or "").strip()
+        if not memory_id or not user_id:
+            raise ValueError("multimodal memory requires input_id and user_id")
+
+        observed_at = str(payload.get("observed_at") or datetime.utcnow().replace(microsecond=0).isoformat())
+        summary = " ".join(str(payload.get("summary") or "").split()).strip()
+        if not summary:
+            raise ValueError("multimodal memory requires summary")
+        attachment_summary = payload.get("attachment_summary")
+        schema_version = payload.get("schema_version")
+
+        await self._db.execute(
+            """
+            INSERT INTO multimodal_memories (
+                memory_id, input_id, user_id, channel_id, observed_at, summary,
+                attachment_summary, schema_version, source_payload, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(memory_id) DO UPDATE SET
+                channel_id=excluded.channel_id,
+                observed_at=excluded.observed_at,
+                summary=excluded.summary,
+                attachment_summary=excluded.attachment_summary,
+                schema_version=excluded.schema_version,
+                source_payload=excluded.source_payload,
+                updated_at=CURRENT_TIMESTAMP
+            """,
+            (
+                memory_id,
+                memory_id,
+                user_id,
+                str(payload.get("channel_id")) if payload.get("channel_id") is not None else None,
+                observed_at,
+                summary,
+                str(attachment_summary) if attachment_summary is not None else None,
+                str(schema_version) if schema_version is not None else None,
+                json.dumps(dict(payload)),
+            ),
+        )
+
+        await self._db.execute("DELETE FROM multimodal_memory_attachments WHERE memory_id=?", (memory_id,))
+        for row in payload.get("attachments") or []:
+            if not isinstance(row, Mapping):
+                continue
+            await self._db.execute(
+                """
+                INSERT INTO multimodal_memory_attachments (
+                    memory_id, attachment_index, media_type, content_type, filename, url, size, summary, confidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    memory_id,
+                    int(row.get("attachment_index") or 0),
+                    str(row.get("media_type")) if row.get("media_type") is not None else None,
+                    str(row.get("content_type")) if row.get("content_type") is not None else None,
+                    str(row.get("filename")) if row.get("filename") is not None else None,
+                    str(row.get("url")) if row.get("url") is not None else None,
+                    int(row.get("size")) if isinstance(row.get("size"), int) else None,
+                    str(row.get("summary")) if row.get("summary") is not None else None,
+                    float(row.get("confidence") or 0.0),
+                ),
+            )
+
+        await self._db.execute("DELETE FROM multimodal_memory_confidence WHERE memory_id=?", (memory_id,))
+        for row in payload.get("confidence") or []:
+            if not isinstance(row, Mapping):
+                continue
+            await self._db.execute(
+                "INSERT INTO multimodal_memory_confidence (memory_id, label, value, uncertain, reason) VALUES (?, ?, ?, ?, ?)",
+                (
+                    memory_id,
+                    str(row.get("label") or "aggregate"),
+                    float(row.get("value") or 0.0),
+                    1 if bool(row.get("uncertain")) else 0,
+                    str(row.get("reason") or ""),
+                ),
+            )
+
+        await self._db.execute("DELETE FROM multimodal_memory_entities WHERE memory_id=?", (memory_id,))
+        for row in payload.get("entities") or []:
+            if not isinstance(row, Mapping):
+                continue
+            entity_id = str(row.get("entity_id") or f"{memory_id}:{row.get('name')}")
+            await self._db.execute(
+                "INSERT INTO multimodal_memory_entities (memory_id, entity_id, name, entity_type, role, confidence) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    memory_id,
+                    entity_id,
+                    str(row.get("name") or ""),
+                    str(row.get("entity_type")) if row.get("entity_type") is not None else None,
+                    str(row.get("role")) if row.get("role") is not None else None,
+                    float(row.get("confidence") or 0.0),
+                ),
+            )
+
+        await self._db.execute("DELETE FROM multimodal_memory_observations WHERE memory_id=?", (memory_id,))
+        for row in payload.get("observations") or []:
+            if not isinstance(row, Mapping):
+                continue
+            observation_id = str(row.get("observation_id") or f"{memory_id}:{row.get('modality')}:{row.get('summary')}")
+            await self._db.execute(
+                """
+                INSERT INTO multimodal_memory_observations (
+                    observation_id, memory_id, observation_type, modality, summary, confidence, uncertain, happened_at, input_id, user_id, channel_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    observation_id,
+                    memory_id,
+                    str(row.get("observation_type")) if row.get("observation_type") is not None else None,
+                    str(row.get("modality")) if row.get("modality") is not None else None,
+                    str(row.get("summary") or summary),
+                    float(row.get("confidence") or 0.0),
+                    1 if bool(row.get("uncertain")) else 0,
+                    str(row.get("happened_at")) if row.get("happened_at") is not None else observed_at,
+                    str(row.get("input_id")) if row.get("input_id") is not None else memory_id,
+                    str(row.get("user_id")) if row.get("user_id") is not None else user_id,
+                    str(row.get("channel_id")) if row.get("channel_id") is not None else (str(payload.get("channel_id")) if payload.get("channel_id") is not None else None),
+                ),
+            )
+
+        fact = make_canonical_fact(
+            subject=user_id,
+            predicate="multimodal_summary",
+            object_value=summary,
+            provenance={"source": "db_manager.store_multimodal_memory", "observed_at": observed_at, "input_id": memory_id},
+            confidence=max((float(row.get("value") or 0.0) for row in payload.get("confidence") or [] if isinstance(row, Mapping) and str(row.get("label")) == "aggregate"), default=0.6),
+            created_at=observed_at,
+            updated_at=observed_at,
+            attributes={
+                "topic": "multimodal",
+                "input_id": memory_id,
+                "channel_id": payload.get("channel_id"),
+                "attachment_summary": attachment_summary,
+                "schema_version": schema_version,
+            },
+        )
+        await self._db.execute(
+            """
+            INSERT INTO fact_records (
+                id, dedup_key, subject, predicate, object_value, object_id,
+                provenance, confidence, created_at, updated_at, attributes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(dedup_key) DO UPDATE SET
+                confidence=MAX(fact_records.confidence, excluded.confidence),
+                updated_at=excluded.updated_at,
+                provenance=excluded.provenance,
+                attributes=excluded.attributes
+            """,
+            (
+                fact.id, fact.dedup_key, fact.subject, fact.predicate, fact.object_value, fact.object_id,
+                json.dumps(fact.provenance), fact.confidence, fact.created_at, fact.updated_at, json.dumps(fact.attributes),
+            ),
+        )
+        await self._db.commit()
+
+    async def recall_multimodal_memories(self, user_id: int | str, *, channel_id: int | str | None = None, limit: int | None = None) -> list[dict[str, Any]]:
+        await self.connect()
+        assert self._db
+        query = (
+            "SELECT memory_id, input_id, user_id, channel_id, observed_at, summary, attachment_summary, schema_version "
+            "FROM multimodal_memories WHERE user_id=?"
+        )
+        params: list[Any] = [str(user_id)]
+        if channel_id is not None:
+            query += " AND (channel_id=? OR channel_id IS NULL)"
+            params.append(str(channel_id))
+        query += " ORDER BY observed_at DESC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+        async with self._db.execute(query, params) as cur:
+            rows = await cur.fetchall()
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            memory_id = str(row["memory_id"])
+            async with self._db.execute(
+                "SELECT attachment_index, media_type, content_type, filename, url, size, summary, confidence FROM multimodal_memory_attachments WHERE memory_id=? ORDER BY attachment_index ASC",
+                (memory_id,),
+            ) as cur:
+                attachments = [dict(item) for item in await cur.fetchall()]
+            async with self._db.execute(
+                "SELECT label, value, uncertain, reason FROM multimodal_memory_confidence WHERE memory_id=? ORDER BY label ASC",
+                (memory_id,),
+            ) as cur:
+                confidence = [dict(item) for item in await cur.fetchall()]
+            async with self._db.execute(
+                "SELECT entity_id, name, entity_type, role, confidence FROM multimodal_memory_entities WHERE memory_id=? ORDER BY confidence DESC, name ASC",
+                (memory_id,),
+            ) as cur:
+                entities = [dict(item) for item in await cur.fetchall()]
+            async with self._db.execute(
+                "SELECT observation_id, observation_type, modality, summary, confidence, uncertain, happened_at, input_id, user_id, channel_id FROM multimodal_memory_observations WHERE memory_id=? ORDER BY happened_at DESC, observation_id ASC",
+                (memory_id,),
+            ) as cur:
+                observations = [dict(item) for item in await cur.fetchall()]
+            results.append({
+                "memory_id": memory_id,
+                "input_id": str(row["input_id"]),
+                "user_id": str(row["user_id"]),
+                "channel_id": row["channel_id"],
+                "observed_at": str(row["observed_at"]),
+                "summary": str(row["summary"]),
+                "attachment_summary": row["attachment_summary"],
+                "schema_version": row["schema_version"],
+                "attachments": attachments,
+                "confidence": confidence,
+                "entities": entities,
+                "observations": observations,
+            })
+        return results
 
     async def store_emotion(self, user_id: int, emotions: dict | list) -> None:
         """Store a JSON-serializable emotion payload for ``user_id``."""
