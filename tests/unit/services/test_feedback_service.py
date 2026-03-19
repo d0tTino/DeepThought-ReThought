@@ -4,6 +4,7 @@ import pytest
 pytest.importorskip("aiosqlite")
 
 from deepthought.eda.events import EventSubjects
+from deepthought.eda.publisher import publish_enveloped
 from deepthought.services.feedback_service import FeedbackService
 
 
@@ -87,6 +88,7 @@ async def test_feedback_service_tracks_response_and_applies_positive_outcome():
     assert service._db.confidence_calls == [("u-1", 0.1)]
     assert outcome.acked
     assert service._publisher.calls[0][0] == "dtr.telemetry.response_feedback.v1"
+    assert service._publisher.calls[0][1]["payload"]["event"] == "response_feedback"
 
 
 @pytest.mark.asyncio
@@ -181,11 +183,17 @@ async def test_feedback_queue_generation_filters_high_value_rows():
     )
 
     tuples = await service._db.fetch_high_value_feedback(min_score=0.7)
-    await service._publisher.publish("dtr.training.feedback_tuples.v1", {"items": tuples})
+    await publish_enveloped(
+        service._publisher,
+        subject="dtr.training.feedback_tuples.v1",
+        payload={"items": tuples},
+        producer="test_feedback_service",
+    )
 
     assert len(tuples) == 1
     assert tuples[0]["input_id"] == "in-h"
     assert service._publisher.calls[-1][0] == "dtr.training.feedback_tuples.v1"
+    assert service._publisher.calls[-1][1]["payload"]["items"] == tuples
 
 
 def test_feedback_subjects_are_canonicalized():

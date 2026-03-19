@@ -17,6 +17,7 @@ from nats.js.client import JetStreamContext
 
 from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import DiscordFeedbackSignalPayload, EventSubjects, InputReceivedPayload, ResponseRankedPayload
+from ..eda.publisher import publish_enveloped
 from .base import BaseService
 from .human_interaction_policy import HumanInteractionPolicy
 from .policy_engine import VersionedPolicyEngine
@@ -25,11 +26,13 @@ logger = logging.getLogger(__name__)
 
 
 class _Channel(Protocol):
-    async def send(self, content: str, **kwargs: Any) -> None: ...
+    async def send(self, content: str, **kwargs: Any) -> None:
+        ...
 
 
 class _DiscordClient(Protocol):
-    def get_channel(self, channel_id: int) -> _Channel | None: ...
+    def get_channel(self, channel_id: int) -> _Channel | None:
+        ...
 
 
 @dataclass
@@ -100,7 +103,7 @@ class _ConversationStateStore:
                 seen.add(dedupe_key)
                 merged.append(turn)
         merged.sort(key=lambda turn: (turn.timestamp, turn.message_id or ""))
-        return [turn.as_payload() for turn in merged[-self._window_size :]]
+        return [turn.as_payload() for turn in merged[-self._window_size:]]
 
     @staticmethod
     def _scope_keys(
@@ -494,9 +497,11 @@ class DiscordGatewayService(BaseService):
             "policy_version": self._policy_engine.VERSION,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        await self._publisher.publish(
-            "dtr.telemetry.egress_policy.v1",
-            escalation_payload,
+        await publish_enveloped(
+            self._publisher,
+            subject="dtr.telemetry.egress_policy.v1",
+            payload=escalation_payload,
+            producer=self.__class__.__name__,
             use_jetstream=True,
             timeout=10.0,
         )

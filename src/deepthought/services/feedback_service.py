@@ -20,6 +20,7 @@ from ..eda.events import (
     OutcomeSignalPayload,
     ResponseRankedPayload,
 )
+from ..eda.publisher import publish_enveloped
 from ..metrics.prometheus import (
     ADAPTATION_EFFECT_DELTA,
     RESPONSE_FEEDBACK_SIGNALS_TOTAL,
@@ -361,9 +362,11 @@ class FeedbackService(BaseService):
             "details": details,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        await self._publisher.publish(
-            "dtr.telemetry.response_feedback.v1",
-            telemetry_payload,
+        await publish_enveloped(
+            self._publisher,
+            subject="dtr.telemetry.response_feedback.v1",
+            payload=telemetry_payload,
+            producer=self.__class__.__name__,
             use_jetstream=True,
         )
 
@@ -375,9 +378,11 @@ class FeedbackService(BaseService):
             tuples = await self._db.fetch_high_value_feedback(limit=100, min_score=self._export_min_score)
             if not tuples:
                 continue
-            await self._publisher.publish(
-                "dtr.training.feedback_tuples.v1",
-                {"count": len(tuples), "items": tuples, "exported_at": datetime.now(timezone.utc).isoformat()},
+            await publish_enveloped(
+                self._publisher,
+                subject="dtr.training.feedback_tuples.v1",
+                payload={"count": len(tuples), "items": tuples, "exported_at": datetime.now(timezone.utc).isoformat()},
+                producer=self.__class__.__name__,
                 use_jetstream=True,
             )
 

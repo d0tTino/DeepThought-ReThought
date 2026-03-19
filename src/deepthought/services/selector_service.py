@@ -19,7 +19,7 @@ from ..eda.events import (
     ResponseCandidatesPayload,
     ResponseRankedPayload,
 )
-from ..eda.publisher import Publisher
+from ..eda.publisher import Publisher, publish_enveloped
 from ..eda.subscriber import Subscriber
 from . import moderation
 from .policy_engine import VersionedPolicyEngine
@@ -385,9 +385,13 @@ class SelectorService:
             },
             "diagnostics": diagnostics,
         }
-        await self._publisher.publish(
-            "dtr.telemetry.selector_ranking.v1",
-            telemetry_payload,
+        await publish_enveloped(
+            self._publisher,
+            subject="dtr.telemetry.selector_ranking.v1",
+            payload=telemetry_payload,
+            producer=self.__class__.__name__,
+            trace_id=trace_id,
+            causation_id=causation_id,
             use_jetstream=True,
             timeout=10.0,
         )
