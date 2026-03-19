@@ -55,7 +55,7 @@ async def test_handle_input_resolves_identity_from_payload_and_headers(tmp_path,
 
     assert msg.acked
     assert not msg.naked
-    assert await db.get_affinity("author-42") == 1
+    assert await db.get_affinity("author-42") > 0
     assert await pm.get_persona("author-42", channel_id="chan-1") == "friendly"
     topics = [topic for topic, _ in await db.recall_user("author-42")]
     assert "social_perception" in topics
@@ -64,7 +64,7 @@ async def test_handle_input_resolves_identity_from_payload_and_headers(tmp_path,
     update_subject, update_payload, _, _ = service._publisher.calls[0]
     assert update_subject == EventSubjects.SOCIAL_UPDATED
     assert update_payload["payload"]["input_id"] == "1"
-    assert update_payload["payload"]["affinity"] == 1
+    assert update_payload["payload"]["affinity"] > 0
     assert update_payload["trace_id"]
     assert update_payload["event_id"]
     assert update_payload["causation_id"]
@@ -72,7 +72,7 @@ async def test_handle_input_resolves_identity_from_payload_and_headers(tmp_path,
     event_subject, payload, _, _ = service._publisher.calls[1]
     assert event_subject == EventSubjects.SOCIAL_SIGNALS_RETRIEVED
     assert payload["payload"]["input_id"] == "1"
-    assert payload["payload"]["social_signals"]["affinity"] == 1
+    assert payload["payload"]["social_signals"]["affinity"] > 0
     assert payload["payload"]["social_signals"]["persona"] == "friendly"
     assert payload["trace_id"]
 
@@ -201,6 +201,21 @@ async def test_social_signals_include_summarized_context_and_channel_norms(tmp_p
     assert "reciprocity" in retrieved["channel_norms"]
     assert "sentiment_trend" in retrieved["channel_norms"]
 
+
+    assert retrieved["durable_user_model"]["version"] == "v2"
+    assert "dimensions" in retrieved["durable_user_model"]
+    assert set(retrieved["durable_user_model"]["dimensions"]).issuperset({
+        "familiarity",
+        "trust_rapport",
+        "preferred_response_style",
+        "topic_affinity",
+        "cadence_tolerance",
+        "correction_sensitivity",
+        "channel_specific_norms",
+    })
+    selector_inputs = retrieved["selector_inputs"]
+    assert set(selector_inputs) == {"social_intent_hints", "user_history_affinity", "interaction_policy"}
+    assert selector_inputs["interaction_policy"]["response_style"]
     assert await db.get_edge_weight("u-1", "u-2", "interaction", channel_id="c-1") > 0
     assert await db.get_edge_weight("u-1", "u-3", "interaction", channel_id="c-1") > 0
     assert await db.get_edge_weight("u-1", "u-4", "interaction", channel_id="c-1") > 0

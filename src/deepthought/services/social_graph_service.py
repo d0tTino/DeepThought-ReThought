@@ -72,7 +72,10 @@ class SocialGraphService(BaseService):
                 perception.get("avoidance", 0.0) + perception.get("manipulation", 0.0)
             )
             await self._db.adjust_affinity(resolved_user_id, delta)
+            trust_delta = delta - float(perception.get("manipulation", 0.0))
+            await self._db.adjust_trust(resolved_user_id, trust_delta)
             affinity = await self._db.get_affinity(resolved_user_id)
+            trust = await self._db.get_trust(resolved_user_id)
             persona = await self._persona.get_persona(
                 resolved_user_id,
                 None,
@@ -92,9 +95,20 @@ class SocialGraphService(BaseService):
             }
             await self._prism.ingest(prism_payload)
 
+            counterpart_id = str(prism_payload["target"] or prism_payload["referenced_user_id"] or resolved_user_id)
+            await self._memory.update_social_model(
+                user_id=resolved_user_id,
+                counterpart_id=counterpart_id,
+                channel_id=enriched.channel_id,
+                persona=persona,
+                affinity=affinity,
+                trust=trust,
+                perception=perception,
+                reply_latency=prism_payload.get("reply_latency"),
+            )
             social_context = await self._memory.get_social_context_summary(
                 resolved_user_id,
-                str(prism_payload["target"] or prism_payload["referenced_user_id"] or resolved_user_id),
+                counterpart_id,
                 channel_id=enriched.channel_id,
             )
 
@@ -107,7 +121,10 @@ class SocialGraphService(BaseService):
                     "perception": perception,
                     "delta": delta,
                     "affinity": affinity,
+                    "trust": trust,
                     "persona": persona,
+                    "durable_user_model": social_context.get("durable_user_model", {}),
+                    "selector_inputs": social_context.get("selector_inputs", {}),
                     "relationship_status": social_context.get("relationship_status", "neutral"),
                     "familiarity_tier": social_context.get("familiarity_tier", "low"),
                     "channel_norms": social_context.get("channel_norms", {}),
@@ -120,6 +137,7 @@ class SocialGraphService(BaseService):
                 "channel_id": enriched.channel_id,
                 "delta": delta,
                 "affinity": affinity,
+                "trust": trust,
                 "persona": persona,
                 "perception": perception,
             }
