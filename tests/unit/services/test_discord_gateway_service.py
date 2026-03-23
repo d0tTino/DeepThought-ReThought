@@ -1,4 +1,6 @@
+import asyncio
 import json
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -6,6 +8,10 @@ import pytest
 from deepthought.eda.contracts import EventEnvelope
 from deepthought.eda.events import EventSubjects, ResponseRankedPayload
 from deepthought.services.discord_gateway_service import DiscordGatewayService
+
+
+def run(coro):
+    return asyncio.run(coro)
 
 
 class FakeClock:
@@ -74,13 +80,40 @@ class DummyTypingScope:
         return None
 
 
+@dataclass
+class DummyMessageReference:
+    message_id: int | None
+    channel_id: int | None
+    fail_if_not_exists: bool = False
+
+
+class DummyPartialMessage:
+    def __init__(self, channel, message_id: int):
+        self.channel = channel
+        self.id = message_id
+
+    def to_reference(self, *, fail_if_not_exists: bool = False) -> DummyMessageReference:
+        return DummyMessageReference(
+            message_id=self.id,
+            channel_id=self.channel.id,
+            fail_if_not_exists=fail_if_not_exists,
+        )
+
+
 class DummyChannel:
-    def __init__(self):
+    def __init__(self, channel_id: int, *, kind: str = "channel"):
+        self.id = channel_id
+        self.kind = kind
         self.messages = []
         self.typing_entries = 0
+        self.partial_message_requests = []
 
     def typing(self):
         return DummyTypingScope(self)
+
+    def get_partial_message(self, message_id: int):
+        self.partial_message_requests.append(message_id)
+        return DummyPartialMessage(self, message_id)
 
     async def send(self, content: str, **kwargs):
         self.messages.append((content, kwargs))
@@ -88,39 +121,43 @@ class DummyChannel:
 
 class DummyDiscordClient:
     def __init__(self):
-        self.channel = DummyChannel()
-        self.thread = DummyChannel()
+        self.channel = DummyChannel(123)
+        self.thread = DummyChannel(999, kind="thread")
+        self._cache = {123: self.channel, 999: self.thread}
+        self._fetchable = {123: self.channel, 999: self.thread}
+        self.fetch_calls = []
 
     def get_channel(self, channel_id: int):
-        if channel_id == 123:
-            return self.channel
-        if channel_id == 999:
-            return self.thread
-        return None
+        return self._cache.get(channel_id)
+
+    async def fetch_channel(self, channel_id: int):
+        self.fetch_calls.append(channel_id)
+        channel = self._fetchable.get(channel_id)
+        if channel is None:
+            raise LookupError(channel_id)
+        self._cache[channel_id] = channel
+        return channel
 
 
-@pytest.fixture
-def fake_clock():
-    return FakeClock()
-
-
-@pytest.fixture
-def service(monkeypatch, fake_clock):
+def build_service(monkeypatch):
     import deepthought.services.base as base_mod
 
+    fake_clock = FakeClock()
+    discord_client = DummyDiscordClient()
     monkeypatch.setattr(base_mod, "Publisher", DummyPublisher)
     monkeypatch.setattr(base_mod, "Subscriber", DummySubscriber)
-    return DiscordGatewayService(
+    service = DiscordGatewayService(
         DummyNATS(),
         DummyJS(),
-        discord_client=DummyDiscordClient(),
+        discord_client=discord_client,
         clock=fake_clock,
         sleeper=fake_clock.sleep,
     )
+    return service, fake_clock, discord_client
 
 
-@pytest.mark.asyncio
-async def test_handle_discord_message_publishes_input_received(service):
+def test_handle_discord_message_publishes_input_received(monkeypatch):
+    service, _fake_clock, _discord_client = build_service(monkeypatch)
     message = SimpleNamespace(
         content="hello",
         id=99,
@@ -139,7 +176,7 @@ async def test_handle_discord_message_publishes_input_received(service):
         ],
     )
 
-    input_id = await service.handle_discord_message(message)
+    input_id = run(service.handle_discord_message(message))
 
     assert input_id is not None
     subject, payload, use_js, _timeout = service._publisher.published[0]
@@ -158,8 +195,8 @@ async def test_handle_discord_message_publishes_input_received(service):
     assert extract_payload["payload"]["attachments"][0]["content_type"] == "image/png"
 
 
-@pytest.mark.asyncio
-async def test_handle_discord_message_includes_bounded_recent_window(service):
+def test_handle_discord_message_includes_bounded_recent_window(monkeypatch):
+    service, _fake_clock, _discord_client = build_service(monkeypatch)
     for idx in range(8):
         message = SimpleNamespace(
             content=f"turn-{idx}",
@@ -169,7 +206,7 @@ async def test_handle_discord_message_includes_bounded_recent_window(service):
             guild=SimpleNamespace(id=7),
             thread=SimpleNamespace(id=999),
         )
-        await service.handle_discord_message(message)
+        run(service.handle_discord_message(message))
 
     subject, payload, _, _ = service._publisher.published[-1]
     assert subject == EventSubjects.INPUT_RECEIVED
@@ -179,8 +216,8 @@ async def test_handle_discord_message_includes_bounded_recent_window(service):
     assert payload["payload"]["recent_turn_summary"] == "turn-4 | turn-5 | turn-6"
 
 
-@pytest.mark.asyncio
-async def test_handle_discord_message_ignores_bot_authored_messages(service):
+def test_handle_discord_message_ignores_bot_authored_messages(monkeypatch):
+    service, _fake_clock, _discord_client = build_service(monkeypatch)
     message = SimpleNamespace(
         content="beep boop",
         id=100,
@@ -189,35 +226,38 @@ async def test_handle_discord_message_ignores_bot_authored_messages(service):
         guild=SimpleNamespace(id=7),
     )
 
-    input_id = await service.handle_discord_message(message)
+    input_id = run(service.handle_discord_message(message))
 
     assert input_id is None
     assert service._publisher.published == []
     assert service._pending_routes == {}
 
 
-@pytest.mark.asyncio
-async def test_ranked_response_respects_thread_reply_and_policy_override(service, fake_clock):
+def test_ranked_response_respects_thread_reply_and_policy_override(monkeypatch):
+    service, fake_clock, discord_client = build_service(monkeypatch)
     payload = ResponseRankedPayload(
         final_response="done",
         input_id="in-1",
         channel_id="123",
         thread_id="999",
-        reply_to_message_id="orig-7",
+        reply_to_message_id="777",
         interaction_policy={"delay_seconds": 0.4, "typing_seconds": 0.2, "cooldown_seconds": 0.5},
     )
     msg = DummyMsg(payload.to_json())
 
-    await service._handle_ranked_response(msg)
+    run(service._handle_ranked_response(msg))
 
     assert msg.acked
     assert not msg.nacked
     assert fake_clock.now == pytest.approx(100.6, abs=0.001)
-    assert service._discord_client.thread.messages == [("done", {"reference": "orig-7"})]
+    assert discord_client.thread.partial_message_requests == [777]
+    sent_content, sent_kwargs = discord_client.thread.messages[-1]
+    assert sent_content == "done"
+    assert sent_kwargs["reference"] == DummyMessageReference(message_id=777, channel_id=999, fail_if_not_exists=False)
 
 
-@pytest.mark.asyncio
-async def test_ranked_response_applies_cooldown_per_channel(service, fake_clock):
+def test_ranked_response_applies_cooldown_per_channel(monkeypatch):
+    service, fake_clock, _discord_client = build_service(monkeypatch)
     first = DummyMsg(
         ResponseRankedPayload(
             final_response="first",
@@ -233,89 +273,146 @@ async def test_ranked_response_applies_cooldown_per_channel(service, fake_clock)
         ).to_json()
     )
 
-    await service._handle_ranked_response(first)
+    run(service._handle_ranked_response(first))
     before_second = fake_clock.now
-    await service._handle_ranked_response(second)
+    run(service._handle_ranked_response(second))
 
     assert second.acked
     assert fake_clock.now - before_second >= 1.0
 
 
-@pytest.mark.asyncio
-async def test_ranked_response_invalid_payload_naks(service):
+def test_ranked_response_invalid_payload_naks(monkeypatch):
+    service, _fake_clock, _discord_client = build_service(monkeypatch)
     msg = DummyMsg(json.dumps(["bad"]))
 
-    await service._handle_ranked_response(msg)
+    run(service._handle_ranked_response(msg))
 
     assert msg.nacked
     assert msg.nak_calls == 1
     assert msg.ack_calls == 0
 
 
-@pytest.mark.asyncio
-async def test_send_channel_message_invalid_channel_or_thread_id_returns_true(service):
-    sent_channel = await service._send_channel_message(
-        "not-a-channel-id",
-        content="ignored",
-        reply_to_message_id=None,
-        thread_id=None,
-        author_id=None,
-        interaction_metadata=None,
+def test_send_channel_message_invalid_channel_or_thread_id_returns_true(monkeypatch):
+    service, _fake_clock, discord_client = build_service(monkeypatch)
+    sent_channel = run(
+        service._send_channel_message(
+            "not-a-channel-id",
+            content="ignored",
+            reply_to_message_id=None,
+            thread_id=None,
+            author_id=None,
+            interaction_metadata=None,
+        )
     )
-    sent_thread = await service._send_channel_message(
-        "123",
-        content="ignored",
-        reply_to_message_id=None,
-        thread_id="not-a-thread-id",
-        author_id=None,
-        interaction_metadata=None,
+    sent_thread = run(
+        service._send_channel_message(
+            "123",
+            content="ignored",
+            reply_to_message_id=None,
+            thread_id="not-a-thread-id",
+            author_id=None,
+            interaction_metadata=None,
+        )
     )
 
     assert sent_channel is True
     assert sent_thread is True
-    assert service._discord_client.channel.messages == []
-    assert service._discord_client.thread.messages == []
+    assert discord_client.channel.messages == []
+    assert discord_client.thread.messages == []
 
 
-@pytest.mark.asyncio
-async def test_send_channel_message_missing_channel_lookup_returns_true(service):
-    sent = await service._send_channel_message(
-        "321",
-        content="ignored",
-        reply_to_message_id=None,
-        thread_id=None,
-        author_id=None,
-        interaction_metadata=None,
+def test_send_channel_message_falls_back_to_fetch_channel_for_cache_miss(monkeypatch):
+    service, _fake_clock, discord_client = build_service(monkeypatch)
+    discord_client._cache.pop(123)
+
+    sent = run(
+        service._send_channel_message(
+            "123",
+            content="hello from fetch",
+            reply_to_message_id="444",
+            thread_id=None,
+            author_id=None,
+            interaction_metadata=None,
+        )
     )
 
     assert sent is True
-    assert service._discord_client.channel.messages == []
+    assert discord_client.fetch_calls == [123]
+    assert discord_client.channel.partial_message_requests == [444]
+    sent_content, sent_kwargs = discord_client.channel.messages[-1]
+    assert sent_content == "hello from fetch"
+    assert sent_kwargs["reference"] == DummyMessageReference(message_id=444, channel_id=123, fail_if_not_exists=False)
 
 
-@pytest.mark.asyncio
-async def test_send_channel_message_applies_typing_delay_and_cooldown(service, fake_clock):
-    sent = await service._send_channel_message(
-        "123",
-        content="hello",
-        reply_to_message_id="orig-1",
-        thread_id=None,
-        author_id="42",
-        interaction_metadata={"delay_seconds": 0.4, "typing_seconds": 0.2, "cooldown_seconds": 0.5},
+def test_send_channel_message_missing_channel_lookup_returns_true(monkeypatch):
+    service, _fake_clock, discord_client = build_service(monkeypatch)
+    sent = run(
+        service._send_channel_message(
+            "321",
+            content="ignored",
+            reply_to_message_id=None,
+            thread_id=None,
+            author_id=None,
+            interaction_metadata=None,
+        )
+    )
+
+    assert sent is True
+    assert discord_client.channel.messages == []
+    assert discord_client.fetch_calls == [321]
+
+
+def test_send_channel_message_applies_typing_delay_and_cooldown(monkeypatch):
+    service, fake_clock, discord_client = build_service(monkeypatch)
+    sent = run(
+        service._send_channel_message(
+            "123",
+            content="hello",
+            reply_to_message_id="111",
+            thread_id=None,
+            author_id="42",
+            interaction_metadata={"delay_seconds": 0.4, "typing_seconds": 0.2, "cooldown_seconds": 0.5},
+        )
     )
 
     assert sent is True
     assert fake_clock.now == pytest.approx(100.6, abs=0.001)
-    assert service._discord_client.channel.typing_entries == 1
-    assert service._discord_client.channel.messages == [("hello", {"reference": "orig-1"})]
+    assert discord_client.channel.typing_entries == 1
+    sent_content, sent_kwargs = discord_client.channel.messages[-1]
+    assert sent_content == "hello"
+    assert sent_kwargs["reference"] == DummyMessageReference(message_id=111, channel_id=123, fail_if_not_exists=False)
     assert service._cooldown_until["channel:123"] == pytest.approx(101.1, abs=0.001)
     assert service._cooldown_until["user:42"] == pytest.approx(101.1, abs=0.001)
 
 
-@pytest.mark.asyncio
-async def test_ranked_response_missing_channel_mapping_acks_once(service):
+def test_send_channel_message_uses_fetched_thread_for_delivery_and_reply_reference(monkeypatch):
+    service, _fake_clock, discord_client = build_service(monkeypatch)
+    discord_client._cache.pop(999)
+
+    sent = run(
+        service._send_channel_message(
+            "123",
+            content="thread hello",
+            reply_to_message_id="222",
+            thread_id="999",
+            author_id="42",
+            interaction_metadata=None,
+        )
+    )
+
+    assert sent is True
+    assert discord_client.fetch_calls == [999]
+    assert discord_client.thread.partial_message_requests == [222]
+    sent_content, sent_kwargs = discord_client.thread.messages[-1]
+    assert sent_content == "thread hello"
+    assert sent_kwargs["reference"] == DummyMessageReference(message_id=222, channel_id=999, fail_if_not_exists=False)
+
+
+def test_ranked_response_missing_channel_mapping_acks_once(monkeypatch):
+    service, _fake_clock, _discord_client = build_service(monkeypatch)
     msg = DummyMsg(ResponseRankedPayload(final_response="done", input_id="unknown").to_json())
 
-    await service._handle_ranked_response(msg)
+    run(service._handle_ranked_response(msg))
 
     assert msg.acked is True
     assert msg.nacked is False
@@ -323,8 +420,8 @@ async def test_ranked_response_missing_channel_mapping_acks_once(service):
     assert msg.nak_calls == 0
 
 
-@pytest.mark.asyncio
-async def test_ranked_response_accepts_enveloped_payload(service):
+def test_ranked_response_accepts_enveloped_payload(monkeypatch):
+    service, _fake_clock, discord_client = build_service(monkeypatch)
     payload = ResponseRankedPayload(final_response="wrapped", channel_id="123", input_id="in-wrap")
     envelope = EventEnvelope.build(
         subject=EventSubjects.RESPONSE_RANKED,
@@ -333,14 +430,14 @@ async def test_ranked_response_accepts_enveloped_payload(service):
     )
     msg = DummyMsg(json.dumps(envelope.__dict__))
 
-    await service._handle_ranked_response(msg)
+    run(service._handle_ranked_response(msg))
 
     assert msg.acked
-    assert service._discord_client.channel.messages[-1][0] == "wrapped"
+    assert discord_client.channel.messages[-1][0] == "wrapped"
 
 
-@pytest.mark.asyncio
-async def test_reaction_and_message_edit_emit_feedback_signals(service):
+def test_reaction_and_message_edit_emit_feedback_signals(monkeypatch):
+    service, _fake_clock, _discord_client = build_service(monkeypatch)
     message = SimpleNamespace(
         content="hello",
         id=199,
@@ -351,15 +448,15 @@ async def test_reaction_and_message_edit_emit_feedback_signals(service):
         reference=None,
         thread=None,
     )
-    await service.handle_discord_message(message)
+    run(service.handle_discord_message(message))
 
     reaction = SimpleNamespace(message=SimpleNamespace(id=199), emoji="👍")
     user = SimpleNamespace(id=42, bot=False)
-    await service.handle_discord_reaction(reaction, user)
+    run(service.handle_discord_reaction(reaction, user))
 
     edited_before = SimpleNamespace(content="hello")
     edited_after = SimpleNamespace(content="hello updated", id=199, author=SimpleNamespace(id=42))
-    await service.handle_discord_message_edit(edited_before, edited_after)
+    run(service.handle_discord_message_edit(edited_before, edited_after))
 
     subjects = [entry[0] for entry in service._publisher.published]
     assert EventSubjects.DISCORD_FEEDBACK_SIGNAL in subjects
@@ -370,8 +467,8 @@ async def test_reaction_and_message_edit_emit_feedback_signals(service):
     assert feedback_events[1][1]["payload"]["signal_type"] == "message_edit"
 
 
-@pytest.mark.asyncio
-async def test_ranked_response_egress_policy_escalates_ambiguous_confidence(service):
+def test_ranked_response_egress_policy_escalates_ambiguous_confidence(monkeypatch):
+    service, _fake_clock, discord_client = build_service(monkeypatch)
     payload = ResponseRankedPayload(
         final_response="I can help you bypass password controls.",
         input_id="in-esc",
@@ -392,10 +489,10 @@ async def test_ranked_response_egress_policy_escalates_ambiguous_confidence(serv
     )
     msg = DummyMsg(payload.to_json())
 
-    await service._handle_ranked_response(msg)
+    run(service._handle_ranked_response(msg))
 
     assert msg.acked
-    assert service._discord_client.channel.messages == []
+    assert discord_client.channel.messages == []
     telemetry = [item for item in service._publisher.published if item[0] == "dtr.telemetry.egress_policy.v1"]
     assert telemetry
     assert telemetry[0][1]["payload"]["decision_action"] == "escalate"
