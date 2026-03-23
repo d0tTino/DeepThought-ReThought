@@ -25,13 +25,30 @@ from .policy_engine import VersionedPolicyEngine
 logger = logging.getLogger(__name__)
 
 
+class _MessageReferenceLike(Protocol):
+    message_id: int | None
+
+
+class _PartialMessageLike(Protocol):
+    def to_reference(self, *, fail_if_not_exists: bool = False) -> _MessageReferenceLike:
+        ...
+
+
 class _Channel(Protocol):
+    id: int
+
     async def send(self, content: str, **kwargs: Any) -> None:
+        ...
+
+    def get_partial_message(self, message_id: int) -> _PartialMessageLike:
         ...
 
 
 class _DiscordClient(Protocol):
     def get_channel(self, channel_id: int) -> _Channel | None:
+        ...
+
+    async def fetch_channel(self, channel_id: int) -> _Channel:
         ...
 
 
@@ -422,6 +439,81 @@ class DiscordGatewayService(BaseService):
         for key in keys:
             self._cooldown_until[key] = until
 
+    @staticmethod
+    def _parse_snowflake(value: str | None, *, label: str) -> int | None:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except TypeError:
+            logger.warning("Invalid %s type: %s", label, value)
+        except ValueError:
+            logger.warning("Invalid %s: %s", label, value)
+        return None
+
+    async def _resolve_channel(self, channel_id: str, thread_id: str | None) -> _Channel | None:
+        if self._discord_client is None:
+            return None
+
+        target_id = thread_id or channel_id
+        target_snowflake = self._parse_snowflake(target_id, label="channel id")
+        if target_snowflake is None:
+            return None
+
+        channel = self._discord_client.get_channel(target_snowflake)
+        if channel is not None:
+            return channel
+
+        fetch_channel = getattr(self._discord_client, "fetch_channel", None)
+        if callable(fetch_channel):
+            try:
+                return await fetch_channel(target_snowflake)
+            except Exception:
+                logger.warning("Channel %s not found via fetch_channel", target_id, exc_info=True)
+                return None
+
+        logger.warning("Channel %s not found", target_id)
+        return None
+
+    def _build_message_reference(
+        self,
+        *,
+        reply_to_message_id: str | None,
+        channel: _Channel,
+        channel_id: str,
+        thread_id: str | None,
+    ) -> _MessageReferenceLike | None:
+        reply_snowflake = self._parse_snowflake(reply_to_message_id, label="message id")
+        if reply_snowflake is None:
+            return None
+
+        reference_channel = channel
+        reference_target = thread_id or channel_id
+        if thread_id and str(getattr(channel, "id", "")) != thread_id:
+            resolved_channel_id = self._parse_snowflake(thread_id, label="thread id")
+            if resolved_channel_id is not None:
+                cached_thread = self._discord_client.get_channel(resolved_channel_id) if self._discord_client else None
+                if cached_thread is not None:
+                    reference_channel = cached_thread
+        elif thread_id is None and str(getattr(channel, "id", "")) != channel_id:
+            resolved_channel_id = self._parse_snowflake(channel_id, label="channel id")
+            if resolved_channel_id is not None:
+                cached_channel = self._discord_client.get_channel(resolved_channel_id) if self._discord_client else None
+                if cached_channel is not None:
+                    reference_channel = cached_channel
+
+        get_partial_message = getattr(reference_channel, "get_partial_message", None)
+        if not callable(get_partial_message):
+            logger.warning("Channel %s cannot build partial message references", reference_target)
+            return None
+
+        partial_message = get_partial_message(reply_snowflake)
+        to_reference = getattr(partial_message, "to_reference", None)
+        if not callable(to_reference):
+            logger.warning("Partial message for %s cannot create a message reference", reply_to_message_id)
+            return None
+        return to_reference(fail_if_not_exists=False)
+
     async def _send_channel_message(
         self,
         channel_id: str,
@@ -436,17 +528,8 @@ class DiscordGatewayService(BaseService):
             logger.warning("Discord client unavailable; cannot forward ranked response")
             return False
 
-        target_id = thread_id or channel_id
-        try:
-            channel = self._discord_client.get_channel(int(target_id))
-        except TypeError:
-            logger.warning("Invalid channel id type: %s", target_id)
-            return True
-        except ValueError:
-            logger.warning("Invalid channel id: %s", target_id)
-            return True
+        channel = await self._resolve_channel(channel_id, thread_id)
         if channel is None:
-            logger.warning("Channel %s not found", target_id)
             return True
 
         decision = self._interaction_policy.decide(
@@ -460,8 +543,14 @@ class DiscordGatewayService(BaseService):
             await self._sleep(decision.delay_seconds)
 
         send_kwargs: dict[str, Any] = {}
-        if reply_to_message_id is not None:
-            send_kwargs["reference"] = reply_to_message_id
+        reference = self._build_message_reference(
+            reply_to_message_id=reply_to_message_id,
+            channel=channel,
+            channel_id=channel_id,
+            thread_id=thread_id,
+        )
+        if reference is not None:
+            send_kwargs["reference"] = reference
         async with self._typing_scope(channel, decision.typing_seconds):
             await channel.send(content, **send_kwargs)
         self._set_cooldown(cooldown_keys, decision.cooldown_seconds)
