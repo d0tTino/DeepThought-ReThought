@@ -15,6 +15,7 @@ dynamic = ["version", "dependencies"]
 [project.scripts]
 dtrt = "deepthought.cli:main"
 dtrt-finetune = "deepthought.train:main"
+dtrt-discord-gateway = "deepthought.runtime.discord_gateway_app:cli_main"
 
 [project.entry-points."deepthought.services"]
 demo = "deepthought.services.demo.service:DemoService"

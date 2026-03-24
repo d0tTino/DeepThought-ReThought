@@ -1,3 +1,10 @@
+"""Legacy compatibility Discord bot example.
+
+New deployments should prefer the service-graph runtime entrypoint:
+``dtrt run discord-gateway`` (implemented in
+``src/deepthought/runtime/discord_gateway_app.py``).
+"""
+
 import asyncio
 import datetime
 import json
@@ -1931,8 +1938,16 @@ async def enqueue_goal(goal: str, priority: int = 1) -> None:
 
 if __name__ == "__main__":
     import argparse
+    import warnings
 
     from deepthought.config import load_bot_env
+
+    warnings.warn(
+        "examples/social_graph_bot.py is a compatibility example; "
+        "prefer 'dtrt run discord-gateway' for the canonical runtime path.",
+        DeprecationWarning,
+        stacklevel=1,
+    )
 
     parser = argparse.ArgumentParser(description="Run the SocialGraphBot")
     parser.add_argument("--enqueue-goal", help="goal text to queue")

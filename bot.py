@@ -1,16 +1,18 @@
 import asyncio
+import os
 
-from deepthought.config import load_bot_env
-from examples.social_graph_bot import run
+from deepthought.config import load_discord_bot_token
+from deepthought.runtime.discord_gateway_app import run_discord_gateway
 
 
 def main() -> None:
-    env = load_bot_env()
+    token = load_discord_bot_token()
+    if not token:
+        raise SystemExit("DISCORD_BOT_TOKEN is required")
     asyncio.run(
-        run(
-            env.DISCORD_BOT_TOKEN,
-            env.MONITOR_CHANNEL,
-            holiday_locale=env.PROJECT_HOLIDAY_LOCALE,
+        run_discord_gateway(
+            token=token,
+            nats_url=os.getenv("NATS_URL", "nats://localhost:4222"),
         )
     )
 
