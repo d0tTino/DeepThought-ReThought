@@ -1,40 +1,76 @@
 version: '3.8'
+
+x-app-base: &app-base
+  image: python:3.11-slim
+  working_dir: /app
+  volumes:
+    - .:/app
+  environment: &app-env
+    PYTHONUNBUFFERED: '1'
+    PYTHONPATH: /app/src
+    NATS_URL: nats://nats:4222
+    LLM_ENDPOINT: ${LLM_ENDPOINT:-http://host.docker.internal:8000/generate}
+    DT_RUNTIME_PROFILE: production
+    DT_GRAPH_BACKEND: ${DT_GRAPH_BACKEND:-memgraph}
+    DT_MG_HOST: ${DT_MG_HOST:-memgraph}
+    DT_MG_PORT: ${DT_MG_PORT:-7687}
+    DT_MG_USER: ${DT_MG_USER:-memgraph}
+    DT_MG_PASSWORD: ${DT_MG_PASSWORD:-memgraph}
+    DT_MEMORY_DB: /app/data/memory.db
+    DT_SOCIAL_GRAPH_DB: /app/data/social_graph.db
+    DT_SEARCH_DB: /app/examples/data/sample_docs.json
+    DT_FEEDBACK_DURABLE_PREFIX: feedback_service
+    DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+    PERCEPTION_MODEL_PATH: ${PERCEPTION_MODEL_PATH:-}
+  command: >-
+    bash -lc "pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir -e . && python -m setup_jetstream && dtrt orchestrate examples/orchestrator.yml"
+  depends_on:
+    nats:
+      condition: service_started
+    chroma:
+      condition: service_started
+    memgraph:
+      condition: service_healthy
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  restart: unless-stopped
+
 services:
   nats:
     image: nats:latest
-    command: ["-js"]
+    command: ['-js']
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - '4222:4222'
+      - '8222:8222'
 
   memgraph:
     image: memgraph/memgraph
     ports:
-      - "7687:7687"
+      - '7687:7687'
     healthcheck:
-      test: ["CMD", "bash", "-lc", "echo > /dev/tcp/127.0.0.1/7687"]
+      test: ['CMD', 'bash', '-lc', 'echo > /dev/tcp/127.0.0.1/7687']
       interval: 5s
       timeout: 3s
       retries: 20
 
+  neo4j:
+    image: neo4j:5
+    profiles: ['neo4j']
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/test}
+    ports:
+      - '7474:7474'
+      - '8687:7687'
+    volumes:
+      - neo4j-data:/data
+
   chroma:
     image: chromadb/chroma
     ports:
-      - "8000:8000"
+      - '8001:8000'
 
-  ume:
-    image: redpandadata/redpanda:latest
-    command:
-      - redpanda
-      - start
-      - --smp
-      - "1"
-      - --overprovisioned
-      - --node-id
-      - "0"
-      - --kafka-addr
-      - PLAINTEXT://0.0.0.0:29092,OUTSIDE://localhost:9092
-      - --advertise-kafka-addr
-      - PLAINTEXT://ume:29092,OUTSIDE://localhost:9092
-    ports:
-      - "9092:9092"
+  app:
+    <<: *app-base
+
+volumes:
+  neo4j-data:

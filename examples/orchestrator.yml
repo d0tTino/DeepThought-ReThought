@@ -6,7 +6,6 @@
 services:
   - discord_gateway
   - cognitive_core
-  # Optional services (enable as needed)
   - social_graph
   - perception
   - perception_interpret
@@ -14,7 +13,6 @@ services:
   - llm_remote
   - selector
   - feedback
-  - reasoning
 
 service_bindings:
   discord_gateway:
@@ -217,7 +215,6 @@ service_bindings:
         jetstream: true
 
   social_graph:
-    optional: true
     description: Track affinity and persona context from user input.
     env:
       - NATS_URL
@@ -234,7 +231,6 @@ service_bindings:
         jetstream: true
 
   perception:
-    optional: true
     description: Multimodal perception extraction and embedding publisher.
     env:
       - NATS_URL
@@ -257,7 +253,6 @@ service_bindings:
         jetstream: true
 
   perception_interpret:
-    optional: true
     description: Convert cached perception embeddings into compact prompt interpretations.
     env:
       - NATS_URL
