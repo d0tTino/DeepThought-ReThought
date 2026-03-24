@@ -7,55 +7,35 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 from uuid import UUID, uuid4
 
+from .subject_registry import SubjectAliases, SubjectCanonicals, SubjectLifecycleState, get_subject_metadata, legacy_subject_map, resolve_subject
+
 
 class CanonicalSubjects:
     """Canonical, versioned subject names used by production traffic."""
 
-    INPUT_RECEIVED = "dtr.input.received.v1"
-    MEMORY_RETRIEVED = "dtr.memory.retrieved.v1"
-    MEMORY_RETRIEVAL_REQUESTED = "dtr.memory.retrieval.requested.v1"
-    SOCIAL_SIGNALS_REQUESTED = "dtr.social.signals.requested.v1"
-    PERCEPTION_INTERPRET_REQUESTED = "dtr.perception.interpret.requested.v1"
-    SOCIAL_SIGNALS_RETRIEVED = "dtr.social.signals.retrieved.v1"
-    PERCEPTION_INTERPRET_RETRIEVED = "dtr.perception.interpret.retrieved.v1"
-    CONTEXT_ASSEMBLED = "dtr.context.assembled.v1"
-    CONTEXT_UPDATED = "dtr.context.updated.v1"
-    RESPONSE_CANDIDATES = "dtr.response.candidates.v1"
-    RESPONSE_RANKED = "dtr.response.ranked.v1"
-    PERCEPTION_EMBEDDINGS = "dtr.perception.embeddings.v1"
-    PERCEPTION_EXTRACT = "dtr.perception.extract.v1"
-    PERCEPTION_EXTRACT_REQUESTED = "dtr.perception.extract.requested.v1"
-    PERCEPTION_MODALITY_RESULT = "dtr.perception.modality.result.v1"
-    SOCIAL_PERCEPTION = "dtr.social.perception.v1"
-    OUTCOME_SIGNAL = "dtr.feedback.outcome_signal.v1"
-    CORRECTION_SIGNAL = "dtr.feedback.correction_signal.v1"
-    DISCORD_FEEDBACK_SIGNAL = "dtr.feedback.discord_signal.v1"
-    USER_SUMMARY_REFRESH = "dtr.memory.user_summary.refresh.v1"
+    INPUT_RECEIVED = SubjectCanonicals.INPUT_RECEIVED
+    MEMORY_RETRIEVED = SubjectCanonicals.MEMORY_RETRIEVED
+    MEMORY_RETRIEVAL_REQUESTED = SubjectCanonicals.MEMORY_RETRIEVAL_REQUESTED
+    SOCIAL_SIGNALS_REQUESTED = SubjectCanonicals.SOCIAL_SIGNALS_REQUESTED
+    PERCEPTION_INTERPRET_REQUESTED = SubjectCanonicals.PERCEPTION_INTERPRET_REQUESTED
+    SOCIAL_SIGNALS_RETRIEVED = SubjectCanonicals.SOCIAL_SIGNALS_RETRIEVED
+    PERCEPTION_INTERPRET_RETRIEVED = SubjectCanonicals.PERCEPTION_INTERPRET_RETRIEVED
+    CONTEXT_ASSEMBLED = SubjectCanonicals.CONTEXT_ASSEMBLED
+    CONTEXT_UPDATED = SubjectCanonicals.CONTEXT_UPDATED
+    RESPONSE_CANDIDATES = SubjectCanonicals.RESPONSE_CANDIDATES
+    RESPONSE_RANKED = SubjectCanonicals.RESPONSE_RANKED
+    PERCEPTION_EMBEDDINGS = SubjectCanonicals.PERCEPTION_EMBEDDINGS
+    PERCEPTION_EXTRACT = SubjectCanonicals.PERCEPTION_EXTRACT
+    PERCEPTION_EXTRACT_REQUESTED = SubjectCanonicals.PERCEPTION_EXTRACT_REQUESTED
+    PERCEPTION_MODALITY_RESULT = SubjectCanonicals.PERCEPTION_MODALITY_RESULT
+    SOCIAL_PERCEPTION = SubjectCanonicals.SOCIAL_PERCEPTION
+    OUTCOME_SIGNAL = SubjectCanonicals.OUTCOME_SIGNAL
+    CORRECTION_SIGNAL = SubjectCanonicals.CORRECTION_SIGNAL
+    DISCORD_FEEDBACK_SIGNAL = SubjectCanonicals.DISCORD_FEEDBACK_SIGNAL
+    USER_SUMMARY_REFRESH = SubjectCanonicals.USER_SUMMARY_REFRESH
 
 
-LEGACY_SUBJECT_MAP: Dict[str, str] = {
-    "dtr.input.received": CanonicalSubjects.INPUT_RECEIVED,
-    "dtr.memory.retrieved": CanonicalSubjects.MEMORY_RETRIEVED,
-    "dtr.memory.retrieval.requested": CanonicalSubjects.MEMORY_RETRIEVAL_REQUESTED,
-    "dtr.social.signals.requested": CanonicalSubjects.SOCIAL_SIGNALS_REQUESTED,
-    "dtr.perception.interpret.requested": CanonicalSubjects.PERCEPTION_INTERPRET_REQUESTED,
-    "dtr.social.signals.retrieved": CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED,
-    "dtr.perception.interpret.retrieved": CanonicalSubjects.PERCEPTION_INTERPRET_RETRIEVED,
-    "dtr.context.assembled": CanonicalSubjects.CONTEXT_ASSEMBLED,
-    "dtr.context.updated": CanonicalSubjects.CONTEXT_UPDATED,
-    "dtr.response.candidates": CanonicalSubjects.RESPONSE_CANDIDATES,
-    "dtr.response.ranked": CanonicalSubjects.RESPONSE_RANKED,
-    "dtr.llm.response_generated": CanonicalSubjects.RESPONSE_RANKED,
-    "dtr.perception.embeddings": CanonicalSubjects.PERCEPTION_EMBEDDINGS,
-    "dtr.perception.extract": CanonicalSubjects.PERCEPTION_EXTRACT,
-    "dtr.perception.extract.requested": CanonicalSubjects.PERCEPTION_EXTRACT_REQUESTED,
-    "dtr.perception.modality.result": CanonicalSubjects.PERCEPTION_MODALITY_RESULT,
-    "dtr.social.perception": CanonicalSubjects.SOCIAL_PERCEPTION,
-    "dtr.feedback.outcome_signal": CanonicalSubjects.OUTCOME_SIGNAL,
-    "dtr.feedback.correction_signal": CanonicalSubjects.CORRECTION_SIGNAL,
-    "dtr.feedback.discord_signal": CanonicalSubjects.DISCORD_FEEDBACK_SIGNAL,
-    "dtr.memory.user_summary.refresh": CanonicalSubjects.USER_SUMMARY_REFRESH,
-}
+LEGACY_SUBJECT_MAP: Dict[str, str] = legacy_subject_map()
 
 
 @dataclass(frozen=True)
@@ -142,7 +122,7 @@ def validate_envelope(data: Dict[str, Any]) -> EventEnvelope:
 
 
 def to_canonical_subject(subject: str) -> str:
-    return LEGACY_SUBJECT_MAP.get(subject, subject)
+    return resolve_subject(subject)
 
 
 def validate_cross_service_envelope(subject: str, data: Dict[str, Any]) -> EventEnvelope:
@@ -301,3 +281,22 @@ def decode_payload_or_envelope(subject: str, data: Dict[str, Any]) -> tuple[Dict
         "created_at": None,
         "subject": to_canonical_subject(subject),
     }
+
+
+__all__ = [
+    "CanonicalSubjects",
+    "EventEnvelope",
+    "LEGACY_SUBJECT_MAP",
+    "PAYLOAD_VALIDATORS",
+    "SubjectAliases",
+    "SubjectCanonicals",
+    "SubjectLifecycleState",
+    "decode_payload",
+    "decode_payload_or_envelope",
+    "get_subject_metadata",
+    "normalize_legacy_payload",
+    "resolve_subject",
+    "to_canonical_subject",
+    "validate_cross_service_envelope",
+    "validate_envelope",
+]

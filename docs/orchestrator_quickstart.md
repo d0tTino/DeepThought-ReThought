@@ -66,14 +66,14 @@ The orchestrator starts multiple services with a single NATS connection. Each se
    and environment variable references), copy from
    [`examples/orchestrator.yml`](../examples/orchestrator.yml).
 
-   The default production DAG includes feedback adaptation: keep the `feedback` service enabled with durable subscriptions on `dtr.response.ranked.v1`, `dtr.feedback.outcome_signal.v1`, and `dtr.feedback.correction_signal.v1`.
+   The default production DAG includes feedback adaptation: keep the `feedback` service enabled with durable subscriptions on `EventSubjects.RESPONSE_RANKED`, `EventSubjects.OUTCOME_SIGNAL`, and `EventSubjects.CORRECTION_SIGNAL`.
 
    Set `DT_MEMORY_DB` and `DT_SOCIAL_GRAPH_DB` so adaptation writes are persisted, and optionally set `DT_FEEDBACK_DURABLE_PREFIX` to control durable naming (defaults to `feedback_service`).
 
    `llm_remote` requires the `LLM_ENDPOINT` variable pointing to a running
    `/generate` endpoint.
 
-   When `discord_gateway` is enabled, it subscribes to `dtr.response.ranked` and forwards
+   When `discord_gateway` is enabled, it subscribes to `EventSubjects.RESPONSE_RANKED` and forwards
    final responses back to the originating Discord channel (using a durable consumer).
 
 4. **Run the orchestrator**

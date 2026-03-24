@@ -171,3 +171,20 @@ def test_cross_service_envelope_requires_trace_event_and_causation_ids():
 def test_cross_service_envelope_rejects_raw_non_enveloped_payloads():
     with pytest.raises(ValueError, match="Missing required key 'schema_version'"):
         validate_cross_service_envelope(CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED, {"input_id": "i-1"})
+
+
+def test_deprecated_alias_resolution_logs_warning_once(caplog):
+    caplog.set_level("WARNING")
+    first = to_canonical_subject("dtr.feedback.discord_signal")
+    second = to_canonical_subject("dtr.feedback.discord_signal")
+    assert first == CanonicalSubjects.DISCORD_FEEDBACK_SIGNAL
+    assert second == CanonicalSubjects.DISCORD_FEEDBACK_SIGNAL
+    warnings = [r.message for r in caplog.records if "Deprecated EDA subject alias" in r.message]
+    assert len(warnings) == 1
+
+
+def test_remove_by_date_alias_resolution_logs_remove_by(caplog):
+    caplog.set_level("WARNING")
+    resolved = to_canonical_subject("dtr.llm.response_generated")
+    assert resolved == CanonicalSubjects.RESPONSE_RANKED
+    assert any("remove by" in record.message for record in caplog.records)

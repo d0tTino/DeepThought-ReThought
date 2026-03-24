@@ -21,13 +21,13 @@ service_bindings:
       - NATS_URL
       - DISCORD_BOT_TOKEN
     subscribe:
-      - subject: dtr.response.ranked.v1  # legacy alias: dtr.response.ranked
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_RANKED
         jetstream: true
         durable: discord_gateway_response_ranked
         required_reliability: true
     publish:
-      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
+      - subject_ref: registry
         event_subject: EventSubjects.INPUT_RECEIVED
         jetstream: true
 
@@ -45,38 +45,38 @@ service_bindings:
       - DT_SOCIAL_GRAPH_DB
       - DT_SEARCH_DB
     subscribe:
-      - subject: dtr.memory.retrieval.requested.v1  # legacy alias: dtr.memory.retrieval.requested
+      - subject_ref: registry
         event_subject: EventSubjects.MEMORY_RETRIEVAL_REQUESTED
         jetstream: true
         durable: cognitive_core_memory_requests
         required_reliability: true
-      - subject: dtr.perception.embeddings.v1  # legacy alias: dtr.perception.embeddings
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
         jetstream: true
         durable: cognitive_core_listener_perception_fused
         required_reliability: true
-      - subject: dtr.perception.image_embeddings
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_IMAGE_EMBED
         jetstream: true
         durable: cognitive_core_listener_perception_image
         required_reliability: true
-      - subject: dtr.perception.audio_embeddings
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_AUDIO_EMBED
         jetstream: true
         durable: cognitive_core_listener_perception_audio
         required_reliability: true
-      - subject: dtr.perception.video_embeddings
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_VIDEO_EMBED
         jetstream: true
         durable: cognitive_core_listener_perception_video
         required_reliability: true
-      - subject: dtr.bdi.intention
+      - subject_ref: registry
         event_subject: EventSubjects.BDI_INTENTION
         jetstream: true
         durable: cognitive_core_listener_bdi
         required_reliability: true
     publish:
-      - subject: dtr.memory.retrieved.v1  # legacy alias: dtr.memory.retrieved
+      - subject_ref: registry
         event_subject: EventSubjects.MEMORY_RETRIEVED
         jetstream: true
 
@@ -89,13 +89,13 @@ service_bindings:
       - LLM_NUM_CANDIDATES
       - LLM_SOURCE_NAME
     subscribe:
-      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+      - subject_ref: registry
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
         durable: llm_remote_service
         required_reliability: true
     publish:
-      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
 
@@ -105,13 +105,13 @@ service_bindings:
     env:
       - NATS_URL
     subscribe:
-      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+      - subject_ref: registry
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
         durable: responder_factual_service
         required_reliability: false
     publish:
-      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
 
@@ -121,13 +121,13 @@ service_bindings:
     env:
       - NATS_URL
     subscribe:
-      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+      - subject_ref: registry
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
         durable: responder_persona_service
         required_reliability: false
     publish:
-      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
 
@@ -137,13 +137,13 @@ service_bindings:
     env:
       - NATS_URL
     subscribe:
-      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+      - subject_ref: registry
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
         durable: responder_safety_service
         required_reliability: false
     publish:
-      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
 
@@ -152,13 +152,13 @@ service_bindings:
     env:
       - NATS_URL
     subscribe:
-      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
         durable: selector_service
         required_reliability: true
     publish:
-      - subject: dtr.response.ranked.v1  # legacy alias: dtr.response.ranked
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_RANKED
         jetstream: true
 
@@ -170,23 +170,23 @@ service_bindings:
       - DT_SOCIAL_GRAPH_DB
       - DT_FEEDBACK_DURABLE_PREFIX
     subscribe:
-      - subject: dtr.response.ranked.v1  # legacy aliases: dtr.response.ranked, dtr.llm.response_generated
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_RANKED
         jetstream: true
         durable: feedback_service_ranked
         required_reliability: true
-      - subject: dtr.feedback.outcome_signal.v1  # legacy alias: dtr.feedback.outcome_signal
+      - subject_ref: registry
         event_subject: EventSubjects.OUTCOME_SIGNAL
         jetstream: true
         durable: feedback_service_outcome
         required_reliability: true
-      - subject: dtr.feedback.correction_signal.v1  # legacy alias: dtr.feedback.correction_signal
+      - subject_ref: registry
         event_subject: EventSubjects.CORRECTION_SIGNAL
         jetstream: true
         durable: feedback_service_correction
         required_reliability: true
     publish:
-      - subject: dtr.telemetry.response_feedback.v1
+      - subject_ref: registry
         event_subject: response_feedback_telemetry
         jetstream: true
 
@@ -196,21 +196,21 @@ service_bindings:
     env:
       - NATS_URL
     subscribe:
-      - subject: dtr.response.ranked.v1  # legacy aliases: dtr.response.ranked, dtr.llm.response_generated
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_RANKED
         jetstream: true
         durable: reasoning_service_ranked
         required_reliability: false
-      - subject: dtr.response.candidates.v1  # legacy alias: dtr.response.candidates
+      - subject_ref: registry
         event_subject: EventSubjects.RESPONSE_CANDIDATES
         jetstream: true
         durable: reasoning_service_candidates
         required_reliability: false
     publish:
-      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
+      - subject_ref: registry
         event_subject: EventSubjects.INPUT_RECEIVED
         jetstream: true
-      - subject: dtr.warning
+      - subject_ref: registry
         event_subject: EventSubjects.WARNING
         jetstream: true
 
@@ -220,13 +220,13 @@ service_bindings:
       - NATS_URL
       - DT_SOCIAL_GRAPH_DB
     subscribe:
-      - subject: dtr.social.signals.requested.v1  # legacy alias: dtr.social.signals.requested
+      - subject_ref: registry
         event_subject: EventSubjects.SOCIAL_SIGNALS_REQUESTED
         jetstream: true
         durable: social_graph_requests
         required_reliability: true
     publish:
-      - subject: dtr.social.signals.retrieved.v1  # legacy alias: dtr.social.signals.retrieved
+      - subject_ref: registry
         event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
         jetstream: true
 
@@ -237,18 +237,18 @@ service_bindings:
       - PERCEPTION_REQUIRE_CONSENT
       - PERCEPTION_MODEL_PATH
     subscribe:
-      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
+      - subject_ref: registry
         event_subject: EventSubjects.INPUT_RECEIVED
         jetstream: true
         durable: perception_listener
         required_reliability: true
-      - subject: dtr.perception.extract.v1  # legacy alias: dtr.perception.extract
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_EXTRACT
         jetstream: true
         durable: perception-extract-listener
         required_reliability: true
     publish:
-      - subject: dtr.perception.embeddings.v1  # legacy alias: dtr.perception.embeddings
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
         jetstream: true
 
@@ -257,18 +257,18 @@ service_bindings:
     env:
       - NATS_URL
     subscribe:
-      - subject: dtr.perception.interpret.requested.v1  # legacy alias: dtr.perception.interpret.requested
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_INTERPRET_REQUESTED
         jetstream: true
         durable: perception_interpret_requests
         required_reliability: true
-      - subject: dtr.perception.embeddings.v1  # legacy alias: dtr.perception.embeddings
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
         jetstream: true
         durable: perception_interpret_embeddings
         required_reliability: false
     publish:
-      - subject: dtr.perception.interpret.retrieved.v1  # legacy alias: dtr.perception.interpret.retrieved
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
         jetstream: true
 
@@ -277,28 +277,28 @@ service_bindings:
     env:
       - NATS_URL
     subscribe:
-      - subject: dtr.input.received.v1  # legacy alias: dtr.input.received
+      - subject_ref: registry
         event_subject: EventSubjects.INPUT_RECEIVED
         jetstream: true
         durable: context_assembler_input
         required_reliability: true
-      - subject: dtr.memory.retrieved.v1  # legacy alias: dtr.memory.retrieved
+      - subject_ref: registry
         event_subject: EventSubjects.MEMORY_RETRIEVED
         jetstream: true
         durable: context_assembler_memory
         required_reliability: true
-      - subject: dtr.social.signals.retrieved.v1  # legacy alias: dtr.social.signals.retrieved
+      - subject_ref: registry
         event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
         jetstream: true
         durable: context_assembler_social
         required_reliability: true
-      - subject: dtr.perception.interpret.retrieved.v1  # legacy alias: dtr.perception.interpret.retrieved
+      - subject_ref: registry
         event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
         jetstream: true
         durable: context_assembler_perception
         required_reliability: true
     publish:
-      - subject: dtr.context.assembled.v1  # legacy alias: dtr.context.assembled
+      - subject_ref: registry
         event_subject: EventSubjects.CONTEXT_ASSEMBLED
         jetstream: true
 
