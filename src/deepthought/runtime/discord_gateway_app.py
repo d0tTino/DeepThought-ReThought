@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
+import os
 from collections.abc import Callable
 from typing import Any
 
@@ -101,3 +103,21 @@ async def run_discord_gateway(*, token: str, nats_url: str) -> None:
 def main(*, token: str, nats_url: str) -> int:
     asyncio.run(run_discord_gateway(token=token, nats_url=nats_url))
     return 0
+
+
+def cli_main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint for the canonical Discord gateway runtime."""
+
+    parser = argparse.ArgumentParser(description="Run DeepThought Discord gateway runtime")
+    parser.add_argument("--token", default=os.getenv("DISCORD_BOT_TOKEN", ""))
+    parser.add_argument("--nats-url", default=os.getenv("NATS_URL", "nats://localhost:4222"))
+    args = parser.parse_args(argv)
+
+    token = str(args.token or "").strip()
+    if not token:
+        raise SystemExit("DISCORD_BOT_TOKEN is required (use --token or set DISCORD_BOT_TOKEN)")
+    return main(token=token, nats_url=args.nats_url)
+
+
+if __name__ == "__main__":  # pragma: no cover - module execution helper
+    raise SystemExit(cli_main())

@@ -456,13 +456,21 @@ export DT_MG_PASSWORD=memgraph
 See [docs/graphdal.md](docs/graphdal.md) for a minimal script that starts
 the memory service and listens for `INPUT_RECEIVED` events.
 
-## Social Graph Bot Example
+## Discord Runtime (Canonical Path)
 
+The primary Discord application path is the service graph runtime:
 
-An example Discord bot demonstrating social graph logging is available at
-`examples/social_graph_bot.py`. It records user interactions in a SQLite
-database, monitors channel activity, and forwards data to a Prism endpoint
-implemented in `examples/prism_server.py`.
+`discord_gateway -> cognitive_core/social_graph/perception/perception_interpret -> context_assembler -> llm_remote -> selector -> discord_gateway`
+
+Use one of these entry points:
+
+- `dtrt run discord-gateway` (recommended canonical CLI path)
+- `dtrt-discord-gateway` (direct runtime script entry point)
+- `python bot.py` (project-root compatibility launcher that now delegates to the same runtime)
+
+The `examples/social_graph_bot.py` module is maintained as a **compatibility example**
+for legacy workflows and tests; new contributors should start from the runtime
+entry points above.
 
 ### Quick Start
 
@@ -478,39 +486,34 @@ If you choose the TextBlob backend, download its corpora:
 python -m textblob.download_corpora
 ```
 
-Set the environment variables used by the bot:
+Set the core environment variables:
 
 ```bash
 export DISCORD_BOT_TOKEN=your_token
-export MONITOR_CHANNEL=1234567890
-export SOCIAL_GRAPH_DB=/path/to/social_graph.db  # optional
-export PRISM_ENDPOINT=http://localhost:5000/receive_data  # optional
-export SENTIMENT_BACKEND=vader  # optional, defaults to textblob
-export USER_REPLY_RATE_SECONDS=3                # optional rate limit per user
-export PLAYFUL_REPLY_TIMEOUT_MINUTES=5          # bot-to-bot reply cooldown
-export MAX_BOT_SPEAKERS=2                       # ignore chatter when too many bots talk
+export NATS_URL=nats://localhost:4222
 ```
 
-`DISCORD_BOT_TOKEN` and `MONITOR_CHANNEL` are required. `NATS_URL` must also be set
-to a valid NATS server address if the default `nats://localhost:4222` is not
-appropriate. All other variables are optional. `USER_REPLY_RATE_SECONDS`
-controls how quickly the bot may respond to the same user, while
-`PLAYFUL_REPLY_TIMEOUT_MINUTES` and `MAX_BOT_SPEAKERS` regulate bot-to-bot
-conversations.
-
-Set `SENTIMENT_BACKEND` to either `textblob` or `vader` to choose the library
-used for sentiment analysis. Any other value falls back to `textblob`.
+`DISCORD_BOT_TOKEN` is required. `NATS_URL` defaults to
+`nats://localhost:4222` if unset.
 
 Run the bot:
 
 ```bash
-python examples/social_graph_bot.py
+dtrt run discord-gateway
 ```
 
-Alternatively, launch the same bot using the helper script at the project root:
+Compatibility launchers that still route to the same runtime:
 
 ```bash
+python -m deepthought.runtime.discord_gateway_app
+dtrt-discord-gateway
 python bot.py
+```
+
+Legacy compatibility example:
+
+```bash
+python examples/social_graph_bot.py
 ```
 
 ### Projects Board Plugin
@@ -919,6 +922,11 @@ The default bot architecture is:
 
 `context assembler -> llm responder -> selector -> Discord gateway`
 
+Runtime entry path for this contract:
+
+- `dtrt run discord-gateway` (primary)
+- `dtrt-discord-gateway` and `python bot.py` (compatibility wrappers over the same runtime)
+
 The canonical conversational responder consumes `EventSubjects.CONTEXT_ASSEMBLED` and publishes `EventSubjects.RESPONSE_CANDIDATES`. Every emitted `ResponseCandidate` should include grounded metadata so downstream ranking remains stable across responder types:
 
 - `source`
@@ -927,6 +935,12 @@ The canonical conversational responder consumes `EventSubjects.CONTEXT_ASSEMBLED
 - calibration metadata under `source_metadata`
 
 Heuristic responders in `src/deepthought/services/responder_service.py` are optional specialist candidate producers. They can publish extra factual, persona, or safety-oriented candidates to improve ranking, but they are not the default end-user voice anymore.
+
+Primary extension points for contributors:
+
+- Add/replace services in `src/deepthought/services/` and wire them in `examples/orchestrator.yml`.
+- Extend runtime lifecycle behavior in `src/deepthought/runtime/discord_gateway_app.py`.
+- Add optional candidate producers on `RESPONSE_CANDIDATES` while preserving the canonical contract fields above.
 
 ## DSPy Pipelines
 

@@ -54,7 +54,7 @@ sequenceDiagram
     Bot-->>User: Reply
 ```
 
-The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events and receives the final reply on `RESPONSE_RANKED` after the canonical path `discord_gateway -> cognitive_core/social_graph/perception/perception_interpret -> context_assembler -> llm_remote -> selector -> discord_gateway` completes. Heuristic responders can be enabled as auxiliary candidate producers, but they are no longer part of the default user-facing topology.
+The canonical runtime entrypoint is `src/deepthought/runtime/discord_gateway_app.py`, exposed via `dtrt run discord-gateway` (and `dtrt-discord-gateway`). The project-root `bot.py` wrapper now delegates to this same runtime path, so all default launch modes emit `INPUT_RECEIVED` and receive final replies on `RESPONSE_RANKED` through the same graph: `discord_gateway -> cognitive_core/social_graph/perception/perception_interpret -> context_assembler -> llm_remote -> selector -> discord_gateway`. Heuristic responders can be enabled as auxiliary candidate producers, but they are no longer part of the default user-facing topology.
 
 Feedback adaptation is part of the default production DAG and should be deployed with durable subscriptions for `RESPONSE_RANKED`, `OUTCOME_SIGNAL`, and `CORRECTION_SIGNAL` as documented in [`examples/orchestrator.yml`](../examples/orchestrator.yml).
 
@@ -265,7 +265,7 @@ The Discord examples integrate several safety features that adjust the bot's res
 count, sentiment = await db.get_relationship(user_id, target_id)
 ```
 
-Launch the social graph bot with deception enabled:
+Legacy compatibility example (not the canonical runtime path):
 
 ```bash
 export ALLOW_DECEPTION=true
