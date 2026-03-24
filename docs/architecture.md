@@ -4,7 +4,7 @@ This document provides a high level overview of how the main services in **DeepT
 
 ## Service Interactions
 
-The project follows an event driven architecture built on NATS/JetStream. Components publish and subscribe to event subjects defined in `src/deepthought/eda/events.py`.
+The project follows an event driven architecture built on NATS/JetStream. Components publish and subscribe to event subjects defined in `src/deepthought/eda/events.py`, and those names are resolved through the strict subject registry in `src/deepthought/eda/contracts/subject_registry.py` (including canonical mapping + lifecycle metadata).
 
 A canonical service-to-subject wiring reference (including durable consumers and required environment variables) is maintained in [`examples/orchestrator.yml`](../examples/orchestrator.yml). The default `docker-compose.yml` launches that same topology inside the `app` container via `dtrt orchestrate examples/orchestrator.yml`.
 
@@ -275,7 +275,7 @@ python examples/social_graph_bot.py
 ## Perception Service
 
 The project includes a dedicated service for scoring social cues in user
-messages. The service consumes `dtr.input.received` events and publishes
+messages. The service consumes `EventSubjects.INPUT_RECEIVED` events and publishes
 its analysis so other components can adjust trust or select personas. See
 [perception_service.md](perception_service.md) for the service's purpose,
 event schema and CLI usage.

@@ -9,10 +9,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional
 
-from .contracts import (
-    CanonicalSubjects,
-    decode_payload,
-)
+from .contracts import CanonicalSubjects, decode_payload
+from .contracts.subject_registry import SubjectAliases
 
 
 # Subject naming convention: dtr.<module>.<event_type>
@@ -32,13 +30,13 @@ class EventSubjects:
     SOCIAL_SIGNALS_REQUESTED = CanonicalSubjects.SOCIAL_SIGNALS_REQUESTED
     PERCEPTION_INTERPRET_REQUESTED = CanonicalSubjects.PERCEPTION_INTERPRET_REQUESTED
     SOCIAL_SIGNALS_RETRIEVED = CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED
-    SOCIAL_UPDATED = "dtr.social.updated"
+    SOCIAL_UPDATED = SubjectAliases.SOCIAL_UPDATED
     PERCEPTION_INTERPRET_RETRIEVED = CanonicalSubjects.PERCEPTION_INTERPRET_RETRIEVED
     CONTEXT_ASSEMBLED = CanonicalSubjects.CONTEXT_ASSEMBLED
     CONTEXT_UPDATED = CanonicalSubjects.CONTEXT_UPDATED
 
     # LLM events
-    RESPONSE_GENERATED = "dtr.llm.response_generated"
+    RESPONSE_GENERATED = SubjectAliases.RESPONSE_GENERATED
     RESPONSE_CANDIDATES = CanonicalSubjects.RESPONSE_CANDIDATES
     RESPONSE_RANKED = CanonicalSubjects.RESPONSE_RANKED
     OUTCOME_SIGNAL = CanonicalSubjects.OUTCOME_SIGNAL
@@ -48,9 +46,9 @@ class EventSubjects:
 
     # Perception events
     PERCEPTION_EMBEDDINGS = CanonicalSubjects.PERCEPTION_EMBEDDINGS
-    PERCEPTION_IMAGE_EMBED = "dtr.perception.image_embeddings"
-    PERCEPTION_AUDIO_EMBED = "dtr.perception.audio_embeddings"
-    PERCEPTION_VIDEO_EMBED = "dtr.perception.video_embeddings"
+    PERCEPTION_IMAGE_EMBED = SubjectAliases.PERCEPTION_IMAGE_EMBED
+    PERCEPTION_AUDIO_EMBED = SubjectAliases.PERCEPTION_AUDIO_EMBED
+    PERCEPTION_VIDEO_EMBED = SubjectAliases.PERCEPTION_VIDEO_EMBED
     PERCEPTION_EXTRACT = CanonicalSubjects.PERCEPTION_EXTRACT
     PERCEPTION_EXTRACT_REQUESTED = CanonicalSubjects.PERCEPTION_EXTRACT_REQUESTED
     PERCEPTION_MODALITY_RESULT = CanonicalSubjects.PERCEPTION_MODALITY_RESULT
@@ -59,24 +57,24 @@ class EventSubjects:
     CHAT_RAW = "chat.raw"
 
     # Scheduler events
-    REMINDER_TRIGGERED = "dtr.scheduler.reminder_triggered"
-    MICRO_TICK = "dtr.scheduler.micro_tick"
-    DAILY_STANDUP = "dtr.scheduler.daily_standup"
-    WEEKLY_PLANNING = "dtr.scheduler.weekly_planning"
+    REMINDER_TRIGGERED = SubjectAliases.REMINDER_TRIGGERED
+    MICRO_TICK = SubjectAliases.MICRO_TICK
+    DAILY_STANDUP = SubjectAliases.DAILY_STANDUP
+    WEEKLY_PLANNING = SubjectAliases.WEEKLY_PLANNING
 
     # Code generation events
-    CODE_TEMPLATE_REQUEST = "dtr.codegen.template_request"
-    CODE_GENERATED = "dtr.codegen.generated"
+    CODE_TEMPLATE_REQUEST = SubjectAliases.CODE_TEMPLATE_REQUEST
+    CODE_GENERATED = SubjectAliases.CODE_GENERATED
 
     # Planning events
-    PLAN_REQUESTED = "dtr.plan.requested"
-    PLAN_GENERATED = "dtr.plan.generated"
+    PLAN_REQUESTED = SubjectAliases.PLAN_REQUESTED
+    PLAN_GENERATED = SubjectAliases.PLAN_GENERATED
 
     # BDI agent events
-    BDI_INTENTION = "dtr.bdi.intention"
+    BDI_INTENTION = SubjectAliases.BDI_INTENTION
 
     # Warning events
-    WARNING = "dtr.warning"
+    WARNING = SubjectAliases.WARNING
 
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
@@ -807,8 +805,8 @@ class PerceptionExtractPayload(EventPayload):
             video_opt_in=video_opt_in,
             retain_media=data.get("retain_media"),
             text_hop_size=data.get("text_hop_size") or data.get("tokens_hop_size"),
-            attachments=[dict(a) for a in data.get("attachments", []) if isinstance(a, dict)] or None,
-            artifacts=[dict(a) for a in data.get("artifacts", []) if isinstance(a, dict)] or None,
+            attachments=[dict(a) for a in (data.get("attachments") or []) if isinstance(a, dict)] or None,
+            artifacts=[dict(a) for a in (data.get("artifacts") or []) if isinstance(a, dict)] or None,
         )
 
 

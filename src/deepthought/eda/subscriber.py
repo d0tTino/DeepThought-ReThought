@@ -11,6 +11,8 @@ from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.js.client import JetStreamContext
 
+from .contracts import to_canonical_subject
+
 logger = logging.getLogger(__name__)
 MessageHandlerType = Callable[[Msg], Awaitable[None]]
 
@@ -39,6 +41,7 @@ class Subscriber:
 
         Returns ``True`` on success and ``False`` if an error occurred.
         """
+        subject = to_canonical_subject(subject)
         try:
             if use_jetstream:
                 if not self._js:

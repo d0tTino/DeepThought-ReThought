@@ -10,7 +10,7 @@ import nats
 from nats.aio.client import Client as NATS
 from nats.js.client import JetStreamContext
 
-from .contracts import EventEnvelope, validate_cross_service_envelope
+from .contracts import EventEnvelope, to_canonical_subject, validate_cross_service_envelope
 
 logger = logging.getLogger(__name__)
 NATS_TIMEOUT_ERROR = getattr(nats.errors, "TimeoutError", TimeoutError)
@@ -40,6 +40,8 @@ class Publisher:
         """Publish message, retrying for at-least-once semantics."""
         if retries < 1:
             raise ValueError("retries must be at least 1")
+
+        subject = to_canonical_subject(subject)
 
         # Convert payload
         if isinstance(payload, bytes):
