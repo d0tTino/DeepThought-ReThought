@@ -6,11 +6,11 @@ This document provides a high level overview of how the main services in **DeepT
 
 The project follows an event driven architecture built on NATS/JetStream. Components publish and subscribe to event subjects defined in `src/deepthought/eda/events.py`.
 
-A canonical service-to-subject wiring reference (including durable consumers and required environment variables) is maintained in [`examples/orchestrator.yml`](../examples/orchestrator.yml).
+A canonical service-to-subject wiring reference (including durable consumers and required environment variables) is maintained in [`examples/orchestrator.yml`](../examples/orchestrator.yml). The default `docker-compose.yml` launches that same topology inside the `app` container via `dtrt orchestrate examples/orchestrator.yml`.
 
 ### Required orchestration DAG
 
-For the default orchestrator profile, the following event chain is **required**. If any publish/subscribe edge is removed, the runtime graph becomes disconnected and response generation will stall.
+For the default development/runtime profile, Docker Compose starts NATS, Chroma, one graph backend (Memgraph by default), and an orchestrator container that runs exactly these application services: `discord_gateway`, `cognitive_core`, `social_graph`, `perception`, `perception_interpret`, `context_assembler`, `llm_remote` (the primary LLM responder), `selector`, and `feedback`. The following event chain is **required**. If any publish/subscribe edge is removed, the runtime graph becomes disconnected and response generation will stall.
 
 1. `INPUT_RECEIVED` is published by `discord_gateway` and consumed by `context_assembler`.
 2. `MEMORY_RETRIEVED` is published by `cognitive_core` and consumed by `context_assembler`.
@@ -54,7 +54,7 @@ sequenceDiagram
     Bot-->>User: Reply
 ```
 
-The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events and receives the final reply on `RESPONSE_RANKED` after the canonical path `context_assembler -> llm_remote -> selector -> discord_gateway` completes. Heuristic responders can be enabled as auxiliary candidate producers, but they are no longer the default user-facing voice.
+The example Discord bot in `bot.py` sends `INPUT_RECEIVED` events and receives the final reply on `RESPONSE_RANKED` after the canonical path `discord_gateway -> cognitive_core/social_graph/perception/perception_interpret -> context_assembler -> llm_remote -> selector -> discord_gateway` completes. Heuristic responders can be enabled as auxiliary candidate producers, but they are no longer part of the default user-facing topology.
 
 Feedback adaptation is part of the default production DAG and should be deployed with durable subscriptions for `RESPONSE_RANKED`, `OUTCOME_SIGNAL`, and `CORRECTION_SIGNAL` as documented in [`examples/orchestrator.yml`](../examples/orchestrator.yml).
 
@@ -89,7 +89,7 @@ The Discord-bot runtime now uses an explicit graph-memory profile:
 - `production`: `DT_GRAPH_BACKEND=memgraph` or `DT_GRAPH_BACKEND=neo4j`; a remote persistent graph backend is required.
 - `test`: `DT_GRAPH_BACKEND=stub`; an in-memory stub is used only for tests.
 
-`CognitiveCoreService` performs a startup health check against the configured graph backend and fails fast if that backend is unavailable. Production-oriented profiles no longer degrade silently to in-memory graph state. The default orchestrator and Compose deployment set `DT_RUNTIME_PROFILE=production` and provision exactly one persistent graph backend: Memgraph.
+`CognitiveCoreService` performs a startup health check against the configured graph backend and fails fast if that backend is unavailable. Production-oriented profiles no longer degrade silently to in-memory graph state. The default orchestrator and Compose deployment set `DT_RUNTIME_PROFILE=production` and provision exactly one persistent graph backend: Memgraph on host port `7687`. A Neo4j alternative is available behind the Compose `neo4j` profile on host port `8687`, so operators can test Neo4j without colliding with the default Memgraph listener.
 
 When an `INPUT_RECEIVED` event arrives the service stores the text in each
 backend, queries for relevant context and publishes `MEMORY_RETRIEVED`. Downstream
