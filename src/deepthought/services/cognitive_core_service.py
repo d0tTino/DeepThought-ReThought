@@ -27,11 +27,9 @@ from ..memory.fact_extractor import extract_typed_fact_triples_from_turn
 from ..memory.graph import (
     CypherGraphMemoryStore,
     InMemoryGraphMemoryStore,
-    ingest_conversation_turns,
-    retrieve_topic_context,
-    retrieve_user_context,
+    retrieve_layered_context,
 )
-from ..memory.graph.pipeline import ingest_fact_triples
+from ..memory.graph.pipeline import ingest_graph_objects, triples_to_graph_objects
 from ..fact_schema import format_fact_snippet, make_canonical_fact
 from ..memory.graph.store import utc_now_iso
 from ..memory.tiered import TieredMemory
@@ -434,7 +432,7 @@ class CognitiveCoreService(BaseService):
         except asyncio.CancelledError:
             return
 
-    def _prioritized_graph_facts(self, user_id: str, topic: str) -> list[str]:
+    def _prioritized_graph_facts(self, user_id: str, topic: str) -> tuple[list[str], dict[str, Any]]:
         summary_evidence = [
             item
             for item in self._salience_summaries
@@ -453,12 +451,14 @@ class CognitiveCoreService(BaseService):
             f"summary: {item['summary']}" for item in summary_evidence[: self._top_k]
         ]
 
-        graph_user_evidence = retrieve_user_context(
-            self._graph_memory, str(user_id), limit=self._top_k
+        bundles = retrieve_layered_context(
+            self._graph_memory,
+            user_id=str(user_id),
+            topic=topic,
+            limit=self._top_k,
         )
-        graph_topic_evidence = retrieve_topic_context(
-            self._graph_memory, topic, limit=self._top_k
-        )
+        graph_user_evidence = bundles["user_context"].evidences
+        graph_topic_evidence = bundles["topic_context"].evidences
         graph_facts = []
         for ev in [*graph_user_evidence, *graph_topic_evidence]:
             fact = make_canonical_fact(
@@ -473,7 +473,26 @@ class CognitiveCoreService(BaseService):
                 attributes=dict(ev.attributes),
             )
             graph_facts.append(format_fact_snippet(fact))
-        return summary_facts + graph_facts
+        bundle_payload = {
+            key: {
+                "layer": bundle.layer,
+                "freshness_score": bundle.freshness_score,
+                "provenance": [p.__dict__ for p in bundle.provenance],
+                "evidence": [
+                    {
+                        "id": e.evidence_id,
+                        "summary": e.summary,
+                        "score": e.score,
+                        "confidence": e.confidence,
+                        "freshness": e.freshness,
+                        "provenance": e.provenance.__dict__,
+                    }
+                    for e in bundle.evidences
+                ],
+            }
+            for key, bundle in bundles.items()
+        }
+        return summary_facts + graph_facts, bundle_payload
 
     @staticmethod
     def _normalize_fact_entries(entries: list[str], *, prefix: str | None = None) -> list[str]:
@@ -621,19 +640,6 @@ class CognitiveCoreService(BaseService):
             if multimodal_memory_payload is not None and hasattr(self._db, "store_multimodal_memory"):
                 await self._db.store_multimodal_memory(multimodal_memory_payload)
 
-            ingest_conversation_turns(
-                [
-                    {
-                        "user_id": resolved_user_id,
-                        "text": user_input,
-                        "timestamp": turn_timestamp,
-                        "input_id": input_id,
-                    }
-                ],
-                self._graph_memory,
-                default_user_id=str(resolved_user_id),
-            )
-
             extracted_triples = extract_typed_fact_triples_from_turn(
                 user_id=str(resolved_user_id),
                 message=user_input,
@@ -649,12 +655,12 @@ class CognitiveCoreService(BaseService):
                     if scored.reason_tags:
                         attrs.setdefault("salience_reasons", list(scored.reason_tags))
                     enriched_triples.append({**triple, "attributes": attrs})
-                ingest_fact_triples(
+                graph_objects = triples_to_graph_objects(
                     enriched_triples,
-                    self._graph_memory,
                     timestamp=turn_timestamp,
                     source_id=input_id,
                 )
+                ingest_graph_objects(graph_objects, self._graph_memory)
 
             memory_facts = self._memory.retrieve_context(user_input) if self._memory else []
             vector_facts: List[str] = []
@@ -676,7 +682,7 @@ class CognitiveCoreService(BaseService):
             multimodal_facts = self._normalize_fact_entries(
                 _multimodal_memory_to_fact_snippets(multimodal_memories)
             )
-            graph_facts = self._prioritized_graph_facts(
+            graph_facts, graph_evidence_bundles = self._prioritized_graph_facts(
                 str(resolved_user_id), user_input
             )
 
@@ -720,6 +726,7 @@ class CognitiveCoreService(BaseService):
                     "conversation_window": conversation_window[-self._retrieval_policy.recent_turns :],
                     "recent_turn_summary": recent_turn_summary,
                     "multimodal_memories": multimodal_memories[: self._top_k],
+                    "graph_evidence_bundles": graph_evidence_bundles,
                 },
                 user_input=user_input,
                 input_id=input_id,
