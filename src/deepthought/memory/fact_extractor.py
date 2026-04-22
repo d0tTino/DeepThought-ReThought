@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..services.db_manager import DBManager
+if TYPE_CHECKING:
+    from ..services.db_manager import DBManager
 
 NICKNAME_PATTERNS = [
     re.compile(
@@ -245,13 +246,18 @@ def merge_user_profiles(
 async def extract_and_store_user_facts(
     user_id: int,
     message: str,
-    db_manager: DBManager | None = None,
+    db_manager: "DBManager | None" = None,
 ) -> dict[str, Any]:
     """Extract facts from a message and persist them to ``user_profiles``."""
     facts = extract_user_facts(message)
     if not facts:
         return {}
-    db = db_manager or DBManager()
+    if db_manager is None:
+        from ..services.db_manager import DBManager
+
+        db = DBManager()
+    else:
+        db = db_manager
     existing = await db.get_user_profile(user_id)
     merged = merge_user_profiles(existing, facts)
     await db.set_user_profile(user_id, merged)
@@ -260,10 +266,15 @@ async def extract_and_store_user_facts(
 
 async def get_user_fact_profile(
     user_id: int,
-    db_manager: DBManager | None = None,
+    db_manager: "DBManager | None" = None,
 ) -> dict[str, Any] | None:
     """Return the stored user fact profile as a dict when possible."""
-    db = db_manager or DBManager()
+    if db_manager is None:
+        from ..services.db_manager import DBManager
+
+        db = DBManager()
+    else:
+        db = db_manager
     profile = await db.get_user_profile(user_id)
     if profile is None:
         return None
@@ -297,7 +308,7 @@ def format_user_facts_for_prompt(profile: Mapping[str, Any] | None) -> str | Non
 
 async def build_user_fact_context(
     user_id: int,
-    db_manager: DBManager | None = None,
+    db_manager: "DBManager | None" = None,
 ) -> str | None:
     """Return a formatted user-fact string for prompt building."""
     profile = await get_user_fact_profile(user_id, db_manager=db_manager)

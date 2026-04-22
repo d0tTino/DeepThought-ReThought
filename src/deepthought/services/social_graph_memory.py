@@ -278,6 +278,13 @@ class SocialGraphMemory:
         trust = await self._db.get_trust(source)
         affinity = await self._db.get_affinity(source)
         social_model = await self._load_social_model(source)
+        profile = await self._db.get_user_profile(source)
+        profile_map = profile if isinstance(profile, dict) else {}
+        persona_state_block = (
+            profile_map.get("persona_state")
+            if isinstance(profile_map.get("persona_state"), dict)
+            else {}
+        )
         dimensions = dict(social_model.get("dimensions") or {})
         channel_specific_norms = dict(social_model.get("channel_specific_norms") or {})
         active_channel = channel_specific_norms.get(str(channel_id) if channel_id else "default", {})
@@ -308,6 +315,12 @@ class SocialGraphMemory:
                 "ask_clarifying_on_no_safe": correction_level != "low",
                 "style_modifiers": [preferred_style, rapport_level],
                 "cadence_tolerance": float((dimensions.get("cadence_tolerance") or {}).get("score", 0.5)),
+                "persona_state": str(persona_state_block.get("current") or "new_acquaintance"),
+                "persona_policy_hints": (
+                    persona_state_block.get("policy_hints")
+                    if isinstance(persona_state_block.get("policy_hints"), dict)
+                    else {}
+                ),
                 "channel_norms": active_channel or {
                     "interaction_frequency": interaction["event_count"],
                     "reciprocity": interaction["reciprocity"],
@@ -333,6 +346,18 @@ class SocialGraphMemory:
                 "graph_evidence": [item.summary for item in evidence],
             },
             "selector_inputs": selector_inputs,
+            "persona_state": str(persona_state_block.get("current") or "new_acquaintance"),
+            "persona_state_reason": persona_state_block.get("reason"),
+            "persona_policy_hints": (
+                persona_state_block.get("policy_hints")
+                if isinstance(persona_state_block.get("policy_hints"), dict)
+                else {}
+            ),
+            "persona_state_evidence": (
+                persona_state_block.get("evidence")
+                if isinstance(persona_state_block.get("evidence"), list)
+                else []
+            ),
         }
 
     async def discover_factions(self, edge_type: str = "ally") -> list[list[str]]:

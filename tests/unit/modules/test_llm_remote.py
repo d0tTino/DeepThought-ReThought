@@ -143,6 +143,37 @@ async def test_handle_context_event_publishes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_handle_context_event_includes_persona_state_hints_in_prompt(monkeypatch):
+    llm = create_llm(monkeypatch)
+    prompts = []
+
+    async def fake_generate_candidates(self, prompt):
+        prompts.append(prompt)
+        return [llm_remote.ResponseCandidate(text="answer", confidence=0.8, source="stub", safety_passed=True)]
+
+    monkeypatch.setattr(llm, "_generate_candidates", fake_generate_candidates.__get__(llm, type(llm)))
+
+    payload = ContextAssembledPayload(
+        input_id="42",
+        user_input="hello",
+        retrieved_facts=["f1"],
+        social_signals={
+            "persona_state": "trusted",
+            "persona_state_reason": "high_trust_or_affinity",
+            "persona_policy_hints": {"tone": "direct_collaborative", "repair_needed": False},
+        },
+    )
+    msg = DummyMsg(payload.to_json())
+
+    await llm._handle_context_event(msg)
+
+    assert msg.acked
+    assert prompts
+    assert "Persona state: trusted" in prompts[0]
+    assert "Persona policy hints:" in prompts[0]
+
+
+@pytest.mark.asyncio
 async def test_generate_timeout(monkeypatch):
     class TimeoutSession:
         async def __aenter__(self):

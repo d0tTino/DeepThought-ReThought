@@ -111,6 +111,23 @@ class SocialGraphService(BaseService):
                 counterpart_id,
                 channel_id=enriched.channel_id,
             )
+            persona_state = await self._persona.transition_persona_state(
+                resolved_user_id,
+                signals={
+                    "perception": perception,
+                    "delta": delta,
+                    "affinity": affinity,
+                    "trust": trust,
+                    "familiarity_tier": social_context.get("familiarity_tier"),
+                    "relationship_status": social_context.get("relationship_status"),
+                    "feedback": (
+                        data.get("feedback_signals")
+                        if isinstance(data.get("feedback_signals"), dict)
+                        else {}
+                    ),
+                    "low_confidence": bool(data.get("low_confidence")),
+                },
+            )
 
             social_snapshot = {
                 "input_id": enriched.input_id,
@@ -125,6 +142,10 @@ class SocialGraphService(BaseService):
                     "persona": persona,
                     "durable_user_model": social_context.get("durable_user_model", {}),
                     "selector_inputs": social_context.get("selector_inputs", {}),
+                    "persona_state": persona_state.get("current", "new_acquaintance"),
+                    "persona_state_reason": persona_state.get("reason"),
+                    "persona_state_evidence": persona_state.get("evidence", []),
+                    "persona_policy_hints": persona_state.get("policy_hints", {}),
                     "relationship_status": social_context.get("relationship_status", "neutral"),
                     "familiarity_tier": social_context.get("familiarity_tier", "low"),
                     "channel_norms": social_context.get("channel_norms", {}),

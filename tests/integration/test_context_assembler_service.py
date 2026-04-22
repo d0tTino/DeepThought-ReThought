@@ -565,3 +565,47 @@ async def test_qos_profile_high_risk_requires_all_providers(monkeypatch):
     ]
     assert payload["confidence"]["missing_reasons"]["perception"] == "timeout"
     assert payload["confidence"]["quality_score"] < 1.0
+
+
+@pytest.mark.asyncio
+async def test_context_assembled_exposes_structured_persona_policy_hints(monkeypatch):
+    import deepthought.services.context_assembler_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", RecordingPublisher)
+    monkeypatch.setattr(mod, "Subscriber", RecordingSubscriber)
+
+    svc = ContextAssemblerService(DummyNATS(), DummyJS(), wait_window_seconds=0.03)
+    await svc._handle_input_received(
+        DummyMsg({"input_id": "i-persona-hints", "user_input": "hello"})
+    )
+    await svc._handle_provider_response(
+        DummyMsg(
+            {
+                "input_id": "i-persona-hints",
+                "retrieved_knowledge": {"facts": ["f1"]},
+            }
+        ),
+        "memory",
+    )
+    await svc._handle_provider_response(
+        DummyMsg(
+            {
+                "input_id": "i-persona-hints",
+                "social_signals": {
+                    "persona_state": "familiar",
+                    "persona_policy_hints": {"tone": "warm_consistent"},
+                    "selector_inputs": {"interaction_policy": {"response_style": "friendly"}},
+                },
+            }
+        ),
+        "social",
+    )
+    await asyncio.sleep(0.06)
+
+    assembled = [
+        c for c in svc._publisher.calls if c[0] == EventSubjects.CONTEXT_ASSEMBLED
+    ]
+    payload = assembled[0][1]["payload"]
+    assert payload["social_signals"]["persona_state"] == "familiar"
+    assert payload["social_signals"]["persona_policy_hints"]["tone"] == "warm_consistent"
+    assert isinstance(payload["social_signals"]["selector_inputs"]["interaction_policy"], dict)
