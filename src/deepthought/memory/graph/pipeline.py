@@ -5,7 +5,22 @@ from typing import Any, Iterable, Sequence
 
 from ..fact_extractor import extract_typed_fact_triples_from_turn
 from ...fact_schema import make_canonical_fact
-from .store import GraphEntity, GraphFact, GraphMemoryStore, GraphRelation, Provenance, TemporalValidity, utc_now_iso
+from .ontology import (
+    classify_ontology_type,
+    confidence_with_decay,
+    predicate_spec,
+    relation_projection_name,
+    temporal_validity,
+)
+from .store import (
+    ConversationalGraphObject,
+    GraphEntity,
+    GraphFact,
+    GraphMemoryStore,
+    GraphRelation,
+    Provenance,
+    utc_now_iso,
+)
 
 
 def ingest_conversation_turns(
@@ -35,77 +50,122 @@ def ingest_fact_triples(
     timestamp: str,
     source_id: str,
 ) -> int:
-    """Write pre-extracted triples into graph entities/relations/facts."""
+    """Write pre-extracted triples by projecting typed conversational objects."""
+
+    objects = triples_to_graph_objects(triples, timestamp=timestamp, source_id=source_id)
+    return ingest_graph_objects(objects, store)
+
+
+def triples_to_graph_objects(
+    triples: Sequence[dict[str, Any]],
+    *,
+    timestamp: str,
+    source_id: str,
+) -> list[ConversationalGraphObject]:
+    objects: list[ConversationalGraphObject] = []
+    for triple in triples:
+        ontology_type = classify_ontology_type(
+            fact_type=str(triple.get("fact_type", "")),
+            predicate=str(triple.get("predicate", "")),
+            object_type=str(triple.get("object_type", "")),
+        )
+        obj_id = triple.get("object_id")
+        if not obj_id and str(triple.get("fact_type")) == "temporal_fact" and triple.get("object_value"):
+            obj_id = f"event:{_stable_id(triple['subject_id'], str(triple.get('object_value')))}"
+        confidence = float(triple.get("confidence", 0.7))
+        attributes = {
+            **dict(triple.get("attributes", {})),
+            "fact_type": triple.get("fact_type", "profile"),
+            "subject_type": triple.get("subject_type", "user"),
+            "object_type": triple.get("object_type", ontology_type),
+            "timestamp": timestamp,
+        }
+        provenance = Provenance(source="conversation_turn", source_id=source_id, observed_at=timestamp)
+        objects.append(
+            ConversationalGraphObject(
+                object_id=f"obj:{_stable_id(triple['subject_id'], str(triple.get('predicate')), str(obj_id), str(triple.get('object_value')))}",
+                ontology_type=ontology_type,
+                subject_id=triple["subject_id"],
+                predicate=triple["predicate"],
+                object_id_ref=obj_id,
+                object_value=str(triple.get("object_value")) if triple.get("object_value") is not None else None,
+                confidence=confidence_with_decay(
+                    confidence, observed_at=timestamp, ontology_type=ontology_type
+                ),
+                provenance=provenance,
+                attributes=attributes,
+                temporal=temporal_validity(timestamp, ontology_type),
+            )
+        )
+    return objects
+
+
+def ingest_graph_objects(
+    objects: Sequence[ConversationalGraphObject],
+    store: GraphMemoryStore,
+) -> int:
+    """Project typed graph objects into entities/relations/facts."""
 
     upserts = 0
-    for triple in triples:
+    for obj in objects:
+        spec = predicate_spec(obj.predicate, fallback_type=obj.ontology_type)
         subject = GraphEntity(
-            entity_id=triple["subject_id"],
-            entity_type=triple.get("subject_type", "user"),
-            label=triple.get("subject_label", triple["subject_id"]),
-            attributes={"last_seen": timestamp},
-            provenance=Provenance(source="conversation_turn", source_id=source_id, observed_at=timestamp),
-            confidence=float(triple.get("confidence", 0.7)),
+            entity_id=obj.subject_id,
+            entity_type=spec.subject_type,
+            label=obj.subject_id,
+            attributes={"last_seen": obj.provenance.observed_at, "ontology_type": "user"},
+            provenance=obj.provenance,
+            confidence=obj.confidence,
         )
         store.upsert_entity(subject)
 
-        obj_id = triple.get("object_id")
-        if not obj_id and triple.get("fact_type") == "temporal_fact" and triple.get("object_value"):
-            obj_id = f"event:{_stable_id(triple['subject_id'], str(triple.get('object_value')))}"
-
-        if obj_id:
+        if obj.object_id_ref:
             store.upsert_entity(
                 GraphEntity(
-                    entity_id=obj_id,
-                    entity_type=triple.get("object_type", "topic"),
-                    label=triple.get("object_label", obj_id),
-                    attributes=triple.get("object_attributes", {}),
+                    entity_id=obj.object_id_ref,
+                    entity_type=spec.object_type,
+                    label=obj.object_id_ref,
+                    attributes={
+                        **obj.attributes,
+                        "ontology_type": obj.ontology_type,
+                    },
                     provenance=subject.provenance,
-                    confidence=float(triple.get("confidence", 0.7)),
+                    confidence=obj.confidence,
                 )
             )
             store.upsert_relation(
                 GraphRelation(
-                    source_id=triple["subject_id"],
-                    relation_type=_typed_relation(triple.get("fact_type", "profile"), triple["predicate"]),
-                    target_id=obj_id,
-                    attributes={**triple.get("attributes", {}), "predicate": triple["predicate"]},
+                    source_id=obj.subject_id,
+                    relation_type=relation_projection_name(obj.ontology_type, obj.predicate),
+                    target_id=obj.object_id_ref,
+                    attributes={**obj.attributes, "predicate": obj.predicate, "ontology_type": obj.ontology_type},
                     provenance=subject.provenance,
-                    confidence=float(triple.get("confidence", 0.7)),
-                    temporal=TemporalValidity(valid_from=timestamp),
+                    confidence=obj.confidence,
+                    temporal=obj.temporal,
                 )
             )
 
         canonical = make_canonical_fact(
-            subject=triple["subject_id"],
-            predicate=triple["predicate"],
-            object_id=obj_id,
-            object_value=triple.get("object_value"),
+            subject=obj.subject_id,
+            predicate=obj.predicate,
+            object_id=obj.object_id_ref,
+            object_value=obj.object_value,
             provenance={
-                "source": "conversation_turn",
-                "source_id": source_id,
-                "observed_at": timestamp,
+                "source": obj.provenance.source,
+                "source_id": obj.provenance.source_id,
+                "observed_at": obj.provenance.observed_at,
             },
-            confidence=float(triple.get("confidence", 0.7)),
-            created_at=timestamp,
-            updated_at=timestamp,
+            confidence=obj.confidence,
+            created_at=obj.provenance.observed_at,
+            updated_at=obj.provenance.observed_at,
             attributes={
-                **triple.get("attributes", {}),
-                "timestamp": timestamp,
-                "fact_type": triple.get("fact_type", "profile"),
+                **obj.attributes,
+                "ontology_type": obj.ontology_type,
             },
         )
         store.upsert_fact(GraphFact(**canonical.__dict__))
         upserts += 1
     return upserts
-
-
-def _typed_relation(fact_type: str, predicate: str) -> str:
-    return {
-        "preference": "preference",
-        "profile": "profile",
-        "temporal_fact": "temporal_fact",
-    }.get(fact_type, predicate)
 
 
 def _stable_id(*parts: Iterable[str] | str) -> str:

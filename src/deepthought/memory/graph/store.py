@@ -56,7 +56,30 @@ class GraphEvidence:
     score: float
     confidence: float
     provenance: Provenance
+    freshness: float = 1.0
     attributes: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class GraphEvidenceBundle:
+    layer: str
+    evidences: list[GraphEvidence]
+    provenance: list[Provenance]
+    freshness_score: float
+
+
+@dataclass(frozen=True)
+class ConversationalGraphObject:
+    object_id: str
+    ontology_type: str
+    subject_id: str
+    predicate: str
+    object_id_ref: str | None
+    object_value: str | None
+    confidence: float
+    provenance: Provenance
+    attributes: dict[str, Any] = field(default_factory=dict)
+    temporal: TemporalValidity = field(default_factory=TemporalValidity)
 
 
 def utc_now_iso() -> str:

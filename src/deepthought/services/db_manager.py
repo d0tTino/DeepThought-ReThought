@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import contextlib
 from datetime import datetime, timedelta
 from typing import Any, Mapping
 
@@ -11,6 +12,8 @@ import aiosqlite
 
 from ..config import get_settings
 from ..fact_schema import make_canonical_fact
+from ..memory.graph.pipeline import triples_to_graph_objects
+from ..memory.graph.store import ConversationalGraphObject
 
 SENTIMENT_BACKEND = os.getenv("SENTIMENT_BACKEND", "textblob").lower()
 try:  # Optional dependency
@@ -530,6 +533,99 @@ class DBManager:
                     json.dumps(fact.attributes),
                 ),
             )
+
+    async def adapt_memories_to_graph_objects(
+        self,
+        *,
+        limit: int | None = None,
+    ) -> list[ConversationalGraphObject]:
+        """Adapt legacy ``memories`` rows into typed conversational graph objects."""
+        await self.connect()
+        assert self._db is not None
+        query = "SELECT user_id, topic, memory, sentiment_score, timestamp FROM memories ORDER BY timestamp ASC"
+        params: list[Any] = []
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+        async with self._db.execute(query, params) as cur:
+            rows = await cur.fetchall()
+
+        objects: list[ConversationalGraphObject] = []
+        for row in rows:
+            timestamp = str(row["timestamp"] or datetime.utcnow().isoformat())
+            sentiment = row["sentiment_score"]
+            triples = [
+                {
+                    "subject_id": str(row["user_id"] or "anonymous"),
+                    "subject_type": "user",
+                    "predicate": "memory_note",
+                    "object_id": None,
+                    "object_type": "evidence",
+                    "object_value": str(row["memory"] or ""),
+                    "attributes": {
+                        "topic": str(row["topic"] or ""),
+                        "sentiment_score": float(sentiment) if isinstance(sentiment, (int, float)) else None,
+                    },
+                    "confidence": 0.6,
+                    "fact_type": "utterance",
+                }
+            ]
+            objects.extend(
+                triples_to_graph_objects(
+                    triples,
+                    timestamp=timestamp,
+                    source_id=f"db.memories:{row['user_id']}:{timestamp}",
+                )
+            )
+        return objects
+
+    async def adapt_fact_records_to_graph_objects(
+        self,
+        *,
+        limit: int | None = None,
+    ) -> list[ConversationalGraphObject]:
+        """Adapt canonical ``fact_records`` rows into typed conversational graph objects."""
+        await self.connect()
+        assert self._db is not None
+        query = (
+            "SELECT subject, predicate, object_id, object_value, confidence, "
+            "provenance, attributes, updated_at FROM fact_records ORDER BY updated_at ASC"
+        )
+        params: list[Any] = []
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+        async with self._db.execute(query, params) as cur:
+            rows = await cur.fetchall()
+        objects: list[ConversationalGraphObject] = []
+        for row in rows:
+            attributes_raw = row["attributes"]
+            attributes = {}
+            if isinstance(attributes_raw, str) and attributes_raw.strip():
+                with contextlib.suppress(json.JSONDecodeError):
+                    attributes = json.loads(attributes_raw)
+            timestamp = str(row["updated_at"] or datetime.utcnow().isoformat())
+            triples = [
+                {
+                    "subject_id": str(row["subject"] or "anonymous"),
+                    "subject_type": "user",
+                    "predicate": str(row["predicate"] or "memory_note"),
+                    "object_id": str(row["object_id"]) if row["object_id"] is not None else None,
+                    "object_type": str(attributes.get("object_type") or "evidence"),
+                    "object_value": str(row["object_value"]) if row["object_value"] is not None else None,
+                    "attributes": attributes,
+                    "confidence": float(row["confidence"] or 0.6),
+                    "fact_type": str(attributes.get("fact_type") or "profile"),
+                }
+            ]
+            objects.extend(
+                triples_to_graph_objects(
+                    triples,
+                    timestamp=timestamp,
+                    source_id=f"db.fact_records:{row['subject']}:{row['predicate']}:{timestamp}",
+                )
+            )
+        return objects
 
     async def _ensure_relationship_columns(self) -> None:
         """Add new columns to the relationships table if they don't exist."""

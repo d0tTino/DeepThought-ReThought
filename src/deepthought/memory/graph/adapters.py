@@ -6,6 +6,7 @@ from typing import Any, Sequence
 
 from ...graph.connector import GraphConnector, Neo4jConnector
 from ...fact_schema import format_fact_snippet
+from .ontology import freshness_score
 from .store import (
     GraphEntity,
     GraphEvidence,
@@ -195,6 +196,10 @@ def _rows_to_evidence(rows: Sequence[Any]) -> list[GraphEvidence]:
                 score=_score(confidence, attrs),
                 confidence=confidence,
                 provenance=_prov_from_any(provenance),
+                freshness=freshness_score(
+                    observed_at=str(attrs.get("updated_at") or attrs.get("timestamp") or ""),
+                    ontology_type=str(attrs.get("ontology_type") or "evidence"),
+                ),
                 attributes=attrs,
             )
         )
@@ -233,6 +238,10 @@ def _fact_to_evidence(fact: GraphFact) -> GraphEvidence:
         score=_score(fact.confidence, fact.attributes),
         confidence=fact.confidence,
         provenance=_prov_from_any(fact.provenance),
+        freshness=freshness_score(
+            observed_at=str(attrs.get("updated_at") or attrs.get("timestamp") or ""),
+            ontology_type=str(attrs.get("ontology_type") or "evidence"),
+        ),
         attributes=attrs,
     )
 
