@@ -161,6 +161,14 @@ async def test_social_contract_update_and_retrieval_semantics(tmp_path, monkeypa
     assert retrieved["payload"]["input_id"] == "in-contract"
     assert retrieved["payload"]["social_signals"]["perception"]["flirtation"] == pytest.approx(0.5)
     assert retrieved["payload"]["social_signals"]["affinity"] == updated["payload"]["affinity"]
+    assert retrieved["payload"]["social_signals"]["persona_state"] in {
+        "new_acquaintance",
+        "familiar",
+        "trusted",
+        "repair_mode",
+        "uncertain_mode",
+    }
+    assert isinstance(retrieved["payload"]["social_signals"]["persona_policy_hints"], dict)
 
     await db.close()
 
@@ -216,6 +224,13 @@ async def test_social_signals_include_summarized_context_and_channel_norms(tmp_p
     selector_inputs = retrieved["selector_inputs"]
     assert set(selector_inputs) == {"social_intent_hints", "user_history_affinity", "interaction_policy"}
     assert selector_inputs["interaction_policy"]["response_style"]
+    assert selector_inputs["interaction_policy"]["persona_state"] in {
+        "new_acquaintance",
+        "familiar",
+        "trusted",
+        "repair_mode",
+        "uncertain_mode",
+    }
     assert await db.get_edge_weight("u-1", "u-2", "interaction", channel_id="c-1") > 0
     assert await db.get_edge_weight("u-1", "u-3", "interaction", channel_id="c-1") > 0
     assert await db.get_edge_weight("u-1", "u-4", "interaction", channel_id="c-1") > 0

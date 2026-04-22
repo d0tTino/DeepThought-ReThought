@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import random
+from datetime import datetime, timezone
+from typing import Any
 
 from .db_manager import DBManager
 
@@ -42,6 +44,7 @@ class PersonaManager:
         self._persona_state: dict[str, str] = {}
         self._relationship_state: dict[str, str | None] = {}
         self._sentiment_state: dict[str, float] = {}
+        self._social_persona_state: dict[str, dict[str, Any]] = {}
 
         # Initialize the database once. If an event loop is running we
         # schedule the task and await it on first use. Otherwise we
@@ -123,6 +126,127 @@ class PersonaManager:
         if not options:
             return ""
         return random.choice(options)
+
+    async def transition_persona_state(
+        self,
+        user_id: int | str,
+        *,
+        signals: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Transition durable persona-state using social and feedback signals."""
+        await self._ensure_initialized()
+        uid = str(user_id)
+        profile = await self._db.get_user_profile(uid)
+        model = dict(profile) if isinstance(profile, dict) else {}
+
+        state_block = model.get("persona_state")
+        state_data = dict(state_block) if isinstance(state_block, dict) else {}
+        current_state = str(state_data.get("current") or "new_acquaintance")
+        current_state = self._normalize_social_state(current_state)
+        evidence_log = state_data.get("evidence")
+        evidence = list(evidence_log) if isinstance(evidence_log, list) else []
+
+        normalized = dict(signals or {})
+        next_state, reason, policy_hints = self._derive_social_state(
+            current_state,
+            normalized,
+        )
+        timestamp = datetime.now(timezone.utc).isoformat()
+        evidence_entry = {
+            "at": timestamp,
+            "state": next_state,
+            "reason": reason,
+            "signals": {
+                "delta": normalized.get("delta"),
+                "affinity": normalized.get("affinity"),
+                "trust": normalized.get("trust"),
+                "feedback": normalized.get("feedback"),
+                "perception": normalized.get("perception"),
+                "familiarity_tier": normalized.get("familiarity_tier"),
+                "relationship_status": normalized.get("relationship_status"),
+            },
+        }
+        evidence.append(evidence_entry)
+        evidence = evidence[-20:]
+
+        persona_state = {
+            "current": next_state,
+            "updated_at": timestamp,
+            "reason": reason,
+            "policy_hints": policy_hints,
+            "evidence": evidence,
+        }
+        model["persona_state"] = persona_state
+        await self._db.set_user_profile(uid, model)
+        self._social_persona_state[uid] = persona_state
+        return persona_state
+
+    @staticmethod
+    def _normalize_social_state(state: str) -> str:
+        allowed = {
+            "new_acquaintance",
+            "familiar",
+            "trusted",
+            "repair_mode",
+            "uncertain_mode",
+        }
+        return state if state in allowed else "new_acquaintance"
+
+    def _derive_social_state(
+        self,
+        current_state: str,
+        signals: dict[str, Any],
+    ) -> tuple[str, str, dict[str, Any]]:
+        perception = signals.get("perception")
+        perception_map = perception if isinstance(perception, dict) else {}
+        manipulation = float(perception_map.get("manipulation", 0.0) or 0.0)
+        avoidance = float(perception_map.get("avoidance", 0.0) or 0.0)
+        flirtation = float(perception_map.get("flirtation", 0.0) or 0.0)
+        delta = float(signals.get("delta", 0.0) or 0.0)
+        trust = float(signals.get("trust", 0.0) or 0.0)
+        affinity = float(signals.get("affinity", 0.0) or 0.0)
+        familiarity_tier = str(signals.get("familiarity_tier") or "low")
+        relationship_status = str(signals.get("relationship_status") or "neutral")
+        feedback = signals.get("feedback")
+        feedback_map = feedback if isinstance(feedback, dict) else {}
+        negative_feedback = bool(feedback_map.get("negative"))
+        positive_feedback = bool(feedback_map.get("positive"))
+        uncertain = bool(feedback_map.get("uncertain")) or bool(signals.get("low_confidence"))
+
+        if manipulation >= 0.45 or avoidance >= 0.65 or negative_feedback:
+            next_state = "repair_mode"
+            reason = "social_or_feedback_repair"
+        elif uncertain:
+            next_state = "uncertain_mode"
+            reason = "uncertainty_signal"
+        elif trust >= 6.0 or affinity >= 6.0 or relationship_status == "friend":
+            next_state = "trusted"
+            reason = "high_trust_or_affinity"
+        elif familiarity_tier in {"medium", "high"} or affinity >= 2.0:
+            next_state = "familiar"
+            reason = "growing_familiarity"
+        else:
+            next_state = "new_acquaintance"
+            reason = "limited_history"
+
+        if current_state == "repair_mode" and next_state in {"familiar", "trusted"} and not positive_feedback and delta <= 0:
+            next_state = "repair_mode"
+            reason = "repair_hold"
+
+        policy_hints = {
+            "tone": {
+                "new_acquaintance": "polite_clear",
+                "familiar": "warm_consistent",
+                "trusted": "direct_collaborative",
+                "repair_mode": "careful_empathic",
+                "uncertain_mode": "clarifying",
+            }[next_state],
+            "allow_playfulness": next_state in {"familiar", "trusted"} and flirtation > 0.2,
+            "prioritize_clarification": next_state in {"repair_mode", "uncertain_mode"},
+            "avoid_assumptions": next_state == "uncertain_mode",
+            "repair_needed": next_state == "repair_mode",
+        }
+        return next_state, reason, policy_hints
 
     async def get_description(
         self,

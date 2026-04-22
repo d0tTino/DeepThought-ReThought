@@ -138,6 +138,7 @@ def _build_generation_prompt(
     *,
     user_input: str,
     facts: list[str],
+    social_signals: dict[str, object] | None = None,
     author_name: str | None = None,
     channel_context: str | None = None,
     recent_turn_summary: str | None = None,
@@ -152,6 +153,16 @@ def _build_generation_prompt(
         hints.append(f"- Channel context: {channel_context}")
     if recent_turn_summary:
         hints.append(f"- Recent turn summary: {recent_turn_summary}")
+    social = social_signals if isinstance(social_signals, dict) else {}
+    persona_state = social.get("persona_state")
+    if isinstance(persona_state, str) and persona_state.strip():
+        hints.append(f"- Persona state: {persona_state.strip()}")
+    persona_reason = social.get("persona_state_reason")
+    if isinstance(persona_reason, str) and persona_reason.strip():
+        hints.append(f"- Persona state reason: {persona_reason.strip()}")
+    policy_hints = social.get("persona_policy_hints")
+    if isinstance(policy_hints, dict) and policy_hints:
+        hints.append(f"- Persona policy hints: {json.dumps(policy_hints, sort_keys=True)}")
     hints_block = "\n".join(hints) if hints else "- None"
 
     multimodal = multimodal_interpretations if isinstance(multimodal_interpretations, dict) else {}
@@ -438,6 +449,13 @@ class RemoteLLM:
             prompt = _build_generation_prompt(
                 user_input=user_input,
                 facts=facts,
+                social_signals=(
+                    payload.social_signals
+                    if "retrieved_facts" in data and isinstance(payload.social_signals, dict)
+                    else data.get("social_signals")
+                    if isinstance(data.get("social_signals"), dict)
+                    else {}
+                ),
                 author_name=author_name,
                 channel_context=channel_context,
                 recent_turn_summary=recent_turn_summary,

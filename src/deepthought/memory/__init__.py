@@ -14,16 +14,6 @@ from .vector_store import (
     create_vector_store,
 )
 from .memory_lifecycle_policy import MemoryLifecyclePolicy, MemoryTier, ScoredMemoryEvent
-from .fact_extractor import (
-    extract_typed_fact_triples_from_turn,
-    build_user_fact_context,
-    extract_and_store_user_facts,
-    extract_user_facts,
-    format_user_facts_for_prompt,
-    get_user_fact_profile,
-    merge_user_profiles,
-)
-
 __all__ = [
     "HierarchicalMemory",
     "VectorStore",
@@ -44,6 +34,22 @@ __all__ = [
     "get_user_fact_profile",
     "merge_user_profiles",
 ]
+
+
+def __getattr__(name: str):
+    if name in {
+        "extract_typed_fact_triples_from_turn",
+        "build_user_fact_context",
+        "extract_and_store_user_facts",
+        "extract_user_facts",
+        "format_user_facts_for_prompt",
+        "get_user_fact_profile",
+        "merge_user_profiles",
+    }:
+        from . import fact_extractor as _fact_extractor
+
+        return getattr(_fact_extractor, name)
+    raise AttributeError(name)
 
 
 @dataclass
