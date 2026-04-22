@@ -18,6 +18,7 @@ from ..eda.contracts import EventEnvelope, decode_payload_or_envelope
 from ..eda.events import ContextAssembledPayload, EventSubjects
 from ..eda.publisher import Publisher
 from ..eda.subscriber import Subscriber
+
 if TYPE_CHECKING:  # pragma: no cover
     from .db_manager import DBManager
 
@@ -25,8 +26,18 @@ logger = logging.getLogger(__name__)
 
 
 class _NullAdaptationStore:
-    async def get_adaptation_state(self, *, user_id: str | None = None) -> dict[str, Any]:
+    async def get_adaptation_state(
+        self, *, user_id: str | None = None
+    ) -> dict[str, Any]:
         return {}
+
+
+@dataclass(frozen=True)
+class _QoSProfile:
+    name: str
+    required_providers: tuple[str, ...]
+    wait_window_multiplier: float
+    fallback_behavior: str
 
 
 @dataclass
@@ -65,6 +76,32 @@ class ContextAssemblerService:
 
     _PROVIDER_ORDER = ("memory", "social", "perception")
     _MULTIMODAL_SCHEMA_VERSION = "multimodal.semantic-notes.v1"
+    _QOS_PROFILES: dict[str, _QoSProfile] = {
+        "fast_chat": _QoSProfile(
+            name="fast_chat",
+            required_providers=("memory", "social"),
+            wait_window_multiplier=0.7,
+            fallback_behavior="prefer_speed",
+        ),
+        "fact_check": _QoSProfile(
+            name="fact_check",
+            required_providers=("memory", "social"),
+            wait_window_multiplier=1.5,
+            fallback_behavior="evidence_first",
+        ),
+        "multimodal": _QoSProfile(
+            name="multimodal",
+            required_providers=("memory", "perception"),
+            wait_window_multiplier=1.25,
+            fallback_behavior="clarify_when_vision_missing",
+        ),
+        "high_risk": _QoSProfile(
+            name="high_risk",
+            required_providers=_PROVIDER_ORDER,
+            wait_window_multiplier=1.75,
+            fallback_behavior="conservative_degrade",
+        ),
+    }
 
     @classmethod
     def _normalize_multimodal(cls, raw: Any) -> dict[str, Any]:
@@ -75,8 +112,15 @@ class ContextAssemblerService:
                 "notes": [],
                 "by_modality": {},
                 "attachments": None,
-                "confidence": {"aggregate": 0.0, "low_confidence": True, "threshold": 0.45},
-                "fallback": {"ask_clarifying_question": True, "reason": "missing multimodal interpretations"},
+                "confidence": {
+                    "aggregate": 0.0,
+                    "low_confidence": True,
+                    "threshold": 0.45,
+                },
+                "fallback": {
+                    "ask_clarifying_question": True,
+                    "reason": "missing multimodal interpretations",
+                },
             }
 
         normalized = dict(raw)
@@ -85,8 +129,12 @@ class ContextAssemblerService:
         normalized.setdefault("notes", [])
         normalized.setdefault("by_modality", {})
         normalized.setdefault("attachments", None)
-        normalized.setdefault("confidence", {"aggregate": 0.0, "low_confidence": True, "threshold": 0.45})
-        normalized.setdefault("fallback", {"ask_clarifying_question": False, "reason": ""})
+        normalized.setdefault(
+            "confidence", {"aggregate": 0.0, "low_confidence": True, "threshold": 0.45}
+        )
+        normalized.setdefault(
+            "fallback", {"ask_clarifying_question": False, "reason": ""}
+        )
         return normalized
 
     def __init__(
@@ -101,6 +149,7 @@ class ContextAssemblerService:
         max_provider_timeout_seconds: float = 0.75,
         latency_history_size: int = 64,
         late_arrival_window_seconds: float = 0.1,
+        adaptation_state_timeout_seconds: float = 0.05,
     ) -> None:
         self._publisher = Publisher(nats_client, js_context)
         self._subscriber = Subscriber(nats_client, js_context)
@@ -116,12 +165,18 @@ class ContextAssemblerService:
         self._wait_window_seconds = max(0.01, wait_window_seconds)
         self._provider_jitter_budget_seconds = max(0.0, provider_jitter_budget_seconds)
         self._min_provider_timeout_seconds = max(0.005, min_provider_timeout_seconds)
-        self._max_provider_timeout_seconds = max(self._min_provider_timeout_seconds, max_provider_timeout_seconds)
+        self._max_provider_timeout_seconds = max(
+            self._min_provider_timeout_seconds, max_provider_timeout_seconds
+        )
         self._latency_history_size = max(5, latency_history_size)
         self._late_arrival_window_seconds = max(0.0, late_arrival_window_seconds)
+        self._adaptation_state_timeout_seconds = max(
+            0.01, adaptation_state_timeout_seconds
+        )
 
         self._provider_latency_history: dict[str, deque[float]] = {
-            provider: deque(maxlen=self._latency_history_size) for provider in self._PROVIDER_ORDER
+            provider: deque(maxlen=self._latency_history_size)
+            for provider in self._PROVIDER_ORDER
         }
         self._pending: dict[str, _PendingAssembly] = {}
         self._recently_published: dict[str, _PublishedAssembly] = {}
@@ -132,9 +187,19 @@ class ContextAssemblerService:
         if not isinstance(principal, str) or not principal.strip():
             return {}
         try:
-            return await self._db.get_adaptation_state(user_id=principal)
+            return await asyncio.wait_for(
+                self._db.get_adaptation_state(user_id=principal),
+                timeout=self._adaptation_state_timeout_seconds,
+            )
+        except TimeoutError:
+            logger.warning(
+                "Timed out loading adaptation state for principal=%s", principal
+            )
+            return {}
         except Exception:
-            logger.exception("Failed to load adaptation state for principal=%s", principal)
+            logger.exception(
+                "Failed to load adaptation state for principal=%s", principal
+            )
             return {}
 
     @staticmethod
@@ -144,18 +209,32 @@ class ContextAssemblerService:
     ) -> dict[str, Any]:
         merged = dict(social_signals)
         selector_inputs = dict(merged.get("selector_inputs") or {})
-        user_profile = adaptation_state.get("user") if isinstance(adaptation_state.get("user"), dict) else {}
+        user_profile = (
+            adaptation_state.get("user")
+            if isinstance(adaptation_state.get("user"), dict)
+            else {}
+        )
         response_style = None
         if isinstance(user_profile.get("response_style"), dict):
             response_style = user_profile["response_style"].get("preferred")
-        fallback_profile = adaptation_state.get("fallback") if isinstance(adaptation_state.get("fallback"), dict) else {}
-        source_profiles = adaptation_state.get("sources") if isinstance(adaptation_state.get("sources"), dict) else {}
+        fallback_profile = (
+            adaptation_state.get("fallback")
+            if isinstance(adaptation_state.get("fallback"), dict)
+            else {}
+        )
+        source_profiles = (
+            adaptation_state.get("sources")
+            if isinstance(adaptation_state.get("sources"), dict)
+            else {}
+        )
 
         interaction_policy = dict(selector_inputs.get("interaction_policy") or {})
         if isinstance(response_style, str) and response_style.strip():
             interaction_policy["response_style"] = response_style.strip().lower()
         if "aggressiveness" in fallback_profile:
-            interaction_policy["fallback_aggressiveness"] = fallback_profile.get("aggressiveness")
+            interaction_policy["fallback_aggressiveness"] = fallback_profile.get(
+                "aggressiveness"
+            )
 
         user_history_affinity = dict(selector_inputs.get("user_history_affinity") or {})
         for source_name, source_profile in source_profiles.items():
@@ -166,7 +245,10 @@ class ContextAssemblerService:
                 continue
             weight_multiplier = selector_profile.get("weight_multiplier")
             if isinstance(weight_multiplier, (int, float)):
-                user_history_affinity.setdefault(str(source_name), max(-1.0, min(1.0, float(weight_multiplier) - 1.0)))
+                user_history_affinity.setdefault(
+                    str(source_name),
+                    max(-1.0, min(1.0, float(weight_multiplier) - 1.0)),
+                )
 
         selector_inputs["interaction_policy"] = interaction_policy
         selector_inputs["user_history_affinity"] = user_history_affinity
@@ -188,7 +270,53 @@ class ContextAssemblerService:
         baseline = p95 if p95 is not None else self._wait_window_seconds
         return max(
             self._min_provider_timeout_seconds,
-            min(self._max_provider_timeout_seconds, baseline + self._provider_jitter_budget_seconds),
+            min(
+                self._max_provider_timeout_seconds,
+                baseline + self._provider_jitter_budget_seconds,
+            ),
+        )
+
+    def _classify_request_profile(self, payload: dict[str, Any]) -> _QoSProfile:
+        explicit_profile = payload.get("qos_profile")
+        if isinstance(explicit_profile, str):
+            normalized = explicit_profile.strip().lower()
+            if normalized in self._QOS_PROFILES:
+                return self._QOS_PROFILES[normalized]
+
+        text = str(payload.get("user_input", "")).lower()
+        attachments = payload.get("attachments")
+        has_attachments = isinstance(attachments, list) and len(attachments) > 0
+        high_risk_tokens = (
+            "self-harm",
+            "suicide",
+            "kill",
+            "overdose",
+            "weapon",
+            "emergency",
+        )
+        fact_check_tokens = ("source", "citation", "verify", "proof", "fact check")
+        if any(token in text for token in high_risk_tokens):
+            return self._QOS_PROFILES["high_risk"]
+        if has_attachments:
+            return self._QOS_PROFILES["multimodal"]
+        if any(token in text for token in fact_check_tokens):
+            return self._QOS_PROFILES["fact_check"]
+        return self._QOS_PROFILES["fast_chat"]
+
+    def _provider_timeout_for_profile(
+        self, provider: str, profile: _QoSProfile
+    ) -> float:
+        adjusted_window = max(
+            0.005, self._wait_window_seconds * profile.wait_window_multiplier
+        )
+        p95 = self._estimate_p95(self._provider_latency_history[provider])
+        baseline = p95 if p95 is not None else adjusted_window
+        return max(
+            self._min_provider_timeout_seconds,
+            min(
+                self._max_provider_timeout_seconds,
+                baseline + self._provider_jitter_budget_seconds,
+            ),
         )
 
     @staticmethod
@@ -204,7 +332,9 @@ class ContextAssemblerService:
             raw = payload.get("multimodal_interpretations", payload)
             if not isinstance(raw, dict):
                 return False
-            return bool(raw.get("notes") or raw.get("by_modality") or raw.get("summary"))
+            return bool(
+                raw.get("notes") or raw.get("by_modality") or raw.get("summary")
+            )
         return bool(payload)
 
     @staticmethod
@@ -219,7 +349,10 @@ class ContextAssemblerService:
         *,
         now: float,
     ) -> str | None:
-        if provider in pending.provider_missing_reasons and pending.provider_missing_reasons[provider]:
+        if (
+            provider in pending.provider_missing_reasons
+            and pending.provider_missing_reasons[provider]
+        ):
             return pending.provider_missing_reasons[provider]
         if provider not in pending.provider_payloads:
             return "timeout" if now >= pending.provider_deadlines[provider] else None
@@ -231,7 +364,14 @@ class ContextAssemblerService:
             return "no_data"
         return None
 
-    async def _publish_fanout_requests(self, payload: dict[str, Any], *, trace_id: str | None, causation_id: str | None) -> None:
+    async def _publish_fanout_requests(
+        self,
+        payload: dict[str, Any],
+        *,
+        trace_id: str | None,
+        causation_id: str | None,
+        providers: set[str] | None = None,
+    ) -> None:
         fanout_payload = {
             "input_id": payload.get("input_id"),
             "trace_id": trace_id,
@@ -243,11 +383,18 @@ class ContextAssemblerService:
             "timestamp": payload.get("timestamp"),
             "attachments": payload.get("attachments"),
         }
-        for subject in (
-            EventSubjects.MEMORY_RETRIEVAL_REQUESTED,
-            EventSubjects.SOCIAL_SIGNALS_REQUESTED,
-            EventSubjects.PERCEPTION_INTERPRET_REQUESTED,
-        ):
+        fanout_subjects = {
+            "memory": EventSubjects.MEMORY_RETRIEVAL_REQUESTED,
+            "social": EventSubjects.SOCIAL_SIGNALS_REQUESTED,
+            "perception": EventSubjects.PERCEPTION_INTERPRET_REQUESTED,
+        }
+        target_providers = (
+            providers if providers is not None else set(self._PROVIDER_ORDER)
+        )
+        for provider in self._PROVIDER_ORDER:
+            if provider not in target_providers:
+                continue
+            subject = fanout_subjects[provider]
             envelope = EventEnvelope.build(
                 subject=subject,
                 payload=fanout_payload,
@@ -255,38 +402,61 @@ class ContextAssemblerService:
                 trace_id=trace_id,
                 causation_id=causation_id,
             )
-            await self._publisher.publish(subject, envelope.__dict__, use_jetstream=True)
+            await self._publisher.publish(
+                subject, envelope.__dict__, use_jetstream=True
+            )
 
     async def _handle_input_received(self, msg: Msg) -> None:
         try:
             data = json.loads(msg.data.decode())
             if not isinstance(data, dict):
                 raise ValueError("Input payload must be an object")
-            payload, envelope_meta = decode_payload_or_envelope(EventSubjects.INPUT_RECEIVED, data)
+            payload, envelope_meta = decode_payload_or_envelope(
+                EventSubjects.INPUT_RECEIVED, data
+            )
             input_id = payload.get("input_id")
             user_input = payload.get("user_input")
             if not isinstance(input_id, str) or not isinstance(user_input, str):
                 raise ValueError("Input payload missing required fields")
 
+            profile = self._classify_request_profile(payload)
             loop_time = asyncio.get_running_loop().time()
             provider_deadlines = {
-                provider: loop_time + self._provider_timeout_seconds(provider) for provider in self._PROVIDER_ORDER
+                provider: loop_time
+                + self._provider_timeout_for_profile(provider, profile)
+                for provider in self._PROVIDER_ORDER
             }
             adaptation_state = await self._load_adaptation_state(payload)
             payload["adaptation_state"] = adaptation_state
+            payload["qos_profile"] = profile.name
             pending = _PendingAssembly(
                 request=payload,
-                trace_id=envelope_meta.get("trace_id") if isinstance(envelope_meta.get("trace_id"), str) else None,
-                required_providers=set(self._PROVIDER_ORDER),
+                trace_id=(
+                    envelope_meta.get("trace_id")
+                    if isinstance(envelope_meta.get("trace_id"), str)
+                    else None
+                ),
+                required_providers=set(profile.required_providers),
                 provider_deadlines=provider_deadlines,
-                provider_missing_reasons={provider: None for provider in self._PROVIDER_ORDER},
+                provider_missing_reasons={
+                    provider: None for provider in self._PROVIDER_ORDER
+                },
                 started_at=loop_time,
             )
             async with self._lock:
                 self._pending[input_id] = pending
 
-            causation_id = envelope_meta.get("event_id") if isinstance(envelope_meta.get("event_id"), str) else input_id
-            await self._publish_fanout_requests(payload, trace_id=pending.trace_id, causation_id=causation_id)
+            causation_id = (
+                envelope_meta.get("event_id")
+                if isinstance(envelope_meta.get("event_id"), str)
+                else input_id
+            )
+            await self._publish_fanout_requests(
+                payload,
+                trace_id=pending.trace_id,
+                causation_id=causation_id,
+                providers=set(self._PROVIDER_ORDER),
+            )
             asyncio.create_task(self._await_and_publish(input_id))
             await msg.ack()
         except Exception:
@@ -294,7 +464,9 @@ class ContextAssemblerService:
             if hasattr(msg, "nak") and callable(msg.nak):
                 await msg.nak()
 
-    async def _emit_context_update(self, input_id: str, entry: _PublishedAssembly, provider_name: str) -> None:
+    async def _emit_context_update(
+        self, input_id: str, entry: _PublishedAssembly, provider_name: str
+    ) -> None:
         envelope = EventEnvelope.build(
             subject=EventSubjects.CONTEXT_UPDATED,
             payload=entry.payload,
@@ -302,8 +474,14 @@ class ContextAssemblerService:
             trace_id=entry.trace_id,
             causation_id=input_id,
         )
-        await self._publisher.publish(EventSubjects.CONTEXT_UPDATED, envelope.__dict__, use_jetstream=True)
-        logger.debug("Published %s late-arrival context update for input_id=%s", provider_name, input_id)
+        await self._publisher.publish(
+            EventSubjects.CONTEXT_UPDATED, envelope.__dict__, use_jetstream=True
+        )
+        logger.debug(
+            "Published %s late-arrival context update for input_id=%s",
+            provider_name,
+            input_id,
+        )
 
     async def _handle_provider_response(self, msg: Msg, provider_name: str) -> None:
         try:
@@ -321,7 +499,9 @@ class ContextAssemblerService:
                 raise ValueError("Provider payload missing input_id")
             response_trace_id = envelope_meta.get("trace_id") or payload.get("trace_id")
             if response_trace_id is not None and not isinstance(response_trace_id, str):
-                raise ValueError("Provider payload trace_id must be a string when provided")
+                raise ValueError(
+                    "Provider payload trace_id must be a string when provided"
+                )
 
             loop_now = asyncio.get_running_loop().time()
             late_update_entry: _PublishedAssembly | None = None
@@ -329,7 +509,11 @@ class ContextAssemblerService:
                 self._purge_expired_published(loop_now)
                 pending = self._pending.get(input_id)
                 if pending is not None and not pending.published:
-                    if pending.trace_id and response_trace_id and pending.trace_id != response_trace_id:
+                    if (
+                        pending.trace_id
+                        and response_trace_id
+                        and pending.trace_id != response_trace_id
+                    ):
                         logger.debug(
                             "Ignoring %s provider response due to trace mismatch input_id=%s expected=%s actual=%s",
                             provider_name,
@@ -341,16 +525,19 @@ class ContextAssemblerService:
                         return
                     pending.provider_payloads[provider_name] = payload
                     pending.provider_received_at[provider_name] = loop_now
-                    pending.provider_missing_reasons[provider_name] = self._derive_provider_missing_reason(
-                        provider_name,
-                        pending,
-                        now=loop_now,
+                    pending.provider_missing_reasons[provider_name] = (
+                        self._derive_provider_missing_reason(
+                            provider_name,
+                            pending,
+                            now=loop_now,
+                        )
                     )
                     latency = max(0.0, loop_now - pending.started_at)
                     self._provider_latency_history[provider_name].append(latency)
                     pending.state = (
                         _AssemblyState.COMPLETE
-                        if len(pending.provider_payloads) == len(pending.required_providers)
+                        if len(pending.provider_payloads)
+                        == len(pending.required_providers)
                         else _AssemblyState.PARTIAL_READY
                     )
                     pending.event.set()
@@ -362,16 +549,24 @@ class ContextAssemblerService:
                         and recent.expires_at >= loop_now
                     ):
                         late_update_entry = recent
-                        recent.payload = self._merge_late_provider_payload(recent.payload, provider_name, payload)
-                        recent.payload["confidence"]["update_reason"] = "late_provider_merge"
+                        recent.payload = self._merge_late_provider_payload(
+                            recent.payload, provider_name, payload
+                        )
+                        recent.payload["confidence"][
+                            "update_reason"
+                        ] = "late_provider_merge"
                         recent.payload["confidence"]["late_update"] = True
                         recent.missing_at_publish.discard(provider_name)
 
             if late_update_entry is not None:
-                await self._emit_context_update(input_id, late_update_entry, provider_name)
+                await self._emit_context_update(
+                    input_id, late_update_entry, provider_name
+                )
             await msg.ack()
         except Exception:
-            logger.exception("Failed to process provider response for %s", provider_name)
+            logger.exception(
+                "Failed to process provider response for %s", provider_name
+            )
             if hasattr(msg, "nak") and callable(msg.nak):
                 await msg.nak()
 
@@ -386,12 +581,17 @@ class ContextAssemblerService:
         completed = list(confidence.get("completed_providers") or [])
         missing = list(confidence.get("missing_providers") or [])
         missing_reasons = dict(confidence.get("provider_missing_reasons") or {})
+        required_providers = list(
+            confidence.get("required_providers") or self._PROVIDER_ORDER
+        )
         provider_timings = dict(confidence.get("provider_timings") or {})
 
         if provider_name == "memory":
             retrieved = provider_payload.get("retrieved_knowledge", {})
             facts = retrieved.get("facts") if isinstance(retrieved, dict) else []
-            payload["retrieved_facts"] = [str(f) for f in facts] if isinstance(facts, list) else []
+            payload["retrieved_facts"] = (
+                [str(f) for f in facts] if isinstance(facts, list) else []
+            )
         elif provider_name == "social":
             social = provider_payload.get("social_signals", provider_payload)
             payload["social_signals"] = social if isinstance(social, dict) else {}
@@ -410,23 +610,40 @@ class ContextAssemblerService:
         timing["missing_reason"] = None
         provider_timings[provider_name] = timing
 
-        confidence["completed_providers"] = [p for p in self._PROVIDER_ORDER if p in completed]
-        confidence["missing_providers"] = [p for p in self._PROVIDER_ORDER if p in missing]
+        confidence["completed_providers"] = [
+            p for p in self._PROVIDER_ORDER if p in completed
+        ]
+        confidence["missing_providers"] = [
+            p for p in self._PROVIDER_ORDER if p in missing
+        ]
         confidence["provider_missing_reasons"] = missing_reasons
         confidence["provider_timings"] = provider_timings
-        confidence["provider_coverage"] = len(confidence["completed_providers"]) / len(self._PROVIDER_ORDER)
+        confidence["provider_coverage"] = len(confidence["completed_providers"]) / len(
+            required_providers
+        )
+        confidence["required_providers"] = [
+            p for p in self._PROVIDER_ORDER if p in required_providers
+        ]
+        confidence["missing_reasons"] = dict(missing_reasons)
+        confidence["quality_score"] = max(
+            0.0, min(1.0, confidence["provider_coverage"])
+        )
         confidence["partial"] = bool(confidence["missing_providers"])
         payload["confidence"] = confidence
         return payload
 
-    def _build_context_payload(self, input_id: str, pending: _PendingAssembly, elapsed: float) -> ContextAssembledPayload:
+    def _build_context_payload(
+        self, input_id: str, pending: _PendingAssembly, elapsed: float
+    ) -> ContextAssembledPayload:
         request = pending.request
         memory_payload = pending.provider_payloads.get("memory", {})
         retrieved = memory_payload.get("retrieved_knowledge", {})
         facts = retrieved.get("facts") if isinstance(retrieved, dict) else []
         if not isinstance(facts, list):
             facts = []
-        retrieval_layers = retrieved.get("layers") if isinstance(retrieved, dict) else {}
+        retrieval_layers = (
+            retrieved.get("layers") if isinstance(retrieved, dict) else {}
+        )
         if not isinstance(retrieval_layers, dict):
             retrieval_layers = {}
 
@@ -434,14 +651,26 @@ class ContextAssemblerService:
         social_signals = social_payload.get("social_signals", social_payload)
         if not isinstance(social_signals, dict):
             social_signals = {}
-        adaptation_state = request.get("adaptation_state") if isinstance(request.get("adaptation_state"), dict) else {}
-        social_signals = self._merge_adaptation_into_social_signals(social_signals, adaptation_state)
+        adaptation_state = (
+            request.get("adaptation_state")
+            if isinstance(request.get("adaptation_state"), dict)
+            else {}
+        )
+        social_signals = self._merge_adaptation_into_social_signals(
+            social_signals, adaptation_state
+        )
 
         perception_payload = pending.provider_payloads.get("perception", {})
-        multimodal = self._normalize_multimodal(perception_payload.get("multimodal_interpretations", perception_payload))
+        multimodal = self._normalize_multimodal(
+            perception_payload.get("multimodal_interpretations", perception_payload)
+        )
 
         request_window = request.get("conversation_window")
-        memory_window = retrieved.get("conversation_window") if isinstance(retrieved, dict) else None
+        memory_window = (
+            retrieved.get("conversation_window")
+            if isinstance(retrieved, dict)
+            else None
+        )
         conversation_window = []
         for candidate in (request_window, memory_window):
             if not isinstance(candidate, list):
@@ -453,7 +682,10 @@ class ContextAssemblerService:
             deduped_window = []
             seen_turns: set[tuple[str, str]] = set()
             for turn in conversation_window:
-                key = (str(turn.get("message_id") or ""), str(turn.get("timestamp") or ""))
+                key = (
+                    str(turn.get("message_id") or ""),
+                    str(turn.get("timestamp") or ""),
+                )
                 if key in seen_turns:
                     continue
                 seen_turns.add(key)
@@ -462,27 +694,56 @@ class ContextAssemblerService:
 
         recent_turn_summary = request.get("recent_turn_summary")
         if not isinstance(recent_turn_summary, str) or not recent_turn_summary.strip():
-            memory_summary = retrieved.get("recent_turn_summary") if isinstance(retrieved, dict) else None
-            recent_turn_summary = memory_summary if isinstance(memory_summary, str) and memory_summary.strip() else None
+            memory_summary = (
+                retrieved.get("recent_turn_summary")
+                if isinstance(retrieved, dict)
+                else None
+            )
+            recent_turn_summary = (
+                memory_summary
+                if isinstance(memory_summary, str) and memory_summary.strip()
+                else None
+            )
 
-        retrieval_policy = retrieved.get("retrieval_policy") if isinstance(retrieved, dict) else None
+        retrieval_policy = (
+            retrieved.get("retrieval_policy") if isinstance(retrieved, dict) else None
+        )
         if not isinstance(retrieval_policy, dict):
             retrieval_policy = {}
-        retrieval_adaptation = adaptation_state.get("retrieval") if isinstance(adaptation_state.get("retrieval"), dict) else {}
+        retrieval_adaptation = (
+            adaptation_state.get("retrieval")
+            if isinstance(adaptation_state.get("retrieval"), dict)
+            else {}
+        )
         if retrieval_adaptation:
             retrieval_policy = {**retrieval_policy, **retrieval_adaptation}
 
-        completed = [name for name in self._PROVIDER_ORDER if name in pending.provider_payloads]
+        required_providers = [
+            provider
+            for provider in self._PROVIDER_ORDER
+            if provider in pending.required_providers
+        ]
+        completed = [
+            name for name in required_providers if name in pending.provider_payloads
+        ]
         now = pending.started_at + elapsed
         missing = []
         missing_reasons: dict[str, str] = {}
         provider_timings = {}
         for provider in self._PROVIDER_ORDER:
-            deadline_offset_ms = int((pending.provider_deadlines[provider] - pending.started_at) * 1000)
+            deadline_offset_ms = int(
+                (pending.provider_deadlines[provider] - pending.started_at) * 1000
+            )
             received_at = pending.provider_received_at.get(provider)
-            received_offset_ms = int((received_at - pending.started_at) * 1000) if received_at is not None else None
-            missing_reason = self._derive_provider_missing_reason(provider, pending, now=now)
-            if missing_reason:
+            received_offset_ms = (
+                int((received_at - pending.started_at) * 1000)
+                if received_at is not None
+                else None
+            )
+            missing_reason = self._derive_provider_missing_reason(
+                provider, pending, now=now
+            )
+            if missing_reason and provider in pending.required_providers:
                 missing.append(provider)
                 missing_reasons[provider] = missing_reason
             provider_timings[provider] = {
@@ -493,21 +754,35 @@ class ContextAssemblerService:
             }
 
         provider_latency_p95_ms = {
-            provider: int(self._estimate_p95(self._provider_latency_history[provider]) * 1000)
-            if self._estimate_p95(self._provider_latency_history[provider]) is not None
-            else None
+            provider: (
+                int(self._estimate_p95(self._provider_latency_history[provider]) * 1000)
+                if self._estimate_p95(self._provider_latency_history[provider])
+                is not None
+                else None
+            )
             for provider in self._PROVIDER_ORDER
         }
         provider_timeout_budget_ms = {
-            provider: int((pending.provider_deadlines[provider] - pending.started_at) * 1000)
+            provider: int(
+                (pending.provider_deadlines[provider] - pending.started_at) * 1000
+            )
             for provider in self._PROVIDER_ORDER
         }
 
+        required_count = max(1, len(required_providers))
+        provider_coverage = len(completed) / required_count
+        quality_score = provider_coverage
+        if missing_reasons:
+            quality_score = max(0.0, quality_score - 0.1 * len(missing_reasons))
+
         confidence = {
-            "provider_coverage": len(completed) / len(self._PROVIDER_ORDER),
+            "provider_coverage": provider_coverage,
             "completed_providers": completed,
             "missing_providers": missing,
             "provider_missing_reasons": missing_reasons,
+            "required_providers": required_providers,
+            "missing_reasons": missing_reasons,
+            "quality_score": max(0.0, min(1.0, quality_score)),
             "window_ms": int(self._wait_window_seconds * 1000),
             "elapsed_ms": int(elapsed * 1000),
             "partial": bool(missing),
@@ -519,6 +794,11 @@ class ContextAssemblerService:
             "provider_timeout_budget_ms": provider_timeout_budget_ms,
             "retrieval_layers": retrieval_layers,
             "retrieval_policy": retrieval_policy,
+            "qos_profile": request.get("qos_profile", "fast_chat"),
+            "fallback_behavior": self._QOS_PROFILES.get(
+                str(request.get("qos_profile", "fast_chat")),
+                self._QOS_PROFILES["fast_chat"],
+            ).fallback_behavior,
         }
 
         return ContextAssembledPayload(
@@ -536,11 +816,16 @@ class ContextAssemblerService:
             channel_id=request.get("channel_id"),
             channel_context=request.get("channel_context"),
             recent_turn_summary=recent_turn_summary,
-            timestamp=request.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+            timestamp=request.get("timestamp")
+            or datetime.now(timezone.utc).isoformat(),
         )
 
     def _purge_expired_published(self, now: float) -> None:
-        expired = [input_id for input_id, entry in self._recently_published.items() if entry.expires_at < now]
+        expired = [
+            input_id
+            for input_id, entry in self._recently_published.items()
+            if entry.expires_at < now
+        ]
         for input_id in expired:
             del self._recently_published[input_id]
 
@@ -555,8 +840,15 @@ class ContextAssemblerService:
                     return
 
                 now = loop.time()
-                all_received = len(pending.provider_payloads) == len(self._PROVIDER_ORDER)
-                timed_out = all(now >= pending.provider_deadlines[p] for p in self._PROVIDER_ORDER if p not in pending.provider_payloads)
+                all_received = all(
+                    provider in pending.provider_payloads
+                    for provider in pending.required_providers
+                )
+                timed_out = all(
+                    now >= pending.provider_deadlines[p]
+                    for p in pending.required_providers
+                    if p not in pending.provider_payloads
+                )
                 if all_received:
                     pending.state = _AssemblyState.COMPLETE
                     publish_reason = "all_providers_received"
@@ -568,7 +860,7 @@ class ContextAssemblerService:
 
                 next_deadline = min(
                     pending.provider_deadlines[p]
-                    for p in self._PROVIDER_ORDER
+                    for p in pending.required_providers
                     if p not in pending.provider_payloads
                 )
                 sleep_for = max(0.001, min(0.01, next_deadline - now))
@@ -585,7 +877,9 @@ class ContextAssemblerService:
             elapsed = loop.time() - pending.started_at
             payload = self._build_context_payload(input_id, pending, elapsed)
             payload_dict = json.loads(payload.to_json())
-            missing = set(payload_dict.get("confidence", {}).get("missing_providers", []))
+            missing = set(
+                payload_dict.get("confidence", {}).get("missing_providers", [])
+            )
             self._recently_published[input_id] = _PublishedAssembly(
                 payload=payload_dict,
                 trace_id=pending.trace_id,
@@ -601,7 +895,9 @@ class ContextAssemblerService:
             trace_id=pending.trace_id,
             causation_id=input_id,
         )
-        await self._publisher.publish(EventSubjects.CONTEXT_ASSEMBLED, envelope.__dict__, use_jetstream=True)
+        await self._publisher.publish(
+            EventSubjects.CONTEXT_ASSEMBLED, envelope.__dict__, use_jetstream=True
+        )
 
     async def start(self, durable_name: str = "context_assembler") -> bool:
         try:
