@@ -112,6 +112,7 @@ class ContextAssemblerService:
                 "notes": [],
                 "by_modality": {},
                 "attachments": None,
+                "evidence": [],
                 "confidence": {
                     "aggregate": 0.0,
                     "low_confidence": True,
@@ -129,6 +130,11 @@ class ContextAssemblerService:
         normalized.setdefault("notes", [])
         normalized.setdefault("by_modality", {})
         normalized.setdefault("attachments", None)
+        evidence = normalized.get("evidence")
+        if not isinstance(evidence, list):
+            normalized["evidence"] = []
+        else:
+            normalized["evidence"] = [item for item in evidence if isinstance(item, dict)]
         normalized.setdefault(
             "confidence", {"aggregate": 0.0, "low_confidence": True, "threshold": 0.45}
         )
@@ -592,6 +598,11 @@ class ContextAssemblerService:
             payload["retrieved_facts"] = (
                 [str(f) for f in facts] if isinstance(facts, list) else []
             )
+            memory_evidence = retrieved.get("evidence") if isinstance(retrieved, dict) else None
+            if isinstance(memory_evidence, list):
+                payload["evidence"] = [item for item in memory_evidence if isinstance(item, dict)] + [
+                    item for item in payload.get("evidence", []) if isinstance(item, dict)
+                ]
         elif provider_name == "social":
             social = provider_payload.get("social_signals", provider_payload)
             payload["social_signals"] = social if isinstance(social, dict) else {}
@@ -599,6 +610,9 @@ class ContextAssemblerService:
             payload["multimodal_interpretations"] = self._normalize_multimodal(
                 provider_payload.get("multimodal_interpretations", provider_payload)
             )
+            payload["evidence"] = [
+                item for item in payload.get("evidence", []) if isinstance(item, dict)
+            ] + list(payload["multimodal_interpretations"].get("evidence") or [])
 
         if provider_name not in completed:
             completed.append(provider_name)
@@ -664,6 +678,11 @@ class ContextAssemblerService:
         multimodal = self._normalize_multimodal(
             perception_payload.get("multimodal_interpretations", perception_payload)
         )
+        evidence: list[dict[str, Any]] = []
+        memory_evidence = retrieved.get("evidence") if isinstance(retrieved, dict) else None
+        if isinstance(memory_evidence, list):
+            evidence.extend(item for item in memory_evidence if isinstance(item, dict))
+        evidence.extend(item for item in multimodal.get("evidence", []) if isinstance(item, dict))
 
         request_window = request.get("conversation_window")
         memory_window = (
@@ -808,6 +827,7 @@ class ContextAssemblerService:
             retrieved_facts=[str(f) for f in facts],
             social_signals=social_signals,
             multimodal_interpretations=multimodal,
+            evidence=evidence,
             confidence=confidence,
             adaptation_state=adaptation_state,
             user_id=request.get("user_id"),

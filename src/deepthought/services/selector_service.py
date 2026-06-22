@@ -78,6 +78,7 @@ class SelectorService:
         self._context_degradation_weight = 0.25
         self._policy_fit_weight = 0.2
         self._history_affinity_weight = 0.15
+        self._unsupported_evidence_weight = 1.0
         self._policy_engine = VersionedPolicyEngine()
 
     def _default_toxicity_guard(self, candidate: ResponseCandidate) -> bool:
@@ -194,6 +195,21 @@ class SelectorService:
 
         return max(0.0, min(1.0, score))
 
+    def _unsupported_evidence_penalty(self, candidate: ResponseCandidate) -> float:
+        metadata = candidate.source_metadata if isinstance(candidate.source_metadata, dict) else {}
+        evidence_meta = metadata.get("evidence") if isinstance(metadata.get("evidence"), dict) else {}
+        grounding = metadata.get("grounding") if isinstance(metadata.get("grounding"), dict) else {}
+        unsupported = evidence_meta.get("unsupported_claims") if isinstance(evidence_meta, dict) else None
+        penalty = 0.0
+        if isinstance(unsupported, list) and unsupported:
+            penalty += min(0.35, 0.12 * len(unsupported))
+        if grounding.get("supported_by_evidence") is False:
+            penalty += 0.15
+        explicit_penalty = grounding.get("unsupported_evidence_penalty")
+        if isinstance(explicit_penalty, (int, float)):
+            penalty += float(explicit_penalty)
+        return max(0.0, min(0.6, penalty))
+
     def _user_history_affinity_score(
         self,
         candidate: ResponseCandidate,
@@ -239,9 +255,16 @@ class SelectorService:
             if not self._contradiction_checker(candidate, candidates):
                 rejection_reasons.append("contradiction")
             penalty = self._repetition_penalty(candidate, candidates)
+            unsupported_evidence_penalty = self._unsupported_evidence_penalty(candidate)
             final_score = max(
                 0.0,
-                normalized + policy_adjustment + affinity_adjustment + context_adjustment - penalty + min(0.05, 0.01 * len(candidate.rationale_tags or [])),
+                normalized
+                + policy_adjustment
+                + affinity_adjustment
+                + context_adjustment
+                - penalty
+                - (self._unsupported_evidence_weight * unsupported_evidence_penalty)
+                + min(0.05, 0.01 * len(candidate.rationale_tags or [])),
             )
             policy_decision = self._policy_engine.evaluate_candidate(
                 text=candidate.text,
@@ -259,6 +282,7 @@ class SelectorService:
                 "history_affinity": affinity_score,
                 "history_adjustment": affinity_adjustment,
                 "repetition_penalty": penalty,
+                "unsupported_evidence_penalty": unsupported_evidence_penalty,
                 "policy_risk_level": policy_decision.risk_level,
                 "policy_confidence_band": policy_decision.confidence_band,
             }
@@ -382,6 +406,7 @@ class SelectorService:
                 "context_degradation": self._context_degradation_weight,
                 "policy_fit": self._policy_fit_weight,
                 "history_affinity": self._history_affinity_weight,
+                "unsupported_evidence": self._unsupported_evidence_weight,
             },
             "diagnostics": diagnostics,
         }

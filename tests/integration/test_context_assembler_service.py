@@ -162,6 +162,16 @@ async def test_context_assembler_composes_request_and_memory_context(monkeypatch
                     "recent_turn_summary": "summary-from-memory",
                     "layers": {"recent_episodic_turns": ["user: from-request"]},
                     "retrieval_policy": {"recent_turns": 4},
+                    "evidence": [
+                        {
+                            "evidence_id": "memory:fact-a",
+                            "artifact_id": "memory-store",
+                            "modality": "text",
+                            "confidence": 0.9,
+                            "uncertainty_reason": "",
+                            "extraction_method": "memory_retrieval",
+                        }
+                    ],
                 },
             }
         ),
@@ -175,7 +185,21 @@ async def test_context_assembler_composes_request_and_memory_context(monkeypatch
         DummyMsg(
             {
                 "input_id": "i-compose",
-                "multimodal_interpretations": {"summary": "none", "notes": []},
+                "multimodal_interpretations": {
+                    "summary": "image observation",
+                    "notes": [],
+                    "evidence": [
+                        {
+                            "evidence_id": "image:0",
+                            "artifact_id": "attachment-1",
+                            "modality": "image",
+                            "span": [0, 1],
+                            "confidence": 0.8,
+                            "uncertainty_reason": "",
+                            "extraction_method": "embedding_span_summary",
+                        }
+                    ],
+                },
             }
         ),
         "perception",
@@ -195,6 +219,11 @@ async def test_context_assembler_composes_request_and_memory_context(monkeypatch
         "recent_episodic_turns": ["user: from-request"]
     }
     assert payload["confidence"]["retrieval_policy"] == {"recent_turns": 4}
+    assert [item["evidence_id"] for item in payload["evidence"]] == [
+        "memory:fact-a",
+        "image:0",
+    ]
+    assert payload["multimodal_interpretations"]["evidence"][0]["artifact_id"] == "attachment-1"
 
 
 @pytest.mark.asyncio
@@ -298,7 +327,21 @@ async def test_late_arrival_emits_context_update(monkeypatch):
         DummyMsg(
             {
                 "input_id": "i-late",
-                "multimodal_interpretations": {"summary": "none", "notes": []},
+                "multimodal_interpretations": {
+                    "summary": "image observation",
+                    "notes": [],
+                    "evidence": [
+                        {
+                            "evidence_id": "image:0",
+                            "artifact_id": "attachment-1",
+                            "modality": "image",
+                            "span": [0, 1],
+                            "confidence": 0.8,
+                            "uncertainty_reason": "",
+                            "extraction_method": "embedding_span_summary",
+                        }
+                    ],
+                },
             }
         ),
         "perception",
@@ -445,7 +488,21 @@ async def test_context_assembler_merges_adaptation_state_into_selector_inputs(
         DummyMsg(
             {
                 "input_id": "i-adapt",
-                "multimodal_interpretations": {"summary": "none", "notes": []},
+                "multimodal_interpretations": {
+                    "summary": "image observation",
+                    "notes": [],
+                    "evidence": [
+                        {
+                            "evidence_id": "image:0",
+                            "artifact_id": "attachment-1",
+                            "modality": "image",
+                            "span": [0, 1],
+                            "confidence": 0.8,
+                            "uncertainty_reason": "",
+                            "extraction_method": "embedding_span_summary",
+                        }
+                    ],
+                },
             }
         ),
         "perception",

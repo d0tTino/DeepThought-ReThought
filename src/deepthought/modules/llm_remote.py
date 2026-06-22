@@ -134,6 +134,33 @@ def _extract_memory_facts(data: dict[str, object]) -> list[str]:
     return [str(fact) for fact in fallback_facts]
 
 
+def _normalized_evidence_refs(evidence: object) -> list[dict[str, object]]:
+    if not isinstance(evidence, list):
+        return []
+    return [item for item in evidence if isinstance(item, dict)]
+
+
+def _format_evidence_refs(evidence: list[dict[str, object]]) -> str:
+    lines: list[str] = []
+    for idx, item in enumerate(evidence, start=1):
+        evidence_id = str(item.get("evidence_id") or item.get("id") or f"evidence-{idx}")
+        artifact_id = str(item.get("artifact_id") or "unknown-artifact")
+        modality = str(item.get("modality") or "unknown")
+        confidence = item.get("confidence")
+        conf_txt = f"{float(confidence):.2f}" if isinstance(confidence, (int, float)) else "n/a"
+        uncertainty = str(item.get("uncertainty_reason") or "none")
+        method = str(item.get("extraction_method") or "unknown")
+        span = item.get("span")
+        time_range = item.get("time_range")
+        locator = time_range if isinstance(time_range, dict) else span
+        lines.append(
+            f"- [{evidence_id}] artifact={artifact_id}; modality={modality}; "
+            f"locator={json.dumps(locator, sort_keys=True)}; confidence={conf_txt}; "
+            f"uncertainty={uncertainty}; method={method}"
+        )
+    return "\n".join(lines) if lines else "- None"
+
+
 def _build_generation_prompt(
     *,
     user_input: str,
@@ -143,6 +170,7 @@ def _build_generation_prompt(
     channel_context: str | None = None,
     recent_turn_summary: str | None = None,
     multimodal_interpretations: dict[str, object] | None = None,
+    evidence: list[dict[str, object]] | None = None,
 ) -> str:
     facts_block = "\n".join(f"- {fact}" for fact in facts) if facts else "- None"
 
@@ -181,6 +209,9 @@ def _build_generation_prompt(
         note_lines.append(f"- [{modality}] what={what}; where={where}; who={who}; confidence={conf_txt}")
     multimodal_block = "\n".join(note_lines) if note_lines else "- None"
 
+    evidence_refs = evidence if isinstance(evidence, list) else _normalized_evidence_refs(multimodal.get("evidence"))
+    evidence_block = _format_evidence_refs(evidence_refs)
+
     multimodal_confidence = multimodal.get("confidence") if isinstance(multimodal.get("confidence"), dict) else {}
     aggregate = multimodal_confidence.get("aggregate")
     low_confidence = bool(multimodal_confidence.get("low_confidence"))
@@ -196,7 +227,8 @@ def _build_generation_prompt(
     return (
         "[SYSTEM PERSONA]\n"
         "You are DeepThought, a conversational assistant.\n"
-        "Respond clearly, ground your answer in retrieved facts when relevant, and avoid inventing details.\n\n"
+        "Respond clearly, ground your answer in retrieved facts and evidence references when relevant, and avoid inventing details.\n"
+        "When citing multimodal observations, cite evidence IDs like [image:0].\n\n"
         "[RELEVANT FACTS]\n"
         f"{facts_block}\n\n"
         "[LATEST USER MESSAGE]\n"
@@ -205,11 +237,14 @@ def _build_generation_prompt(
         f"{hints_block}\n\n"
         "[MULTIMODAL INTERPRETATIONS]\n"
         f"{multimodal_block}\n\n"
+        "[EVIDENCE]\n"
+        f"{evidence_block}\n\n"
         "[UNCERTAINTY CUES]\n"
-        f"- {uncertainty_line}\n\n"
+        f"- {uncertainty_line}\n"
+        "- If evidence is missing or confidence is low, ask a clarifying question instead of making uncited claims.\n\n"
         "[TASK]\n"
         + (
-            "Ask a focused clarifying question before making claims about image/audio details."
+            "Ask a focused clarifying question before making claims about image/audio details; do not answer with unsupported claims."
             if clarify or low_confidence
             else "Generate a helpful response to the user message."
         )
@@ -309,12 +344,23 @@ class RemoteLLM:
         safety_metadata: dict[str, object],
         prompt: str | None = None,
         response_mode: str = "generative",
+        evidence: list[dict[str, object]] | None = None,
+        cite_or_ask_required: bool = False,
     ) -> dict[str, object]:
         calibration = {
             "slope": 1.0,
             "bias": 0.0,
             "version": "remote_llm_v1",
         }
+        evidence_refs = evidence or []
+        evidence_ids = [
+            str(item.get("evidence_id") or item.get("id"))
+            for item in evidence_refs
+            if isinstance(item, dict) and (item.get("evidence_id") or item.get("id"))
+        ]
+        unsupported_claims = [] if evidence_ids else ["no evidence references available"]
+        if cite_or_ask_required and response_mode == "generative":
+            unsupported_claims.append("cite-or-ask required under uncertainty")
         return {
             "source": source,
             "backend": self._backend_name,
@@ -333,8 +379,44 @@ class RemoteLLM:
                 "contract": "canonical_conversational_responder_v1",
                 "prompt_grounded": bool(prompt),
                 "safety_rule": safety_metadata.get("rule"),
+                "supported_by_evidence": bool(evidence_ids) and not unsupported_claims,
+                "unsupported_evidence_penalty": 0.2 if unsupported_claims else 0.0,
+            },
+            "evidence": {
+                "available_evidence_ids": evidence_ids,
+                "cited_evidence_ids": [],
+                "cite_or_ask_required": cite_or_ask_required,
+                "unsupported_claims": unsupported_claims,
             },
         }
+
+    def _merge_evidence_metadata(
+        self,
+        metadata: dict[str, object],
+        *,
+        evidence: list[dict[str, object]],
+        cite_or_ask_required: bool,
+    ) -> dict[str, object]:
+        merged = dict(metadata) if isinstance(metadata, dict) else {}
+        evidence_ids = [
+            str(item.get("evidence_id") or item.get("id"))
+            for item in evidence
+            if isinstance(item, dict) and (item.get("evidence_id") or item.get("id"))
+        ]
+        unsupported_claims = [] if evidence_ids else ["no evidence references available"]
+        if cite_or_ask_required:
+            unsupported_claims.append("cite-or-ask required under uncertainty")
+        grounding = dict(merged.get("grounding") or {})
+        grounding["supported_by_evidence"] = bool(evidence_ids) and not unsupported_claims
+        grounding["unsupported_evidence_penalty"] = 0.2 if unsupported_claims else 0.0
+        merged["grounding"] = grounding
+        merged["evidence"] = {
+            "available_evidence_ids": evidence_ids,
+            "cited_evidence_ids": [],
+            "cite_or_ask_required": cite_or_ask_required,
+            "unsupported_claims": unsupported_claims,
+        }
+        return merged
 
     async def _generate_candidates(self, prompt: str) -> list[ResponseCandidate]:
         if self._use_dspy and self._qa_pipeline is not None:
@@ -426,6 +508,7 @@ class RemoteLLM:
                     if isinstance(payload.multimodal_interpretations, dict)
                     else {}
                 )
+                evidence = _normalized_evidence_refs(payload.evidence)
             else:
                 input_id = data.get("input_id")
                 author_id = data.get("author_id") if isinstance(data.get("author_id"), str) else None
@@ -441,6 +524,7 @@ class RemoteLLM:
                     if isinstance(data.get("multimodal_interpretations"), dict)
                     else {}
                 )
+                evidence = _normalized_evidence_refs(data.get("evidence"))
 
             if author_id is None:
                 author_id = user_id
@@ -460,6 +544,7 @@ class RemoteLLM:
                 channel_context=channel_context,
                 recent_turn_summary=recent_turn_summary,
                 multimodal_interpretations=multimodal_interpretations,
+                evidence=evidence,
             )
 
             fallback = multimodal_interpretations.get("fallback") if isinstance(multimodal_interpretations.get("fallback"), dict) else {}
@@ -467,6 +552,7 @@ class RemoteLLM:
             confidence_obj = multimodal_interpretations.get("confidence")
             if isinstance(confidence_obj, dict):
                 should_clarify = should_clarify or bool(confidence_obj.get("low_confidence"))
+            cite_or_ask_required = should_clarify
 
             logger.info("RemoteLLM generating for %s", input_id)
             if should_clarify:
@@ -486,11 +572,19 @@ class RemoteLLM:
                             safety_metadata={"rule": "low_multimodal_confidence", "safety_passed": True},
                             prompt=prompt,
                             response_mode="clarifying_fallback",
+                            evidence=evidence,
+                            cite_or_ask_required=cite_or_ask_required,
                         ),
                     )
                 ]
             else:
                 candidates = await self._generate_candidates(prompt)
+                for candidate in candidates:
+                    candidate.source_metadata = self._merge_evidence_metadata(
+                        candidate.source_metadata,
+                        evidence=evidence,
+                        cite_or_ask_required=cite_or_ask_required,
+                    )
             payload = ResponseCandidatesPayload(
                 candidates=candidates,
                 input_id=input_id,
@@ -498,6 +592,7 @@ class RemoteLLM:
                 author_id=author_id,
                 channel_id=channel_id,
                 timestamp=None,
+                context_confidence=(data.get("confidence") if isinstance(data.get("confidence"), dict) else None),
             )
             envelope = EventEnvelope.build(
                 subject=EventSubjects.RESPONSE_CANDIDATES,

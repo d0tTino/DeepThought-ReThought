@@ -41,9 +41,13 @@ def _build_multimodal_memory_schema(
     entity_rows: list[dict[str, Any]] = []
     confidence_rows: list[dict[str, Any]] = []
     observation_rows: list[dict[str, Any]] = []
+    evidence_rows: list[dict[str, Any]] = []
     media_counts: dict[str, int] = {}
 
     note_by_modality = multimodal_notes.get("by_modality") if isinstance(multimodal_notes.get("by_modality"), dict) else {}
+    raw_evidence = multimodal_notes.get("evidence")
+    if isinstance(raw_evidence, list):
+        evidence_rows = [dict(item) for item in raw_evidence if isinstance(item, dict)]
     aggregate_confidence = 0.0
     confidence_obj = multimodal_notes.get("confidence")
     if isinstance(confidence_obj, dict):
@@ -114,6 +118,7 @@ def _build_multimodal_memory_schema(
         "confidence": confidence_rows,
         "entities": entity_rows,
         "observations": observation_rows,
+        "evidence": evidence_rows,
         "source": {"service": "perception_interpret_service", "hostname": os.getenv("HOSTNAME", "")},
     }
 
@@ -197,15 +202,24 @@ class PerceptionInterpretService:
             self._cache_put(
                 payload.input_id,
                 {
-                "confidence": payload.confidence,
-                "modality_confidence": payload.modality_confidence,
-                "by_modality": {
-                    name: {
-                        "spans": mod.spans,
-                        "embeddings": mod.embeddings,
-                    }
-                    for name, mod in payload.by_modality.items()
-                },
+                    "confidence": payload.confidence,
+                    "modality_confidence": payload.modality_confidence,
+                    "by_modality": {
+                        name: {
+                            "spans": mod.spans,
+                            "embeddings": mod.embeddings,
+                            "encoders": [
+                                {
+                                    "name": enc.name,
+                                    "modality": enc.modality,
+                                    "dim": enc.dim,
+                                    "parameters": enc.parameters,
+                                }
+                                for enc in mod.encoders
+                            ],
+                        }
+                        for name, mod in payload.by_modality.items()
+                    },
                 },
             )
             await msg.ack()
