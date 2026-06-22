@@ -342,6 +342,17 @@ def test_build_generation_prompt_includes_sections():
             ],
             "confidence": {"aggregate": 0.81, "low_confidence": False},
         },
+        evidence=[
+            {
+                "evidence_id": "image:0",
+                "artifact_id": "att-1",
+                "modality": "image",
+                "span": [0, 1],
+                "confidence": 0.81,
+                "uncertainty_reason": "",
+                "extraction_method": "embedding_span_summary",
+            }
+        ],
     )
 
     assert "[SYSTEM PERSONA]" in prompt
@@ -353,6 +364,9 @@ def test_build_generation_prompt_includes_sections():
     assert "- Author name: Ada" in prompt
     assert "[MULTIMODAL INTERPRETATIONS]" in prompt
     assert "[image]" in prompt
+    assert "[EVIDENCE]" in prompt
+    assert "[image:0] artifact=att-1" in prompt
+    assert "cite evidence IDs" in prompt
     assert "[UNCERTAINTY CUES]" in prompt
 
 
@@ -418,6 +432,7 @@ async def test_handle_context_event_falls_back_to_clarifying_question_on_low_con
             "confidence": {"aggregate": 0.2, "low_confidence": True},
             "fallback": {"ask_clarifying_question": True, "reason": "low multimodal confidence"},
         },
+        evidence=[{"evidence_id": "audio:0", "artifact_id": "clip", "modality": "audio", "confidence": 0.2}],
     )
     msg = DummyMsg(payload.to_json())
 
@@ -426,7 +441,10 @@ async def test_handle_context_event_falls_back_to_clarifying_question_on_low_con
     assert msg.acked
     assert called["generate"] is False
     _, sent_payload = llm._publisher.published[0]
-    assert "Could you clarify" in sent_payload["payload"]["candidates"][0]["text"]
+    candidate = sent_payload["payload"]["candidates"][0]
+    assert "Could you clarify" in candidate["text"]
+    assert candidate["source_metadata"]["evidence"]["available_evidence_ids"] == ["audio:0"]
+    assert candidate["source_metadata"]["evidence"]["cite_or_ask_required"] is True
 
 
 def test_build_generation_prompt_includes_image_and_audio_interpretations():

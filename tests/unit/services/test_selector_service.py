@@ -405,3 +405,50 @@ async def test_adaptation_state_changes_selector_weight_and_fallback(monkeypatch
     await svc._handle_candidates_event(DummyMsg(fallback_payload.to_json()))
     await asyncio.sleep(0.02)
     assert "safer way" in svc._publisher.published[2][1]["payload"]["final_response"].lower()
+
+@pytest.mark.asyncio
+async def test_selector_penalizes_candidates_with_unsupported_evidence_metadata(monkeypatch):
+    import deepthought.services.selector_service as mod
+
+    monkeypatch.setattr(mod, "Publisher", DummyPublisher)
+    monkeypatch.setattr(mod, "Subscriber", DummySubscriber)
+    svc = SelectorService(DummyNATS(), DummyJS(), early_exit_confidence=0.0, window_seconds=0.0)
+
+    supported = ResponseCandidate(
+        text="supported answer [image:0]",
+        confidence=0.7,
+        source="grounded",
+        safety_passed=True,
+        source_metadata={
+            "grounding": {"supported_by_evidence": True},
+            "evidence": {"available_evidence_ids": ["image:0"], "unsupported_claims": []},
+        },
+    )
+    unsupported = ResponseCandidate(
+        text="unsupported answer",
+        confidence=0.9,
+        source="ungrounded",
+        safety_passed=True,
+        source_metadata={
+            "grounding": {
+                "supported_by_evidence": False,
+                "unsupported_evidence_penalty": 0.2,
+            },
+            "evidence": {"unsupported_claims": ["no evidence references available"]},
+        },
+    )
+
+    msg = DummyMsg(
+        ResponseCandidatesPayload(
+            input_id="evidence-penalty",
+            candidates=[unsupported, supported],
+        ).to_json()
+    )
+
+    await svc._handle_candidates_event(msg)
+
+    ranked = svc._publisher.published[0][1]["payload"]
+    telemetry = svc._publisher.published[1][1]["payload"]
+    assert ranked["final_response"] == "supported answer [image:0]"
+    unsupported_diag = next(item for item in telemetry["diagnostics"] if item["source"] == "ungrounded")
+    assert unsupported_diag["factor_scores"]["unsupported_evidence_penalty"] > 0

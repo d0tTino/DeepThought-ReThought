@@ -224,6 +224,7 @@ class ContextAssembledPayload(EventPayload):
     retrieved_facts: list[str] = field(default_factory=list)
     social_signals: Dict[str, Any] = field(default_factory=dict)
     multimodal_interpretations: Dict[str, Any] = field(default_factory=dict)
+    evidence: list[Dict[str, Any]] = field(default_factory=list)
     confidence: Dict[str, Any] = field(default_factory=dict)
     adaptation_state: Dict[str, Any] = field(default_factory=dict)
     user_id: Optional[str] = None
