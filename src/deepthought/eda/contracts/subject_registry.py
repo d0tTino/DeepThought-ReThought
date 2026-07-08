@@ -91,6 +91,25 @@ class SubjectCanonicals:
     CORRECTION_SIGNAL: Final[str] = "dtr.feedback.correction_signal.v1"
     DISCORD_FEEDBACK_SIGNAL: Final[str] = "dtr.feedback.discord_signal.v1"
     USER_SUMMARY_REFRESH: Final[str] = "dtr.memory.user_summary.refresh.v1"
+    SOCIAL_UPDATED: Final[str] = "dtr.social.updated.v1"
+    PERCEPTION_IMAGE_EMBED: Final[str] = "dtr.perception.image_embeddings.v1"
+    PERCEPTION_AUDIO_EMBED: Final[str] = "dtr.perception.audio_embeddings.v1"
+    PERCEPTION_VIDEO_EMBED: Final[str] = "dtr.perception.video_embeddings.v1"
+    REMINDER_TRIGGERED: Final[str] = "dtr.scheduler.reminder_triggered.v1"
+    MICRO_TICK: Final[str] = "dtr.scheduler.micro_tick.v1"
+    DAILY_STANDUP: Final[str] = "dtr.scheduler.daily_standup.v1"
+    WEEKLY_PLANNING: Final[str] = "dtr.scheduler.weekly_planning.v1"
+    CODE_TEMPLATE_REQUEST: Final[str] = "dtr.codegen.template_request.v1"
+    CODE_GENERATED: Final[str] = "dtr.codegen.generated.v1"
+    PLAN_REQUESTED: Final[str] = "dtr.plan.requested.v1"
+    PLAN_GENERATED: Final[str] = "dtr.plan.generated.v1"
+    BDI_INTENTION: Final[str] = "dtr.bdi.intention.v1"
+    WARNING: Final[str] = "dtr.warning.v1"
+    CHAT_RAW: Final[str] = "dtr.chat.raw.v1"
+    TELEMETRY_SELECTOR_RANKING: Final[str] = SubjectAliases.TELEMETRY_SELECTOR_RANKING
+    TELEMETRY_EGRESS_POLICY: Final[str] = SubjectAliases.TELEMETRY_EGRESS_POLICY
+    TELEMETRY_RESPONSE_FEEDBACK: Final[str] = SubjectAliases.TELEMETRY_RESPONSE_FEEDBACK
+    TRAINING_FEEDBACK_TUPLES: Final[str] = SubjectAliases.TRAINING_FEEDBACK_TUPLES
 
 
 SUBJECT_REGISTRY: dict[str, SubjectMetadata] = {
@@ -136,20 +155,36 @@ SUBJECT_REGISTRY: dict[str, SubjectMetadata] = {
     SubjectCanonicals.USER_SUMMARY_REFRESH: SubjectMetadata(SubjectCanonicals.USER_SUMMARY_REFRESH, SubjectCanonicals.USER_SUMMARY_REFRESH, "schemas/eda/user_summary_refresh.v1.json"),
     SubjectAliases.USER_SUMMARY_REFRESH: SubjectMetadata(SubjectAliases.USER_SUMMARY_REFRESH, SubjectCanonicals.USER_SUMMARY_REFRESH, "schemas/eda/user_summary_refresh.v1.json", SubjectLifecycleState.DEPRECATED),
 
-    SubjectAliases.SOCIAL_UPDATED: SubjectMetadata(SubjectAliases.SOCIAL_UPDATED, SubjectAliases.SOCIAL_UPDATED, "schemas/eda/social_updated.v1.json"),
-    SubjectAliases.PERCEPTION_IMAGE_EMBED: SubjectMetadata(SubjectAliases.PERCEPTION_IMAGE_EMBED, SubjectAliases.PERCEPTION_IMAGE_EMBED, "schemas/eda/perception_image_embed.v1.json"),
-    SubjectAliases.PERCEPTION_AUDIO_EMBED: SubjectMetadata(SubjectAliases.PERCEPTION_AUDIO_EMBED, SubjectAliases.PERCEPTION_AUDIO_EMBED, "schemas/eda/perception_audio_embed.v1.json"),
-    SubjectAliases.PERCEPTION_VIDEO_EMBED: SubjectMetadata(SubjectAliases.PERCEPTION_VIDEO_EMBED, SubjectAliases.PERCEPTION_VIDEO_EMBED, "schemas/eda/perception_video_embed.v1.json"),
-    SubjectAliases.REMINDER_TRIGGERED: SubjectMetadata(SubjectAliases.REMINDER_TRIGGERED, SubjectAliases.REMINDER_TRIGGERED, "schemas/eda/scheduler_reminder_triggered.v1.json"),
-    SubjectAliases.MICRO_TICK: SubjectMetadata(SubjectAliases.MICRO_TICK, SubjectAliases.MICRO_TICK, "schemas/eda/scheduler_micro_tick.v1.json"),
-    SubjectAliases.DAILY_STANDUP: SubjectMetadata(SubjectAliases.DAILY_STANDUP, SubjectAliases.DAILY_STANDUP, "schemas/eda/scheduler_daily_standup.v1.json"),
-    SubjectAliases.WEEKLY_PLANNING: SubjectMetadata(SubjectAliases.WEEKLY_PLANNING, SubjectAliases.WEEKLY_PLANNING, "schemas/eda/scheduler_weekly_planning.v1.json"),
-    SubjectAliases.CODE_TEMPLATE_REQUEST: SubjectMetadata(SubjectAliases.CODE_TEMPLATE_REQUEST, SubjectAliases.CODE_TEMPLATE_REQUEST, "schemas/eda/code_template_request.v1.json"),
-    SubjectAliases.CODE_GENERATED: SubjectMetadata(SubjectAliases.CODE_GENERATED, SubjectAliases.CODE_GENERATED, "schemas/eda/code_generated.v1.json"),
-    SubjectAliases.PLAN_REQUESTED: SubjectMetadata(SubjectAliases.PLAN_REQUESTED, SubjectAliases.PLAN_REQUESTED, "schemas/eda/plan_requested.v1.json"),
-    SubjectAliases.PLAN_GENERATED: SubjectMetadata(SubjectAliases.PLAN_GENERATED, SubjectAliases.PLAN_GENERATED, "schemas/eda/plan_generated.v1.json"),
-    SubjectAliases.BDI_INTENTION: SubjectMetadata(SubjectAliases.BDI_INTENTION, SubjectAliases.BDI_INTENTION, "schemas/eda/bdi_intention.v1.json"),
-    SubjectAliases.WARNING: SubjectMetadata(SubjectAliases.WARNING, SubjectAliases.WARNING, "schemas/eda/warning.v1.json"),
+    SubjectCanonicals.SOCIAL_UPDATED: SubjectMetadata(SubjectCanonicals.SOCIAL_UPDATED, SubjectCanonicals.SOCIAL_UPDATED, "schemas/eda/social_updated.v1.json"),
+    SubjectAliases.SOCIAL_UPDATED: SubjectMetadata(SubjectAliases.SOCIAL_UPDATED, SubjectCanonicals.SOCIAL_UPDATED, "schemas/eda/social_updated.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.PERCEPTION_IMAGE_EMBED: SubjectMetadata(SubjectCanonicals.PERCEPTION_IMAGE_EMBED, SubjectCanonicals.PERCEPTION_IMAGE_EMBED, "schemas/eda/perception_image_embed.v1.json"),
+    SubjectAliases.PERCEPTION_IMAGE_EMBED: SubjectMetadata(SubjectAliases.PERCEPTION_IMAGE_EMBED, SubjectCanonicals.PERCEPTION_IMAGE_EMBED, "schemas/eda/perception_image_embed.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.PERCEPTION_AUDIO_EMBED: SubjectMetadata(SubjectCanonicals.PERCEPTION_AUDIO_EMBED, SubjectCanonicals.PERCEPTION_AUDIO_EMBED, "schemas/eda/perception_audio_embed.v1.json"),
+    SubjectAliases.PERCEPTION_AUDIO_EMBED: SubjectMetadata(SubjectAliases.PERCEPTION_AUDIO_EMBED, SubjectCanonicals.PERCEPTION_AUDIO_EMBED, "schemas/eda/perception_audio_embed.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.PERCEPTION_VIDEO_EMBED: SubjectMetadata(SubjectCanonicals.PERCEPTION_VIDEO_EMBED, SubjectCanonicals.PERCEPTION_VIDEO_EMBED, "schemas/eda/perception_video_embed.v1.json"),
+    SubjectAliases.PERCEPTION_VIDEO_EMBED: SubjectMetadata(SubjectAliases.PERCEPTION_VIDEO_EMBED, SubjectCanonicals.PERCEPTION_VIDEO_EMBED, "schemas/eda/perception_video_embed.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.REMINDER_TRIGGERED: SubjectMetadata(SubjectCanonicals.REMINDER_TRIGGERED, SubjectCanonicals.REMINDER_TRIGGERED, "schemas/eda/scheduler_reminder_triggered.v1.json"),
+    SubjectAliases.REMINDER_TRIGGERED: SubjectMetadata(SubjectAliases.REMINDER_TRIGGERED, SubjectCanonicals.REMINDER_TRIGGERED, "schemas/eda/scheduler_reminder_triggered.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.MICRO_TICK: SubjectMetadata(SubjectCanonicals.MICRO_TICK, SubjectCanonicals.MICRO_TICK, "schemas/eda/scheduler_micro_tick.v1.json"),
+    SubjectAliases.MICRO_TICK: SubjectMetadata(SubjectAliases.MICRO_TICK, SubjectCanonicals.MICRO_TICK, "schemas/eda/scheduler_micro_tick.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.DAILY_STANDUP: SubjectMetadata(SubjectCanonicals.DAILY_STANDUP, SubjectCanonicals.DAILY_STANDUP, "schemas/eda/scheduler_daily_standup.v1.json"),
+    SubjectAliases.DAILY_STANDUP: SubjectMetadata(SubjectAliases.DAILY_STANDUP, SubjectCanonicals.DAILY_STANDUP, "schemas/eda/scheduler_daily_standup.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.WEEKLY_PLANNING: SubjectMetadata(SubjectCanonicals.WEEKLY_PLANNING, SubjectCanonicals.WEEKLY_PLANNING, "schemas/eda/scheduler_weekly_planning.v1.json"),
+    SubjectAliases.WEEKLY_PLANNING: SubjectMetadata(SubjectAliases.WEEKLY_PLANNING, SubjectCanonicals.WEEKLY_PLANNING, "schemas/eda/scheduler_weekly_planning.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.CODE_TEMPLATE_REQUEST: SubjectMetadata(SubjectCanonicals.CODE_TEMPLATE_REQUEST, SubjectCanonicals.CODE_TEMPLATE_REQUEST, "schemas/eda/code_template_request.v1.json"),
+    SubjectAliases.CODE_TEMPLATE_REQUEST: SubjectMetadata(SubjectAliases.CODE_TEMPLATE_REQUEST, SubjectCanonicals.CODE_TEMPLATE_REQUEST, "schemas/eda/code_template_request.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.CODE_GENERATED: SubjectMetadata(SubjectCanonicals.CODE_GENERATED, SubjectCanonicals.CODE_GENERATED, "schemas/eda/code_generated.v1.json"),
+    SubjectAliases.CODE_GENERATED: SubjectMetadata(SubjectAliases.CODE_GENERATED, SubjectCanonicals.CODE_GENERATED, "schemas/eda/code_generated.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.PLAN_REQUESTED: SubjectMetadata(SubjectCanonicals.PLAN_REQUESTED, SubjectCanonicals.PLAN_REQUESTED, "schemas/eda/plan_requested.v1.json"),
+    SubjectAliases.PLAN_REQUESTED: SubjectMetadata(SubjectAliases.PLAN_REQUESTED, SubjectCanonicals.PLAN_REQUESTED, "schemas/eda/plan_requested.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.PLAN_GENERATED: SubjectMetadata(SubjectCanonicals.PLAN_GENERATED, SubjectCanonicals.PLAN_GENERATED, "schemas/eda/plan_generated.v1.json"),
+    SubjectAliases.PLAN_GENERATED: SubjectMetadata(SubjectAliases.PLAN_GENERATED, SubjectCanonicals.PLAN_GENERATED, "schemas/eda/plan_generated.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.BDI_INTENTION: SubjectMetadata(SubjectCanonicals.BDI_INTENTION, SubjectCanonicals.BDI_INTENTION, "schemas/eda/bdi_intention.v1.json"),
+    SubjectAliases.BDI_INTENTION: SubjectMetadata(SubjectAliases.BDI_INTENTION, SubjectCanonicals.BDI_INTENTION, "schemas/eda/bdi_intention.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.WARNING: SubjectMetadata(SubjectCanonicals.WARNING, SubjectCanonicals.WARNING, "schemas/eda/warning.v1.json"),
+    SubjectAliases.WARNING: SubjectMetadata(SubjectAliases.WARNING, SubjectCanonicals.WARNING, "schemas/eda/warning.v1.json", SubjectLifecycleState.DEPRECATED),
+    SubjectCanonicals.CHAT_RAW: SubjectMetadata(SubjectCanonicals.CHAT_RAW, SubjectCanonicals.CHAT_RAW, "schemas/eda/chat_raw.v1.json"),
+    "chat.raw": SubjectMetadata("chat.raw", SubjectCanonicals.CHAT_RAW, "schemas/eda/chat_raw.v1.json", SubjectLifecycleState.DEPRECATED),
     SubjectAliases.TELEMETRY_SELECTOR_RANKING: SubjectMetadata(SubjectAliases.TELEMETRY_SELECTOR_RANKING, SubjectAliases.TELEMETRY_SELECTOR_RANKING, "schemas/eda/telemetry_selector_ranking.v1.json"),
     SubjectAliases.TELEMETRY_EGRESS_POLICY: SubjectMetadata(SubjectAliases.TELEMETRY_EGRESS_POLICY, SubjectAliases.TELEMETRY_EGRESS_POLICY, "schemas/eda/telemetry_egress_policy.v1.json"),
     SubjectAliases.TELEMETRY_RESPONSE_FEEDBACK: SubjectMetadata(SubjectAliases.TELEMETRY_RESPONSE_FEEDBACK, SubjectAliases.TELEMETRY_RESPONSE_FEEDBACK, "schemas/eda/telemetry_response_feedback.v1.json"),

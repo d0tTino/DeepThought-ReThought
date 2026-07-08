@@ -10,7 +10,6 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional
 
 from .contracts import CanonicalSubjects, decode_payload
-from .contracts.subject_registry import SubjectAliases
 
 
 # Subject naming convention: dtr.<module>.<event_type>
@@ -30,13 +29,13 @@ class EventSubjects:
     SOCIAL_SIGNALS_REQUESTED = CanonicalSubjects.SOCIAL_SIGNALS_REQUESTED
     PERCEPTION_INTERPRET_REQUESTED = CanonicalSubjects.PERCEPTION_INTERPRET_REQUESTED
     SOCIAL_SIGNALS_RETRIEVED = CanonicalSubjects.SOCIAL_SIGNALS_RETRIEVED
-    SOCIAL_UPDATED = SubjectAliases.SOCIAL_UPDATED
+    SOCIAL_UPDATED = CanonicalSubjects.SOCIAL_UPDATED
     PERCEPTION_INTERPRET_RETRIEVED = CanonicalSubjects.PERCEPTION_INTERPRET_RETRIEVED
     CONTEXT_ASSEMBLED = CanonicalSubjects.CONTEXT_ASSEMBLED
     CONTEXT_UPDATED = CanonicalSubjects.CONTEXT_UPDATED
 
     # LLM events
-    RESPONSE_GENERATED = SubjectAliases.RESPONSE_GENERATED
+    RESPONSE_GENERATED = CanonicalSubjects.RESPONSE_RANKED
     RESPONSE_CANDIDATES = CanonicalSubjects.RESPONSE_CANDIDATES
     RESPONSE_RANKED = CanonicalSubjects.RESPONSE_RANKED
     OUTCOME_SIGNAL = CanonicalSubjects.OUTCOME_SIGNAL
@@ -46,35 +45,35 @@ class EventSubjects:
 
     # Perception events
     PERCEPTION_EMBEDDINGS = CanonicalSubjects.PERCEPTION_EMBEDDINGS
-    PERCEPTION_IMAGE_EMBED = SubjectAliases.PERCEPTION_IMAGE_EMBED
-    PERCEPTION_AUDIO_EMBED = SubjectAliases.PERCEPTION_AUDIO_EMBED
-    PERCEPTION_VIDEO_EMBED = SubjectAliases.PERCEPTION_VIDEO_EMBED
+    PERCEPTION_IMAGE_EMBED = CanonicalSubjects.PERCEPTION_IMAGE_EMBED
+    PERCEPTION_AUDIO_EMBED = CanonicalSubjects.PERCEPTION_AUDIO_EMBED
+    PERCEPTION_VIDEO_EMBED = CanonicalSubjects.PERCEPTION_VIDEO_EMBED
     PERCEPTION_EXTRACT = CanonicalSubjects.PERCEPTION_EXTRACT
     PERCEPTION_EXTRACT_REQUESTED = CanonicalSubjects.PERCEPTION_EXTRACT_REQUESTED
     PERCEPTION_MODALITY_RESULT = CanonicalSubjects.PERCEPTION_MODALITY_RESULT
 
     # Raw chat message events
-    CHAT_RAW = "chat.raw"
+    CHAT_RAW = CanonicalSubjects.CHAT_RAW
 
     # Scheduler events
-    REMINDER_TRIGGERED = SubjectAliases.REMINDER_TRIGGERED
-    MICRO_TICK = SubjectAliases.MICRO_TICK
-    DAILY_STANDUP = SubjectAliases.DAILY_STANDUP
-    WEEKLY_PLANNING = SubjectAliases.WEEKLY_PLANNING
+    REMINDER_TRIGGERED = CanonicalSubjects.REMINDER_TRIGGERED
+    MICRO_TICK = CanonicalSubjects.MICRO_TICK
+    DAILY_STANDUP = CanonicalSubjects.DAILY_STANDUP
+    WEEKLY_PLANNING = CanonicalSubjects.WEEKLY_PLANNING
 
     # Code generation events
-    CODE_TEMPLATE_REQUEST = SubjectAliases.CODE_TEMPLATE_REQUEST
-    CODE_GENERATED = SubjectAliases.CODE_GENERATED
+    CODE_TEMPLATE_REQUEST = CanonicalSubjects.CODE_TEMPLATE_REQUEST
+    CODE_GENERATED = CanonicalSubjects.CODE_GENERATED
 
     # Planning events
-    PLAN_REQUESTED = SubjectAliases.PLAN_REQUESTED
-    PLAN_GENERATED = SubjectAliases.PLAN_GENERATED
+    PLAN_REQUESTED = CanonicalSubjects.PLAN_REQUESTED
+    PLAN_GENERATED = CanonicalSubjects.PLAN_GENERATED
 
     # BDI agent events
-    BDI_INTENTION = SubjectAliases.BDI_INTENTION
+    BDI_INTENTION = CanonicalSubjects.BDI_INTENTION
 
     # Warning events
-    WARNING = SubjectAliases.WARNING
+    WARNING = CanonicalSubjects.WARNING
 
     # Other potential event subjects can be added here as the system expands
     # e.g., ERROR = "dtr.error"
