@@ -33,6 +33,25 @@ class CanonicalSubjects:
     CORRECTION_SIGNAL = SubjectCanonicals.CORRECTION_SIGNAL
     DISCORD_FEEDBACK_SIGNAL = SubjectCanonicals.DISCORD_FEEDBACK_SIGNAL
     USER_SUMMARY_REFRESH = SubjectCanonicals.USER_SUMMARY_REFRESH
+    SOCIAL_UPDATED = SubjectCanonicals.SOCIAL_UPDATED
+    PERCEPTION_IMAGE_EMBED = SubjectCanonicals.PERCEPTION_IMAGE_EMBED
+    PERCEPTION_AUDIO_EMBED = SubjectCanonicals.PERCEPTION_AUDIO_EMBED
+    PERCEPTION_VIDEO_EMBED = SubjectCanonicals.PERCEPTION_VIDEO_EMBED
+    REMINDER_TRIGGERED = SubjectCanonicals.REMINDER_TRIGGERED
+    MICRO_TICK = SubjectCanonicals.MICRO_TICK
+    DAILY_STANDUP = SubjectCanonicals.DAILY_STANDUP
+    WEEKLY_PLANNING = SubjectCanonicals.WEEKLY_PLANNING
+    CODE_TEMPLATE_REQUEST = SubjectCanonicals.CODE_TEMPLATE_REQUEST
+    CODE_GENERATED = SubjectCanonicals.CODE_GENERATED
+    PLAN_REQUESTED = SubjectCanonicals.PLAN_REQUESTED
+    PLAN_GENERATED = SubjectCanonicals.PLAN_GENERATED
+    BDI_INTENTION = SubjectCanonicals.BDI_INTENTION
+    WARNING = SubjectCanonicals.WARNING
+    CHAT_RAW = SubjectCanonicals.CHAT_RAW
+    TELEMETRY_SELECTOR_RANKING = SubjectCanonicals.TELEMETRY_SELECTOR_RANKING
+    TELEMETRY_EGRESS_POLICY = SubjectCanonicals.TELEMETRY_EGRESS_POLICY
+    TELEMETRY_RESPONSE_FEEDBACK = SubjectCanonicals.TELEMETRY_RESPONSE_FEEDBACK
+    TRAINING_FEEDBACK_TUPLES = SubjectCanonicals.TRAINING_FEEDBACK_TUPLES
 
 
 LEGACY_SUBJECT_MAP: Dict[str, str] = legacy_subject_map()
@@ -148,6 +167,33 @@ def normalize_legacy_payload(subject: str, payload: Dict[str, Any]) -> Dict[str,
     if canonical == CanonicalSubjects.PERCEPTION_EXTRACT and "text_tokens" not in payload and "tokens" in payload:
         payload = {**payload, "text_tokens": payload["tokens"]}
     return payload
+
+
+def translate_ingress_subject(subject: str) -> str:
+    """Translate a bus ingress subject to its canonical internal subject.
+
+    Use this only at adapter/bus boundaries before dispatching into service
+    logic; service code should continue with canonical subjects.
+    """
+
+    return to_canonical_subject(subject)
+
+
+def translate_egress_subject(subject: str, *, legacy: bool = False) -> str:
+    """Translate a canonical internal subject for bus egress.
+
+    By default egress remains canonical.  When a boundary adapter explicitly
+    needs a legacy destination, the first registered alias for the canonical
+    subject is returned.
+    """
+
+    canonical = to_canonical_subject(subject)
+    if not legacy:
+        return canonical
+    for alias, target in LEGACY_SUBJECT_MAP.items():
+        if target == canonical:
+            return alias
+    return canonical
 
 
 def validate_input_received_payload(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -297,6 +343,8 @@ __all__ = [
     "normalize_legacy_payload",
     "resolve_subject",
     "to_canonical_subject",
+    "translate_egress_subject",
+    "translate_ingress_subject",
     "validate_cross_service_envelope",
     "validate_envelope",
 ]

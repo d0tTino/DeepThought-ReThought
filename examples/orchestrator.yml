@@ -1,307 +1,415 @@
-# Canonical orchestrator wiring for DeepThought-ReThought.
-# `dtrt orchestrate` currently reads only the top-level `services` list;
-# the `service_bindings` and `environment` sections are runtime documentation
-# for operators and deployment automation.
-
 services:
-  - discord_gateway
-  - cognitive_core
-  - social_graph
-  - perception
-  - perception_interpret
-  - context_assembler
-  - llm_remote
-  - selector
-  - feedback
-
+- discord_gateway
+- cognitive_core
+- social_graph
+- perception
+- perception_interpret
+- context_assembler
+- llm_remote
+- selector
+- feedback
 service_bindings:
   discord_gateway:
     description: Bridge Discord I/O to NATS.
     env:
-      - NATS_URL
-      - DISCORD_BOT_TOKEN
+    - NATS_URL
+    - DISCORD_BOT_TOKEN
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_RANKED
-        jetstream: true
-        durable: discord_gateway_response_ranked
-        required_reliability: true
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_RANKED
+      jetstream: true
+      durable: discord_gateway_response_ranked
+      required_reliability: true
+      canonical_subject: dtr.response.ranked.v1
+      legacy_aliases:
+      - dtr.response.ranked
+      - dtr.llm.response_generated
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.INPUT_RECEIVED
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.INPUT_RECEIVED
+      jetstream: true
+      canonical_subject: dtr.input.received.v1
+      legacy_aliases:
+      - dtr.input.received
   cognitive_core:
     description: Unified memory + retrieval + social signal persistence.
     env:
-      - NATS_URL
-      - DT_RUNTIME_PROFILE
-      - DT_GRAPH_BACKEND
-      - DT_MG_HOST
-      - DT_MG_PORT
-      - DT_MG_USER
-      - DT_MG_PASSWORD
-      - DT_MEMORY_DB
-      - DT_SOCIAL_GRAPH_DB
-      - DT_SEARCH_DB
+    - NATS_URL
+    - DT_RUNTIME_PROFILE
+    - DT_GRAPH_BACKEND
+    - DT_MG_HOST
+    - DT_MG_PORT
+    - DT_MG_USER
+    - DT_MG_PASSWORD
+    - DT_MEMORY_DB
+    - DT_SOCIAL_GRAPH_DB
+    - DT_SEARCH_DB
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.MEMORY_RETRIEVAL_REQUESTED
-        jetstream: true
-        durable: cognitive_core_memory_requests
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
-        jetstream: true
-        durable: cognitive_core_listener_perception_fused
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_IMAGE_EMBED
-        jetstream: true
-        durable: cognitive_core_listener_perception_image
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_AUDIO_EMBED
-        jetstream: true
-        durable: cognitive_core_listener_perception_audio
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_VIDEO_EMBED
-        jetstream: true
-        durable: cognitive_core_listener_perception_video
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.BDI_INTENTION
-        jetstream: true
-        durable: cognitive_core_listener_bdi
-        required_reliability: true
+    - subject_ref: registry
+      event_subject: EventSubjects.MEMORY_RETRIEVAL_REQUESTED
+      jetstream: true
+      durable: cognitive_core_memory_requests
+      required_reliability: true
+      canonical_subject: dtr.memory.retrieval.requested.v1
+      legacy_aliases:
+      - dtr.memory.retrieval.requested
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
+      jetstream: true
+      durable: cognitive_core_listener_perception_fused
+      required_reliability: true
+      canonical_subject: dtr.perception.embeddings.v1
+      legacy_aliases:
+      - dtr.perception.embeddings
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_IMAGE_EMBED
+      jetstream: true
+      durable: cognitive_core_listener_perception_image
+      required_reliability: true
+      canonical_subject: dtr.perception.image_embeddings.v1
+      legacy_aliases:
+      - dtr.perception.image_embeddings
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_AUDIO_EMBED
+      jetstream: true
+      durable: cognitive_core_listener_perception_audio
+      required_reliability: true
+      canonical_subject: dtr.perception.audio_embeddings.v1
+      legacy_aliases:
+      - dtr.perception.audio_embeddings
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_VIDEO_EMBED
+      jetstream: true
+      durable: cognitive_core_listener_perception_video
+      required_reliability: true
+      canonical_subject: dtr.perception.video_embeddings.v1
+      legacy_aliases:
+      - dtr.perception.video_embeddings
+    - subject_ref: registry
+      event_subject: EventSubjects.BDI_INTENTION
+      jetstream: true
+      durable: cognitive_core_listener_bdi
+      required_reliability: true
+      canonical_subject: dtr.bdi.intention.v1
+      legacy_aliases:
+      - dtr.bdi.intention
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.MEMORY_RETRIEVED
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.MEMORY_RETRIEVED
+      jetstream: true
+      canonical_subject: dtr.memory.retrieved.v1
+      legacy_aliases:
+      - dtr.memory.retrieved
   llm_remote:
-    description: Canonical conversational responder path built on llm_remote_service.py and modules/llm_remote.py.
+    description: Canonical conversational responder path built on llm_remote_service.py
+      and modules/llm_remote.py.
     env:
-      - NATS_URL
-      - LLM_ENDPOINT
-      - LLM_BACKEND
-      - LLM_NUM_CANDIDATES
-      - LLM_SOURCE_NAME
+    - NATS_URL
+    - LLM_ENDPOINT
+    - LLM_BACKEND
+    - LLM_NUM_CANDIDATES
+    - LLM_SOURCE_NAME
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.CONTEXT_ASSEMBLED
-        jetstream: true
-        durable: llm_remote_service
-        required_reliability: true
+    - subject_ref: registry
+      event_subject: EventSubjects.CONTEXT_ASSEMBLED
+      jetstream: true
+      durable: llm_remote_service
+      required_reliability: true
+      canonical_subject: dtr.context.assembled.v1
+      legacy_aliases:
+      - dtr.context.assembled
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_CANDIDATES
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_CANDIDATES
+      jetstream: true
+      canonical_subject: dtr.response.candidates.v1
+      legacy_aliases:
+      - dtr.response.candidates
   factual_responder:
     optional: true
-    description: Optional fact specialist that contributes heuristic candidates for selector/ranker context.
+    description: Optional fact specialist that contributes heuristic candidates for
+      selector/ranker context.
     env:
-      - NATS_URL
+    - NATS_URL
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.CONTEXT_ASSEMBLED
-        jetstream: true
-        durable: responder_factual_service
-        required_reliability: false
+    - subject_ref: registry
+      event_subject: EventSubjects.CONTEXT_ASSEMBLED
+      jetstream: true
+      durable: responder_factual_service
+      required_reliability: false
+      canonical_subject: dtr.context.assembled.v1
+      legacy_aliases:
+      - dtr.context.assembled
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_CANDIDATES
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_CANDIDATES
+      jetstream: true
+      canonical_subject: dtr.response.candidates.v1
+      legacy_aliases:
+      - dtr.response.candidates
   persona_responder:
     optional: true
-    description: Optional persona specialist that adds rapport-oriented candidate hints for the selector.
+    description: Optional persona specialist that adds rapport-oriented candidate
+      hints for the selector.
     env:
-      - NATS_URL
+    - NATS_URL
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.CONTEXT_ASSEMBLED
-        jetstream: true
-        durable: responder_persona_service
-        required_reliability: false
+    - subject_ref: registry
+      event_subject: EventSubjects.CONTEXT_ASSEMBLED
+      jetstream: true
+      durable: responder_persona_service
+      required_reliability: false
+      canonical_subject: dtr.context.assembled.v1
+      legacy_aliases:
+      - dtr.context.assembled
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_CANDIDATES
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_CANDIDATES
+      jetstream: true
+      canonical_subject: dtr.response.candidates.v1
+      legacy_aliases:
+      - dtr.response.candidates
   safety_responder:
     optional: true
-    description: Optional safety specialist that contributes refusal or safe-default candidates.
+    description: Optional safety specialist that contributes refusal or safe-default
+      candidates.
     env:
-      - NATS_URL
+    - NATS_URL
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.CONTEXT_ASSEMBLED
-        jetstream: true
-        durable: responder_safety_service
-        required_reliability: false
+    - subject_ref: registry
+      event_subject: EventSubjects.CONTEXT_ASSEMBLED
+      jetstream: true
+      durable: responder_safety_service
+      required_reliability: false
+      canonical_subject: dtr.context.assembled.v1
+      legacy_aliases:
+      - dtr.context.assembled
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_CANDIDATES
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_CANDIDATES
+      jetstream: true
+      canonical_subject: dtr.response.candidates.v1
+      legacy_aliases:
+      - dtr.response.candidates
   selector:
     description: Rank response candidates and emit a final response.
     env:
-      - NATS_URL
+    - NATS_URL
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_CANDIDATES
-        jetstream: true
-        durable: selector_service
-        required_reliability: true
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_CANDIDATES
+      jetstream: true
+      durable: selector_service
+      required_reliability: true
+      canonical_subject: dtr.response.candidates.v1
+      legacy_aliases:
+      - dtr.response.candidates
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_RANKED
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_RANKED
+      jetstream: true
+      canonical_subject: dtr.response.ranked.v1
+      legacy_aliases:
+      - dtr.response.ranked
+      - dtr.llm.response_generated
   feedback:
-    description: Adapt memory/social confidence from ranked responses and explicit user feedback signals.
+    description: Adapt memory/social confidence from ranked responses and explicit
+      user feedback signals.
     env:
-      - NATS_URL
-      - DT_MEMORY_DB
-      - DT_SOCIAL_GRAPH_DB
-      - DT_FEEDBACK_DURABLE_PREFIX
+    - NATS_URL
+    - DT_MEMORY_DB
+    - DT_SOCIAL_GRAPH_DB
+    - DT_FEEDBACK_DURABLE_PREFIX
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_RANKED
-        jetstream: true
-        durable: feedback_service_ranked
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.OUTCOME_SIGNAL
-        jetstream: true
-        durable: feedback_service_outcome
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.CORRECTION_SIGNAL
-        jetstream: true
-        durable: feedback_service_correction
-        required_reliability: true
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_RANKED
+      jetstream: true
+      durable: feedback_service_ranked
+      required_reliability: true
+      canonical_subject: dtr.response.ranked.v1
+      legacy_aliases:
+      - dtr.response.ranked
+      - dtr.llm.response_generated
+    - subject_ref: registry
+      event_subject: EventSubjects.OUTCOME_SIGNAL
+      jetstream: true
+      durable: feedback_service_outcome
+      required_reliability: true
+      canonical_subject: dtr.feedback.outcome_signal.v1
+      legacy_aliases:
+      - dtr.feedback.outcome_signal
+    - subject_ref: registry
+      event_subject: EventSubjects.CORRECTION_SIGNAL
+      jetstream: true
+      durable: feedback_service_correction
+      required_reliability: true
+      canonical_subject: dtr.feedback.correction_signal.v1
+      legacy_aliases:
+      - dtr.feedback.correction_signal
     publish:
-      - subject_ref: registry
-        event_subject: response_feedback_telemetry
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.TELEMETRY_RESPONSE_FEEDBACK
+      jetstream: true
+      canonical_subject: dtr.telemetry.response_feedback.v1
   reasoning:
     optional: true
     description: Infer and re-inject structured facts from ranked responses and candidates.
     env:
-      - NATS_URL
+    - NATS_URL
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_RANKED
-        jetstream: true
-        durable: reasoning_service_ranked
-        required_reliability: false
-      - subject_ref: registry
-        event_subject: EventSubjects.RESPONSE_CANDIDATES
-        jetstream: true
-        durable: reasoning_service_candidates
-        required_reliability: false
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_RANKED
+      jetstream: true
+      durable: reasoning_service_ranked
+      required_reliability: false
+      canonical_subject: dtr.response.ranked.v1
+      legacy_aliases:
+      - dtr.response.ranked
+      - dtr.llm.response_generated
+    - subject_ref: registry
+      event_subject: EventSubjects.RESPONSE_CANDIDATES
+      jetstream: true
+      durable: reasoning_service_candidates
+      required_reliability: false
+      canonical_subject: dtr.response.candidates.v1
+      legacy_aliases:
+      - dtr.response.candidates
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.INPUT_RECEIVED
-        jetstream: true
-      - subject_ref: registry
-        event_subject: EventSubjects.WARNING
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.INPUT_RECEIVED
+      jetstream: true
+      canonical_subject: dtr.input.received.v1
+      legacy_aliases:
+      - dtr.input.received
+    - subject_ref: registry
+      event_subject: EventSubjects.WARNING
+      jetstream: true
+      canonical_subject: dtr.warning.v1
+      legacy_aliases:
+      - dtr.warning
   social_graph:
     description: Track affinity and persona context from user input.
     env:
-      - NATS_URL
-      - DT_SOCIAL_GRAPH_DB
+    - NATS_URL
+    - DT_SOCIAL_GRAPH_DB
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.SOCIAL_SIGNALS_REQUESTED
-        jetstream: true
-        durable: social_graph_requests
-        required_reliability: true
+    - subject_ref: registry
+      event_subject: EventSubjects.SOCIAL_SIGNALS_REQUESTED
+      jetstream: true
+      durable: social_graph_requests
+      required_reliability: true
+      canonical_subject: dtr.social.signals.requested.v1
+      legacy_aliases:
+      - dtr.social.signals.requested
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
+      jetstream: true
+      canonical_subject: dtr.social.signals.retrieved.v1
+      legacy_aliases:
+      - dtr.social.signals.retrieved
   perception:
     description: Multimodal perception extraction and embedding publisher.
     env:
-      - NATS_URL
-      - PERCEPTION_REQUIRE_CONSENT
-      - PERCEPTION_MODEL_PATH
+    - NATS_URL
+    - PERCEPTION_REQUIRE_CONSENT
+    - PERCEPTION_MODEL_PATH
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.INPUT_RECEIVED
-        jetstream: true
-        durable: perception_listener
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_EXTRACT
-        jetstream: true
-        durable: perception-extract-listener
-        required_reliability: true
+    - subject_ref: registry
+      event_subject: EventSubjects.INPUT_RECEIVED
+      jetstream: true
+      durable: perception_listener
+      required_reliability: true
+      canonical_subject: dtr.input.received.v1
+      legacy_aliases:
+      - dtr.input.received
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_EXTRACT
+      jetstream: true
+      durable: perception-extract-listener
+      required_reliability: true
+      canonical_subject: dtr.perception.extract.v1
+      legacy_aliases:
+      - dtr.perception.extract
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
+      jetstream: true
+      canonical_subject: dtr.perception.embeddings.v1
+      legacy_aliases:
+      - dtr.perception.embeddings
   perception_interpret:
     description: Convert cached perception embeddings into compact prompt interpretations.
     env:
-      - NATS_URL
+    - NATS_URL
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_INTERPRET_REQUESTED
-        jetstream: true
-        durable: perception_interpret_requests
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
-        jetstream: true
-        durable: perception_interpret_embeddings
-        required_reliability: false
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_INTERPRET_REQUESTED
+      jetstream: true
+      durable: perception_interpret_requests
+      required_reliability: true
+      canonical_subject: dtr.perception.interpret.requested.v1
+      legacy_aliases:
+      - dtr.perception.interpret.requested
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_EMBEDDINGS
+      jetstream: true
+      durable: perception_interpret_embeddings
+      required_reliability: false
+      canonical_subject: dtr.perception.embeddings.v1
+      legacy_aliases:
+      - dtr.perception.embeddings
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
+      jetstream: true
+      canonical_subject: dtr.perception.interpret.retrieved.v1
+      legacy_aliases:
+      - dtr.perception.interpret.retrieved
   context_assembler:
     description: Assemble provider outputs into a single LLM-ready context payload.
     env:
-      - NATS_URL
+    - NATS_URL
     subscribe:
-      - subject_ref: registry
-        event_subject: EventSubjects.INPUT_RECEIVED
-        jetstream: true
-        durable: context_assembler_input
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.MEMORY_RETRIEVED
-        jetstream: true
-        durable: context_assembler_memory
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
-        jetstream: true
-        durable: context_assembler_social
-        required_reliability: true
-      - subject_ref: registry
-        event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
-        jetstream: true
-        durable: context_assembler_perception
-        required_reliability: true
+    - subject_ref: registry
+      event_subject: EventSubjects.INPUT_RECEIVED
+      jetstream: true
+      durable: context_assembler_input
+      required_reliability: true
+      canonical_subject: dtr.input.received.v1
+      legacy_aliases:
+      - dtr.input.received
+    - subject_ref: registry
+      event_subject: EventSubjects.MEMORY_RETRIEVED
+      jetstream: true
+      durable: context_assembler_memory
+      required_reliability: true
+      canonical_subject: dtr.memory.retrieved.v1
+      legacy_aliases:
+      - dtr.memory.retrieved
+    - subject_ref: registry
+      event_subject: EventSubjects.SOCIAL_SIGNALS_RETRIEVED
+      jetstream: true
+      durable: context_assembler_social
+      required_reliability: true
+      canonical_subject: dtr.social.signals.retrieved.v1
+      legacy_aliases:
+      - dtr.social.signals.retrieved
+    - subject_ref: registry
+      event_subject: EventSubjects.PERCEPTION_INTERPRET_RETRIEVED
+      jetstream: true
+      durable: context_assembler_perception
+      required_reliability: true
+      canonical_subject: dtr.perception.interpret.retrieved.v1
+      legacy_aliases:
+      - dtr.perception.interpret.retrieved
     publish:
-      - subject_ref: registry
-        event_subject: EventSubjects.CONTEXT_ASSEMBLED
-        jetstream: true
-
+    - subject_ref: registry
+      event_subject: EventSubjects.CONTEXT_ASSEMBLED
+      jetstream: true
+      canonical_subject: dtr.context.assembled.v1
+      legacy_aliases:
+      - dtr.context.assembled
 environment:
   NATS_URL: ${NATS_URL:-nats://localhost:4222}
   DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
@@ -316,5 +424,4 @@ environment:
   DT_SOCIAL_GRAPH_DB: ${DT_SOCIAL_GRAPH_DB:-./data/social_graph.db}
   DT_SEARCH_DB: ${DT_SEARCH_DB:-./examples/data/sample_docs.json}
   PERCEPTION_MODEL_PATH: ${PERCEPTION_MODEL_PATH:-}
-
   DT_FEEDBACK_DURABLE_PREFIX: ${DT_FEEDBACK_DURABLE_PREFIX:-feedback_service}
